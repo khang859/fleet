@@ -23,7 +23,24 @@ import {
 
 const recorded = (n: number): unknown =>
   JSON.parse(readFileSync(join(__dirname, 'fixtures', `langfuse-${n}-review.json`), 'utf8'));
-const facts = (n: number): PrReviewFacts => parsePrReview(recorded(n))!;
+const facts = (n: number): PrReviewFacts => parsePrReview(recorded(n), null)!;
+
+/** #18959 with its first thread started by the client, and its second by a stranger. */
+function withPeople(): unknown {
+  const json = recorded(18959) as {
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: { nodes: Array<{ comments: { nodes: Array<{ author: unknown }> } }> };
+        };
+      };
+    };
+  };
+  const threads = json.data.repository.pullRequest.reviewThreads.nodes;
+  threads[0].comments.nodes[0].author = { __typename: 'User', login: 'Khang' };
+  threads[1].comments.nodes[0].author = { __typename: 'User', login: 'stranger' };
+  return json;
+}
 
 const WANTS = { requiredChecks: ['license/cla', 'build'], reviewBots: ['greptile-apps[bot]'] };
 const PR = { number: 18959, state: 'open' } as PrState;
@@ -50,9 +67,21 @@ describe('parsePrReview', () => {
     expect(facts(18923).reviewedHead).toEqual(new Set(['claude', 'greptile-apps']));
   });
 
+  it("keeps the client's own threads and drops a stranger's", () => {
+    const read = parsePrReview(withPeople(), 'khang')!;
+    expect(read.comments.map((c) => [c.id, c.author])).toEqual([
+      [4295378404, 'khang'],
+      [4295431548, 'claude[bot]'],
+      [4295431556, 'claude[bot]'],
+      [4295431559, 'claude[bot]']
+    ]);
+    // Without the client's login, a person's thread is never kept.
+    expect(parsePrReview(withPeople(), null)!.comments).toHaveLength(3);
+  });
+
   it('is null for an answer that is not a PR', () => {
-    expect(parsePrReview({ data: { repository: { pullRequest: null } } })).toBeNull();
-    expect(parsePrReview({ errors: [{ message: 'Could not resolve' }] })).toBeNull();
+    expect(parsePrReview({ data: { repository: { pullRequest: null } } }, null)).toBeNull();
+    expect(parsePrReview({ errors: [{ message: 'Could not resolve' }] }, null)).toBeNull();
   });
 });
 
@@ -78,8 +107,18 @@ describe('prReview', () => {
   it('waits for a required check not started yet and a bot that has not reviewed the head', () => {
     const review = prReview(facts(18959), WANTS, at + 60_000);
     expect(review).toMatchObject({ checks: ['build'], bots: ['greptile-apps[bot]'], stuck: [] });
-    expect(review.comments).toHaveLength(5);
+    // Claude is not a review bot in setup, so its three comments are left out.
+    expect(review.comments.map((c) => c.author)).toEqual([
+      'greptile-apps[bot]',
+      'greptile-apps[bot]'
+    ]);
     expect(waitingFor(review)).toBe('Greptile and the build check');
+  });
+
+  it("keeps the client's comments whatever bots setup lists", () => {
+    const read = parsePrReview(withPeople(), 'khang')!;
+    // Greptile's other thread was the stranger's in this answer.
+    expect(prReview(read, WANTS, at).comments.map((c) => c.author)).toEqual(['khang']);
   });
 
   it('calls a required check stuck once it has not started for 15 minutes', () => {
@@ -97,7 +136,8 @@ describe('prReview', () => {
 });
 
 describe('reviewEvents', () => {
-  const review = prReview(facts(18959), WANTS, Date.parse('2026-10-16T15:08:00Z'));
+  const BOTH = { ...WANTS, reviewBots: ['greptile-apps[bot]', 'claude[bot]'] };
+  const review = prReview(facts(18959), BOTH, Date.parse('2026-10-16T15:08:00Z'));
 
   it('tells the Admiral about bot comments it has not seen, fenced, and names the step', () => {
     const before = { ...review, comments: review.comments.slice(0, 3) };
@@ -108,7 +148,15 @@ describe('reviewEvents', () => {
       'claude[bot] on worker/src/features/topics/processTopicsExecution.ts:953'
     );
     expect(event.body).toContain('Step builder delivered this PR');
+    expect(event.body).toContain('without asking the client');
     expect(reviewEvents(PR, 'builder', review, review)).toEqual([]);
+  });
+
+  it('names the client when the comment is theirs', () => {
+    const read = prReview(parsePrReview(withPeople(), 'khang')!, BOTH, Date.now());
+    const before = { ...read, comments: [] };
+    const [event] = reviewEvents(PR, 'builder', before, read);
+    expect(event.line).toBe('The client and Claude left 4 comments on PR #18959');
   });
 
   it('says once when a required check did not start, and when the PR became ready', () => {
@@ -126,10 +174,17 @@ describe('reviewEvents', () => {
   it('tells the delivery what the PR waits on and the comments already open', () => {
     const note = deliveryNote({ ...PR, review }, 'builder');
     expect(note).toContain(
-      'PR #18959 is not ready yet: it waits for Greptile and the build check.'
+      'PR #18959 is not ready yet: it waits for Greptile, Claude and the build check.'
     );
     expect(note).toContain('Greptile and Claude left 5 comments');
     expect(deliveryNote({ ...PR, state: 'merged', review }, 'builder')).toBe('');
+  });
+
+  it('says a PR that waits for nothing is ready now, since no ready event follows', () => {
+    const review = { checks: [], bots: [], stuck: [], comments: [] };
+    expect(deliveryNote({ ...PR, review }, 'builder')).toBe(
+      '\nPR #18959 is ready now: it waits for no required check or review bot. Tell the client once every PR of the job is ready.'
+    );
   });
 });
 

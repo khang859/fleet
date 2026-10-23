@@ -20,8 +20,8 @@ export type PlanHelpers = {
     plan?: PlanInput
   ) => Promise<{ id: number; text: string }>;
   propose: (tools: AgentAgencyCapability, plan?: PlanInput) => Promise<number>;
-  /** Propose, then approve as the client; throws with main's reason when refused. */
-  approve: (tools: AgentAgencyCapability, plan?: PlanInput) => Promise<number>;
+  /** Propose; the plan starts at once. Throws with the result text when it did not. */
+  startPlan: (tools: AgentAgencyCapability, plan?: PlanInput) => Promise<number>;
 };
 
 /** Plan helpers over the service a test has now; `service` is read on each call. */
@@ -54,20 +54,19 @@ export function planHelpers(service: () => AgencyService, base: PlanInput): Plan
     toolsFor,
     proposeOut,
     propose: async (tools, plan) => (await proposeOut(tools, plan)).id,
-    approve: async (tools, plan) => {
-      const { id } = await proposeOut(tools, plan);
-      const result = await service().jobs.decide({ planVersionId: id, action: 'approve' });
-      if (!result.ok) throw new Error(result.reason);
+    startPlan: async (tools, plan) => {
+      const { id, text } = await proposeOut(tools, plan);
+      if (service().store.plans.version(id)?.status !== 'approved') throw new Error(text);
       return id;
     }
   };
 }
 
 /**
- * A job in `repo` with a plan of `steps` approved by the client, through the
- * Admiral's tools, so each member's base is pinned the way a real job's is.
+ * A job in `repo` with a started plan of `steps`, through the Admiral's
+ * tools, so each member's base is pinned the way a real job's is.
  */
-export async function approvedJobIn(
+export async function startedJobIn(
   service: AgencyService,
   repo: AgencyRepoRef,
   steps: PlanInput['steps'][number] | PlanInput['steps']
@@ -91,8 +90,7 @@ export async function approvedJobIn(
   });
   const out = await tools.jobPlan!(plan);
   const id = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
-  const decided = await service.jobs.decide({ planVersionId: id, action: 'approve' });
-  if (!decided.ok) throw new Error(`${decided.reason} ${out.text}`);
+  if (service.store.plans.version(id)?.status !== 'approved') throw new Error(out.text);
   return { jobId: job.id, tools };
 }
 

@@ -22,14 +22,12 @@ import {
   type AgencySnapshot,
   type BudgetRaise,
   type ClientDecision,
-  type ClientFileProposal,
   type JobHoldKind,
   type JobState,
   type WakeupPull
 } from '../../../shared/agency';
 import type { AgencyProjectSummary } from '../../../shared/agency-projects';
 import type { Plan } from '../../../shared/agency-plan';
-import { LessonAnswer, type CrewLesson } from '../../../shared/agency-lessons';
 import { YOU_LAYER } from '../../../shared/agency-client-file';
 import { meetLeft } from '../../../shared/agency-meet';
 import { parseJsonAs } from '../../../shared/parse-json';
@@ -46,6 +44,7 @@ import { MergeStore, ResultStore } from './result-store';
 import { PlanStore } from './plan-store';
 import { ProjectRegistry } from './project-registry';
 import { SettingChangeStore } from './setting-change-store';
+import { LessonStore } from './lesson-store';
 import { PreferenceStore } from './preference-store';
 import { SpendStore } from './spend-store';
 
@@ -132,12 +131,8 @@ export type AskQuestionInput = {
   planVersion?: number | null;
   step?: string | null;
   kind?: AgencyQuestionKind;
-  /** What a `client_file` card proposes. */
-  proposal?: ClientFileProposal;
   /** What a `budget` card raises, and to what. */
   raise?: BudgetRaise;
-  /** What a `crew_lesson` card would change in a role. */
-  lesson?: CrewLesson;
 };
 
 export type AnswerOutcome = {
@@ -201,22 +196,11 @@ const ClientPayload = z.object({
   detail: z.string().nullable().optional()
 });
 const QuestionData = z.object({
-  proposal: z
-    .object({
-      add: z.array(z.object({ text: z.string(), replaces: z.string().nullable() })),
-      remove: z.array(z.string()),
-      // Cards from before Remember this? have neither.
-      topic: z.string().nullable().default(null),
-      layer: z.enum(['project', 'you']).default('project')
-    })
-    .optional(),
+  // A raise of a job's own budget, from before the budget was a guide, reads as none.
   raise: z
-    .object({ target: z.enum(['usd', 'week_pct', 'cap']), to: z.number().positive() })
-    .optional(),
-  lesson: LessonAnswer.extend({
-    jobId: z.number().int(),
-    source: z.enum(['project', 'user', 'bundled'])
-  }).optional()
+    .object({ target: z.literal('cap'), to: z.number().positive() })
+    .optional()
+    .catch(undefined)
 });
 
 const HOLD_KINDS: readonly JobHoldKind[] = ['model', 'chain_limit', 'budget', 'client'];
@@ -243,7 +227,8 @@ function toJob(
   holds: JobHoldKind[],
   pendingPlan: AgencyJob['pendingPlan'],
   crewNeedingYou: number,
-  permissionsWaiting: number[]
+  permissionsWaiting: number[],
+  prsWaiting: boolean
 ): AgencyJob {
   return {
     id: row.id,
@@ -259,6 +244,7 @@ function toJob(
     pendingPlan,
     crewNeedingYou,
     permissionsWaiting,
+    prsWaiting,
     sessionId: row.session_id,
     handoffDone: row.handoff_done === 1,
     budgetUsd: row.budget_usd,
@@ -287,15 +273,7 @@ function toQuestion(row: QuestionRow): AgencyQuestion {
     status: questionStatus(row.status),
     answerOption: row.answer_option,
     answerText: row.answer_text,
-    proposal:
-      row.kind === 'client_file'
-        ? (parseJsonAs(QuestionData, row.data_json)?.proposal ?? null)
-        : null,
     raise: row.kind === 'budget' ? (parseJsonAs(QuestionData, row.data_json)?.raise ?? null) : null,
-    lesson:
-      row.kind === 'crew_lesson'
-        ? (parseJsonAs(QuestionData, row.data_json)?.lesson ?? null)
-        : null,
     late: row.late === 1,
     withdrawnReason: row.withdrawn_reason,
     createdAt: row.created_at,
@@ -353,6 +331,7 @@ export class AgencyStore {
   readonly projects: ProjectRegistry;
   readonly spend: SpendStore;
   readonly preferences: PreferenceStore;
+  readonly lessons: LessonStore;
 
   constructor(
     db: Database.Database | string,
@@ -371,6 +350,7 @@ export class AgencyStore {
     this.projects = new ProjectRegistry(this.db, this.now);
     this.spend = new SpendStore(this.db, this.now);
     this.preferences = new PreferenceStore(this.db, this.now);
+    this.lessons = new LessonStore(this.db, this.now);
   }
 
   /**
@@ -524,7 +504,8 @@ export class AgencyStore {
       this.holds(row.id),
       pending ? { id: pending.id, version: pending.version } : null,
       this.crew.needingYou(row.id),
-      this.permissions.waitingOnClient(row.id)
+      this.permissions.waitingOnClient(row.id),
+      row.state === 'delivered' && this.results.prsWaiting(row.id)
     );
   }
 
@@ -919,11 +900,7 @@ export class AgencyStore {
           status,
           withdrawnReason,
           this.now(),
-          JSON.stringify({
-            ...(input.proposal !== undefined && { proposal: input.proposal }),
-            ...(input.raise !== undefined && { raise: input.raise }),
-            ...(input.lesson !== undefined && { lesson: input.lesson })
-          })
+          JSON.stringify(input.raise === undefined ? {} : { raise: input.raise })
         );
       const question = this.getQuestion(Number(lastInsertRowid));
       if (!question) throw new Error('question vanished on insert');
@@ -1158,14 +1135,23 @@ export class AgencyStore {
 
   /** Withdraw every open or hidden question tied to one plan step. Returns their ids. */
   withdrawForStep(input: { jobId: number; step: string; reason: string }): number[] {
+    return this.withdrawOpen(input.reason, 'job_id = ? AND step = ?', input.jobId, input.step);
+  }
+
+  /** Withdraw every open or hidden question of a job. Returns their ids. */
+  withdrawForJob(input: { jobId: number; reason: string }): number[] {
+    return this.withdrawOpen(input.reason, 'job_id = ?', input.jobId);
+  }
+
+  private withdrawOpen(reason: string, where: string, ...params: Array<number | string>): number[] {
     return this.db.transaction(() => {
       const rows = this.db
         .prepare<
-          [number, string],
+          Array<number | string>,
           { id: number }
-        >(`SELECT id FROM questions WHERE job_id = ? AND step = ? AND status IN ('open', 'hidden') ORDER BY id`)
-        .all(input.jobId, input.step);
-      return [...new Set(rows.flatMap((row) => this.withdrawCascade(row.id, input.reason)))];
+        >(`SELECT id FROM questions WHERE ${where} AND status IN ('open', 'hidden') ORDER BY id`)
+        .all(...params);
+      return [...new Set(rows.flatMap((row) => this.withdrawCascade(row.id, reason)))];
     })();
   }
 
@@ -1423,7 +1409,6 @@ export class AgencyStore {
       questions: [...open, ...recent].sort((a, b) => a.id - b.id),
       nextRetryAt: retry?.due ?? null,
       onboarding: this.onboarding(repoId),
-      trust: this.preferences.trust(repoId),
       leftovers: this.resources.leftovers(repoId),
       pastJobs: this.pastJobs(repoId),
       settingsCards: this.settings.cards(repoId, SNAPSHOT_SETTINGS_CARDS),
@@ -1442,7 +1427,6 @@ export class AgencyStore {
       .all(repoId, since, DECISIONS_MAX)
       .map(toQuestion);
     return clientDecisions({
-      plans: this.plans.decidedByClient(repoId, since, DECISIONS_MAX),
       questions,
       permissions: this.permissions.answeredByClient(repoId, since, DECISIONS_MAX),
       jobState: (jobId) => this.getJob(jobId)?.state ?? null

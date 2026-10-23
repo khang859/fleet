@@ -57,10 +57,9 @@ Fleet never answers that prompt for you.
 ## Meet you
 
 Before the first job, the Admiral asks how you like the work, one question at a time.
-It asks how to report to you, what crew must never do, how crew open pull requests, what a job needs before you see it, what tests a change comes with, the default budget, and what to do when a job is done.
+It asks how to report to you, what crew must never do, how crew open pull requests, what a job needs before you see it, what tests a change comes with, and the default budget.
 Each question has picks, and you can also answer in your own words.
 **What I know about you** shows each answer as a line as you go.
-The last answer sets the project's trust level.
 
 Each answer is saved when you give it.
 Click **Finish later** to stop, and **Answer them** on the Bridge to go on.
@@ -77,7 +76,7 @@ Tick what it may read:
 - **Instructions**: the project's `CLAUDE.md` and `AGENTS.md`, and your own `~/.claude/CLAUDE.md`.
 - **Commits**: the messages of your own last commits in the project.
 - **Review comments** and **Pull requests**: yours, on the project's GitHub repository. These need the GitHub CLI.
-- **Past jobs**: the plan edits, turn-downs and answers you gave the Admiral in this project.
+- **Past jobs**: the plan edits and answers you gave the Admiral in this project.
 
 Fleet reads only what you tick.
 It never reads your Claude login, env files, keys, or code.
@@ -120,17 +119,52 @@ The setup file holds no paths from your machine, so a teammate can import it as 
 
 ## Run a job
 
+The Admiral works like a dev team.
+You give the brief and answer what only you can.
+You hear from it when the work is ready, or when it is stuck.
+
 1. **Brief the Admiral** on the **Bridge**, the first tab in the Admiral's header.
-2. The Admiral opens a job (shown as `j12`) in its own tab and writes a plan: the steps, the crew, what you get back, and a budget.
-3. On the plan card, click **Approve plan**, **Change something** to edit it, or **Reject** to say what to do instead.
-   Nothing starts until you approve.
+2. The Admiral asks only what it must know about what you want.
+   Its questions show under **Waiting on you**.
+   How to build it is the Admiral's decision.
+3. It opens a job (shown as `j12`) in its own tab and writes a plan: the steps, the crew, what you get back, and a budget.
+   The plan starts as soon as Fleet's checks pass.
+   Nothing waits for your approval.
 4. Crew start in their own panes in the job's tab, each in a worktree on a branch named `admiral/j12/<step>-<n>`.
    Click **Peek** on a crew row to watch one.
-5. Questions and cards show under **Waiting on you** in the job sheet, and on the Bridge for every job at once.
-   Results come back as cards, such as a pull request.
-6. When everything in the plan is in, click **Merge** to merge the pull requests in order after their checks pass, or **Accept and close**.
+5. While work runs, the Admiral says nothing to you.
+   Crew commit on their branch and never push.
+   When a step is done, Fleet pushes its branch and opens the pull request, as a draft if you prefer drafts.
+6. When the work is ready, the Admiral writes a report: what changed, the pull request links, and the choices it made for you.
+   A pull request is ready when its required checks pass and each review bot in setup reviewed its newest commit.
+7. You merge the pull requests.
+   When every pull request of a job is merged on GitHub, Fleet closes the job.
+   You can also click **Merge** to have Fleet merge them in order, or **Accept and close**.
+
+A project with no GitHub remote gets a local branch in place of a pull request.
+
+When you or a review bot from setup leaves a review comment on a pull request, the Admiral sends it to the crew to fix.
+It does not ask you first.
+Fleet pushes the fix to the same pull request.
+When the fix is ready, you get a new report.
+Comments from other people do not wake the Admiral.
+
+### Change a running job
+
+The plan card in the job's tab has two buttons:
+
+- **Stop** cancels the job.
+- **Change something** opens the plan to edit.
+  Done steps are locked.
+  Click **Send my version**, and it starts as soon as Fleet's checks pass.
+
+To move one step to another role, runtime, or model, click **Swap** on its crew card in the job sheet.
+
+When a check holds a plan back, the card says so.
+The Admiral fixes the plan, or asks you when only you can fix it.
 
 **Cancel job** stops the crew and removes worktrees that hold nothing.
+A worktree on a local branch the job delivered goes, and the branch stays.
 Work that is not committed or pushed is kept.
 Past jobs can be exported as Markdown with **Export**.
 
@@ -141,86 +175,54 @@ The Admiral asks only what those lines do not answer.
 
 ## Waiting on you
 
-The Bridge's right column lists everything that waits on you across the project's open jobs: permission requests, plans, questions, settings cards, delivered jobs, and crew that need you.
+The Bridge's right column lists everything that waits on you across the project's open jobs: permission requests, questions, ready jobs, and crew that need you.
 Permission requests come first, soonest to expire on top.
 The **Bridge** tab shows how many items wait.
 
-Each card has its main actions, such as **Allow once**, **Approve plan**, or the question's options.
+Each card has its main actions, such as **Allow once**, or the question's options.
 Click a card, or its **Read in full** button, to read it in the wide column in place of the conversation.
-The reader shows the whole plan with every step, the full permission request with the crew pane's last lines, or the question with every option.
+The reader shows the full permission request with the crew pane's last lines, or the question with every option.
 Use **Previous** and **Next** to move through the queue, and **Close** or Esc to go back to the conversation.
 Your draft in the composer stays.
 
 ### Undo
 
-A decision on a plan or a question waits a few seconds before it runs.
+An answer, a **Stop**, or a plan change waits a few seconds before it runs.
 Click **Undo** on its row to take it back.
-An approved plan does not hire crew until the time is up.
 Today's decisions are listed under **Done today**, with what became of each job.
-
-### Ask for a change
-
-1. In the plan reader, click **Change**.
-2. Click the steps your note is about.
-   Each one shows as a chip on the note.
-3. Type what should change, then press Cmd+Enter (Ctrl+Enter on Windows and Linux).
-
-The Admiral writes the next version of the plan.
-Nothing starts until you approve it.
-To edit the plan yourself, click **Edit the plan**.
-
-The new version shows what changed: your note under **You said**, the old budget struck through, and each step marked **New**, **Moved up**, **Moved down**, or **Changed**.
-Removed steps show in a red dashed row.
-Turn off **Show changes** to read the plan without the marks, or click **See v1** to read the version before.
 
 ### Keys
 
 The keys work while focus is in the queue or the reader.
 They do nothing while you type in a text box, or while you hold Cmd, Ctrl, Alt, or Shift.
 
-| Key   | What it does                                   |
-| ----- | ---------------------------------------------- |
-| J, K  | Move to the next or previous item              |
-| Enter | Read the item in full                          |
-| Esc   | Close the reader                               |
-| A     | Approve the plan, allow the request, or answer |
-| D     | Deny the request, or reject the plan           |
-| C     | Ask for a change to the plan                   |
-| R     | Go to the answer box, or deny with a reason    |
+| Key   | What it does                                |
+| ----- | ------------------------------------------- |
+| J, K  | Move to the next or previous item           |
+| Enter | Read the item in full                       |
+| Esc   | Close the reader                            |
+| A     | Allow the request, or answer                |
+| D     | Deny the request                            |
+| R     | Go to the answer box, or deny with a reason |
 
-A key does nothing when its button is turned off, for example on a plan that a check holds.
+A key does nothing when its button is turned off.
 
-## Remember this?
+## How the Admiral learns
 
-When you edit a plan, turn one down, swap a step, or answer a question, the Admiral can ask to remember it.
-A **Remember this?** card shows the one line it would save.
+The Admiral learns on its own, and does not ask you first.
 
-- **This project** saves the line for this project.
-- **All projects** saves it for every project.
-- **Just this job** saves nothing, and the Admiral does not ask about it again on this project.
-
-To save it in your own words, type them in **Or put it your way:** before you pick.
-If you ignore the card, nothing is saved.
-The Admiral asks once per kind of change, and never asks about what a saved line says already.
-
-## Crew lessons
+When a job teaches it something about how you like the work, it adds a line to **What the Admiral knows**.
+The line shows where it was learned, such as **Learned on j12**.
+It saves only what holds for later jobs, and never what a line says already.
 
 When a job ends, Fleet reads the job's record once on the Admiral's model.
 It looks for one thing a crew role should do differently next time.
 Most jobs teach nothing, and then nothing happens.
+When there is a lesson, Fleet changes the project's copy of that role at once.
+It never changes the roles Fleet ships, or your own copy for all projects.
+Each review is one call inside your monthly cap.
 
-When the record shows a lesson, a **Teach the builder role?** card goes up on the project's Bridge.
-The card shows the lesson, when it applies, and what in the job shows it.
-It also shows the role's text it would replace, struck out, above the new text.
-
-- **This project** saves a copy of the role for this project, with the change.
-- **All projects** saves the change to your own copy of the role, used by every project.
-- **Change it** shows for a role the project has already, and changes that file.
-- **Not now** changes nothing, and Fleet does not offer the same lesson on this project again.
-
-Fleet never changes the roles it ships.
-If you edit the role before you answer, Fleet applies the change to your new text, or refuses it when the text it replaces is gone.
-A project has at most one open lesson card, and each review is one call inside your monthly cap.
+To undo what the Admiral learned, see the next section.
 
 ## What the Admiral knows
 
@@ -232,27 +234,17 @@ Where a project line and a You line disagree, the project line wins.
 Each line shows where it came from and how many jobs used it.
 You can edit or remove a line, click **Add a line**, or click **Edit as text** to edit the whole file.
 
-A line can clash with a rule in `CLAUDE.md` or `AGENTS.md`.
+A project tab also lists **Crew lessons**: each change Fleet made to a role, with the job it came from.
+Click **Undo** to put the role's old text back.
+Fleet refuses, and says why, when you have edited that part of the role since.
+
+A line you add can clash with a rule in `CLAUDE.md` or `AGENTS.md`.
 Then the line asks which one wins: **Keep this line**, or the rule file.
 If the rule wins, the line is removed.
+A line the Admiral takes from **Read your work** that clashes with a rule file is dropped, because crew read the rule file anyway.
 
 If you change a file outside Fleet, the Admiral uses the version Fleet last wrote.
 Click **Keep this version** to use your change.
-
-## Trust levels
-
-Each project tab sets **How much I do on my own**.
-Fleet enforces the level, not the Admiral.
-
-| Level              | What Fleet does                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------- |
-| **Ask me**         | You approve each plan and result. This is the default.                                      |
-| **Show me the PR** | A first plan up to the dollar limit starts on its own. You merge the pull requests.         |
-| **Ship it**        | Like Show me the PR, and Fleet merges the pull requests when checks pass. It reports after. |
-
-A plan starts on its own only when it is the Admiral's first plan for the job, it stays within the dollar limit and the default Claude share, it adds no new role, and it passes every check.
-A changed plan, or anything bigger, waits for you.
-Under **Ship it**, a job that delivered only pull requests merges them in order and closes.
 
 ## Crew roles and playbooks
 
@@ -284,7 +276,7 @@ Instructions for the crew member.
 
 Edit roles and playbooks in **Settings > Agency > Crew**.
 Editing a bundled role saves your own copy in `~/.fleet/crew/`.
-A job keeps the crew it was approved with, so an edit never changes a running job.
+A job keeps the crew it started with, so an edit never changes a running job.
 
 The **Runtimes** tab sets how many crew of each runtime work at once and their default model.
 
@@ -300,9 +292,8 @@ The **Runtimes** tab sets how many crew of each runtime work at once and their d
 
 Crew permission prompts go to the Admiral first.
 
-- The Admiral allows what the plan needs: tests, builds, edits in the worktree, and pushing the job's own branch.
-- It asks you first for merges, production deploys, deletes, pushes to the default branch, spending money, and anything outside the plan.
-- It denies what goes against the plan.
+- The Admiral allows or denies each request by its own judgement against the brief.
+- It asks you first for merges, production deploys, deletes, pushes to the default branch, and spending money.
 
 A request for you shows as a permission card with **Allow once** and **Deny**.
 If the Admiral does not answer in 90 seconds, or the Admiral is paused, the request goes straight to you.
@@ -318,9 +309,9 @@ Each job has a budget on two meters:
 - **Claude sub**: the share of your weekly Claude Code limit that the job's Claude crew may use.
   Claude Code reports one share for the whole account, so a job's share is an estimate, marked `~`.
 
-At 80% of a budget, the Admiral is told.
-At 100%, the job holds and you get a card to raise the budget or stop the job.
-At 120%, running crew and the Admiral are interrupted.
+A job's budget is a guide only.
+At 80%, the Admiral is told, and the job keeps going.
+Work stops only at the monthly cap: no new work starts, and you get a card to raise the cap or stop the job.
 
 **Settings > Agency > Admiral** sets:
 
@@ -329,10 +320,21 @@ At 120%, running crew and the Admiral are interrupted.
 - **Keep in reserve**: no new Claude crew work starts once your 5-hour or weekly Claude Code usage reaches these levels, so some is left for you.
 
 eva reports a cost only when its model server does.
-So every eva step needs a cap on its turns or minutes, and you tick a box on the plan card to accept it.
+So every eva step needs a cap on its turns or minutes.
 Fleet stops the crew member at the cap.
 
-Cloud costs, such as Neon, Vercel or AWS, are not counted.
+### Settings the Admiral changes
+
+The Admiral can change most settings on its own, and the change applies at once.
+Its report lists each change, and you can undo it.
+
+Only you can loosen the brakes:
+
+- Raise the monthly cap, a **Keep in reserve** level, or **Automatic turns in a row**.
+- Drop a required check or a review bot.
+- Add an env file to a project.
+
+When the Admiral needs one of these, it asks you.
 
 ## Where Fleet keeps things
 

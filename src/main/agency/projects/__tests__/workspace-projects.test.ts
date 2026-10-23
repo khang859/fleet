@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { ProjectFolder, ProjectSetup } from '../../../../shared/agency-projects';
 import { AgencyService } from '../../index';
-import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
+import { startedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { detectWorkspace, parseGitmodules } from '../workspace-detect';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir, workFolder } from './git-fixture';
 
@@ -180,7 +180,7 @@ describe('an umbrella with three submodules', { timeout: 20_000 }, () => {
       return service.projects.saveSetup({ repo: ref, setup, imports: [] }, { finish: true });
     };
     await save();
-    const { jobId } = await approvedJobIn(service, ref, {
+    const { jobId } = await startedJobIn(service, ref, {
       id: 'fix',
       role: 'builder',
       title: 'Fix',

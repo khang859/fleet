@@ -8,7 +8,6 @@ import { PlanSchema, type PlanInput } from '../../../shared/agency-plan';
 import { AgencyService } from '../index';
 import { createAgencyCapability } from '../tools';
 import { admiralSnapshotNote } from '../admiral/snapshot-note';
-import { canStartStep } from '../jobs/start-gate';
 import { factsGit, fakeGh, REPO, YES_NO } from './fixture';
 import { planHelpers } from './plan-helpers';
 
@@ -60,7 +59,7 @@ const PLAN: PlanInput = {
 const plan = (patch: Partial<PlanInput> = {}): ReturnType<typeof PlanSchema.parse> =>
   PlanSchema.parse({ ...PLAN, ...patch });
 
-const { openJob, propose, approve } = planHelpers(() => service, PLAN);
+const { openJob, propose, startPlan } = planHelpers(() => service, PLAN);
 
 const state = (jobId: number): string | undefined => service.store.getJob(jobId)?.state;
 const steps = (jobId: number): Record<string, string> =>
@@ -82,25 +81,24 @@ describe('job_plan', () => {
     expect(lobby.jobUpdate).toBeNull();
   });
 
-  it('puts v1 up for the client, and nothing may start before approval', async () => {
+  it('starts v1 at once, lays out its steps, and tells the Admiral to hire', async () => {
     const { job, tools } = openJob();
 
     const out = await tools.jobPlan!(plan());
 
-    expect(out.summary).toMatch(/^proposed plan v1 plan#\d+$/);
-    expect(out.text).toContain('Nothing starts until they approve');
-    expect(state(job.id)).toBe('planned');
-    expect(service.store.getJob(job.id)?.pendingPlan).toMatchObject({ version: 1 });
-    expect(service.store.plans.steps(job.id)).toEqual([]);
-    const verdict = canStartStep({
-      job: service.store.getJob(job.id)!,
-      plan: service.jobs.approvedPlan(job.id),
-      steps: [],
-      stepId: 'builder-1'
+    expect(out.summary).toMatch(/^started plan v1 plan#\d+$/);
+    expect(out.text).toContain('Plan v1 started. Hire for the steps that may start now');
+    expect(out.text).toContain('Do not tell the client');
+    expect(state(job.id)).toBe('running');
+    expect(service.store.getJob(job.id)).toMatchObject({
+      approvedVersion: 1,
+      budgetUsd: 10,
+      pendingPlan: null
     });
-    expect(verdict.ok).toBe(false);
+    expect(steps(job.id)).toEqual({ 'builder-1': 'pending', reviewer: 'pending' });
+    expect(wakeupText(job.id)).toBe('');
     const update = await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
-    expect(update.text).toContain('no approved plan');
+    expect(update.text).toContain('is running');
   });
 
   it('refuses a plan whose steps wait on each other, as a sentence the model can act on', async () => {
@@ -119,54 +117,22 @@ describe('job_plan', () => {
   });
 });
 
-describe('plan decisions', () => {
-  it('approving starts the job, lays out the steps and wakes the Admiral', async () => {
-    const { job, tools } = openJob();
-    await approve(tools);
+describe('client changes', () => {
+  it('lets the client change only the plan the job runs now', async () => {
+    const { tools } = openJob();
+    const v1 = await startPlan(tools);
+    await startPlan(tools, plan({ summary: 'Add dark mode everywhere.' }));
 
-    expect(state(job.id)).toBe('running');
-    expect(service.store.getJob(job.id)).toMatchObject({ approvedVersion: 1, budgetUsd: 10 });
-    expect(steps(job.id)).toEqual({ 'builder-1': 'pending', reviewer: 'pending' });
-    expect(wakeupText(job.id)).toContain('Client approved plan v1');
+    const result = await service.jobs.decide({ planVersionId: v1, action: 'edit', plan: plan() });
+
+    expect(result).toEqual({ ok: false, reason: 'Only the plan the job runs now can be changed.' });
+    expect(service.store.plans.version(v1)?.status).toBe('superseded');
   });
 
-  it('refuses an old card once a newer version is up, and names the newest', async () => {
+  it("starts the client's edit as their own version", async () => {
     const { job, tools } = openJob();
-    const v1 = await propose(tools);
-    await propose(tools, plan({ summary: 'Add dark mode everywhere.' }));
-
-    const result = await service.jobs.decide({ planVersionId: v1, action: 'approve' });
-
-    expect(result).toEqual({ ok: false, reason: 'Plan v1 was replaced by v2.', newestVersion: 2 });
-    expect(service.store.plans.version(v1)?.status).toBe('replaced');
-    expect(state(job.id)).toBe('planned');
-  });
-
-  it('rejecting the first plan sends the job back to briefing with the note', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-
-    const result = await service.jobs.decide({
-      planVersionId: v1,
-      action: 'reject',
-      note: 'Skip the review step'
-    });
-
-    expect(result.ok).toBe(true);
-    expect(state(job.id)).toBe('briefing');
-    expect(service.store.plans.version(v1)).toMatchObject({
-      status: 'rejected',
-      decisionNote: 'Skip the review step'
-    });
-    const text = wakeupText(job.id);
-    expect(text).toContain('Client rejected plan v1');
-    expect(text).toContain('The client wrote: Skip the review step');
-    expect(text).toContain('Consider whether this is a lasting preference.');
-  });
-
-  it("an edit is the client's own version, waiting like any other", async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
+    const v1 = await startPlan(tools);
+    wakeupText(job.id);
 
     const result = await service.jobs.decide({
       planVersionId: v1,
@@ -175,15 +141,18 @@ describe('plan decisions', () => {
     });
 
     expect(result).toEqual({ ok: true, version: 2 });
-    const pending = service.store.plans.pending(job.id);
-    expect(pending).toMatchObject({ version: 2, author: 'client', status: 'proposed' });
-    expect(pending?.plan.budget.usd).toBe(5);
-    expect(wakeupText(job.id)).toContain('Client edited plan v1 into v2');
+    expect(service.store.plans.approved(job.id)).toMatchObject({
+      version: 2,
+      author: 'client',
+      status: 'approved'
+    });
+    expect(service.store.getJob(job.id)?.budgetUsd).toBe(5);
+    expect(wakeupText(job.id)).toContain('Client changed plan v1 into v2');
   });
 
-  it('an edit wakes the Admiral with the steps before and after, to weigh as a lasting preference', async () => {
+  it('wakes the Admiral with the steps before and after, to weigh as a lasting preference', async () => {
     const { job, tools } = openJob();
-    const v1 = await propose(tools);
+    const v1 = await startPlan(tools);
     await service.jobs.decide({
       planVersionId: v1,
       action: 'edit',
@@ -193,72 +162,6 @@ describe('plan decisions', () => {
     expect(text).toContain(
       'Before: builder: Build the toggle; reviewer: Review the change\nAfter: builder: Build the toggle'
     );
-    expect(text).toContain('Consider whether this is a lasting preference.');
-  });
-});
-
-describe('ask for a change', () => {
-  it('sends a first plan back to briefing with the note and the steps it names', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-
-    const result = await service.jobs.decide({
-      planVersionId: v1,
-      action: 'revise',
-      note: 'Review with two people',
-      steps: ['reviewer']
-    });
-
-    expect(result).toEqual({ ok: true, version: 1 });
-    expect(state(job.id)).toBe('briefing');
-    expect(service.store.plans.version(v1)).toMatchObject({
-      status: 'replaced',
-      decisionNote: 'Review with two people'
-    });
-    const text = wakeupText(job.id);
-    expect(text).toContain('Client asked for a change to plan v1');
-    expect(text).toContain('The client wrote: Review with two people');
-    expect(text).toContain('About these steps: reviewer (Review the change).');
-    expect(text).toContain('Propose a new plan for this job with `job_plan`.');
-    expect(text).toContain('Consider whether this is a lasting preference.');
-  });
-
-  it('refuses a step the plan does not have', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-
-    const result = await service.jobs.decide({
-      planVersionId: v1,
-      action: 'revise',
-      note: 'Change it',
-      steps: ['tester']
-    });
-
-    expect(result).toEqual({ ok: false, reason: 'Plan v1 has no step tester.' });
-    expect(service.store.plans.version(v1)?.status).toBe('proposed');
-    expect(state(job.id)).toBe('planned');
-  });
-
-  it('leaves a running job on its approved plan when a proposed change is sent back', async () => {
-    const { job, tools } = openJob();
-    const v1 = await approve(tools);
-    wakeupText(job.id);
-    const v2 = await propose(tools, plan({ steps: [PLAN.steps[0]] }));
-
-    const result = await service.jobs.decide({
-      planVersionId: v2,
-      action: 'revise',
-      note: 'Keep the review',
-      steps: []
-    });
-
-    expect(result).toEqual({ ok: true, version: 2 });
-    expect(state(job.id)).toBe('running');
-    expect(service.store.plans.version(v1)?.status).toBe('approved');
-    expect(service.store.plans.version(v2)?.status).toBe('replaced');
-    const text = wakeupText(job.id);
-    expect(text).toContain('Client asked for a change to plan v2');
-    expect(text).not.toContain('About these steps');
   });
 });
 
@@ -272,50 +175,23 @@ describe('changes since the version before', () => {
     expect(previousOf(job.id, 1)).toBeNull();
   });
 
-  it('measures a change against the approved v1', async () => {
+  it('measures a change against the v1 it replaced', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
-    await propose(tools, plan({ steps: [PLAN.steps[0]] }));
+    await startPlan(tools);
+    await startPlan(tools, plan({ steps: [PLAN.steps[0]] }));
     expect(previousOf(job.id, 2)).toEqual({
       version: 1,
-      status: 'approved',
+      status: 'superseded',
       note: null,
       diff: [{ kind: 'removed', step: 'reviewer' }]
-    });
-  });
-
-  it('carries the note of a rejected v1', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-    await service.jobs.decide({ planVersionId: v1, action: 'reject', note: 'Too costly' });
-    await propose(tools, plan({ budget: { usd: 5 } }));
-    expect(previousOf(job.id, 2)).toMatchObject({
-      version: 1,
-      status: 'rejected',
-      note: 'Too costly',
-      diff: [expect.objectContaining({ kind: 'budget' })]
-    });
-  });
-
-  it('measures against a v1 that a newer version replaced, though no version was approved', async () => {
-    const { job, tools } = openJob();
-    await propose(tools);
-    await propose(tools, plan({ summary: 'Add dark mode everywhere.' }));
-    const v2 = service.jobs.detail(job.id)?.versions[1];
-    expect(v2?.diff).toEqual([]);
-    expect(v2?.previous).toMatchObject({
-      version: 1,
-      status: 'replaced',
-      note: null,
-      diff: [expect.objectContaining({ kind: 'summary' })]
     });
   });
 });
 
 describe('plan changes', () => {
-  it('approving a change that drops a step stops its crew and withdraws its questions', async () => {
+  it('a change that drops a step stops its crew and withdraws its questions', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     const crew = service.store.crew.insert({
       jobId: job.id,
       stepId: 'reviewer',
@@ -327,16 +203,7 @@ describe('plan changes', () => {
     });
     await tools.askClient({ question: 'Strict review?', options: YES_NO, step: 'reviewer' });
 
-    const v2 = await propose(tools, plan({ steps: [PLAN.steps[0]] }));
-    const detail = service.jobs.detail(job.id);
-    const card = detail?.versions.find((v) => v.id === v2);
-    expect(card?.diff).toEqual([{ kind: 'removed', step: 'reviewer' }]);
-    expect(card?.effects?.stopCrew).toEqual([
-      { crewId: crew.id, stepId: 'reviewer', label: 'reviewer' }
-    ]);
-    expect(card?.effects?.withdrawnQuestions).toHaveLength(1);
-
-    await service.jobs.decide({ planVersionId: v2, action: 'approve' });
+    await startPlan(tools, plan({ steps: [PLAN.steps[0]] }));
     await new Promise((r) => setImmediate(r));
 
     expect(steps(job.id)).toEqual({ 'builder-1': 'pending', reviewer: 'removed' });
@@ -347,9 +214,9 @@ describe('plan changes', () => {
     expect(service.store.plans.version(1)?.status).toBe('superseded');
   });
 
-  it('swapping the role of a running step stops its crew and records the choice', async () => {
+  it('swapping the role of a running step stops its crew, to go on from its branch', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     service.store.crew.insert({
       jobId: job.id,
       stepId: 'builder-1',
@@ -361,27 +228,19 @@ describe('plan changes', () => {
     });
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
 
-    const swapped = plan({
-      steps: [{ ...PLAN.steps[0], role: 'senior-builder' }, PLAN.steps[1]]
-    });
-    const v2 = await propose(tools, swapped);
-    const card = service.jobs.detail(job.id)?.versions.find((v) => v.id === v2);
-    expect(card?.effects?.swaps).toEqual([{ stepId: 'builder-1', fields: ['role'] }]);
-
-    await service.jobs.decide({
-      planVersionId: v2,
-      action: 'approve',
-      swaps: { 'builder-1': 'restart' }
-    });
+    const v2 = await startPlan(
+      tools,
+      plan({ steps: [{ ...PLAN.steps[0], role: 'senior-builder' }, PLAN.steps[1]] })
+    );
     await new Promise((r) => setImmediate(r));
 
     expect(stopped).toEqual(['pane-builder']);
-    expect(wakeupText(job.id)).toContain('builder-1: start over on a new branch');
+    expect(service.store.plans.version(v2)?.effects?.swaps).toEqual({ 'builder-1': 'continue' });
   });
 
   it('a done step cannot change or go', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
     await tools.jobUpdate!({ step: 'builder-1', status: 'done' });
 
@@ -395,7 +254,7 @@ describe('plan changes', () => {
 
   it('a step that delivered something cannot go', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     sql(
       `INSERT INTO results (job_id, step_id, kind, label, listed, title, ref, delivered_at)
        VALUES (?, 'reviewer', 'review', 'Review notes', 1, 'Notes', 'r1', 1)`,
@@ -409,7 +268,7 @@ describe('plan changes', () => {
 
   it('the budget cannot go below what was spent', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     sql(
       `INSERT INTO spend_samples (job_id, source, meter, amount, at) VALUES (?, 'crew', 'usd', 7.5, 1)`,
       job.id
@@ -424,7 +283,7 @@ describe('plan changes', () => {
 describe('job_update', () => {
   it('a step starts only once the steps it waits on are done', async () => {
     const { tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
 
     const out = await tools.jobUpdate!({ step: 'reviewer', status: 'running' });
 
@@ -434,7 +293,7 @@ describe('job_update', () => {
 
   it('delivers the job once every step is done and handed back what it listed', async () => {
     const { job, tools } = openJob();
-    await approve(
+    await startPlan(
       tools,
       plan({
         steps: [
@@ -462,7 +321,7 @@ describe('job_update', () => {
 
   it('finishing a step withdraws its open questions', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
     await tools.askClient({ question: 'Blue or teal?', options: YES_NO, step: 'builder-1' });
 
@@ -472,18 +331,30 @@ describe('job_update', () => {
     expect(question).toMatchObject({ status: 'withdrawn', withdrawnReason: 'step finished' });
   });
 
+  it('delivering a job withdraws its questions still open', async () => {
+    const { job, tools } = openJob();
+    await startPlan(tools, plan({ steps: [PLAN.steps[0]] }));
+    await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
+    await tools.askClient({ question: 'Can you trust the folder?', options: YES_NO });
+
+    await tools.jobUpdate!({ step: 'builder-1', status: 'done' });
+
+    expect(state(job.id)).toBe('delivered');
+    const [question] = service.store.listQuestions(REPO.repoId, { jobId: job.id });
+    expect(question).toMatchObject({ status: 'withdrawn', withdrawnReason: 'the job delivered' });
+  });
+
   it('a delivered job takes a follow-up step', async () => {
     const { job, tools } = openJob();
-    await approve(tools, plan({ steps: [PLAN.steps[0]] }));
+    await startPlan(tools, plan({ steps: [PLAN.steps[0]] }));
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
     await tools.jobUpdate!({ step: 'builder-1', status: 'done' });
     expect(state(job.id)).toBe('delivered');
 
-    await tools.jobPlan!(
+    await startPlan(
+      tools,
       plan({ steps: [PLAN.steps[0], { ...PLAN.steps[1], after: ['builder-1'] }] })
     );
-    const v2 = service.store.plans.pending(job.id)!;
-    await service.jobs.decide({ planVersionId: v2.id, action: 'approve' });
     const out = await tools.jobUpdate!({ step: 'reviewer', status: 'running' });
 
     expect(out.text).toContain('is running');
@@ -494,7 +365,7 @@ describe('job_update', () => {
 describe('the client hold', () => {
   it('holds a job while every step left waits on a question, and lets go on the answer', async () => {
     const { job, tools } = openJob();
-    await approve(tools, plan({ steps: [PLAN.steps[0]] }));
+    await startPlan(tools, plan({ steps: [PLAN.steps[0]] }));
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
 
     await tools.askClient({ question: 'Blue or teal?', options: YES_NO, step: 'builder-1' });
@@ -507,7 +378,7 @@ describe('the client hold', () => {
 
   it('refuses a question about a step that is not in the plan', async () => {
     const { tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     await expect(
       tools.askClient({ question: 'Ship it?', options: YES_NO, step: 'deployer' })
     ).rejects.toThrow('Step deployer is not in the plan.');
@@ -515,20 +386,18 @@ describe('the client hold', () => {
 });
 
 describe('the snapshot note', () => {
-  it('lists the approved plan with step status and the version waiting', async () => {
+  it('lists the plan the job runs, with step status', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     await tools.jobUpdate!({ step: 'builder-1', status: 'running' });
-    await propose(tools, plan({ budget: { usd: 20 } }));
 
     const note = admiralSnapshotNote(service.store, { repoId: REPO.repoId, jobId: job.id });
 
     expect(note).toContain(
-      'Approved plan v1 (feature), budget $10, spent $0.00, 10% of the weekly Claude limit, about 0% used, starting from fleet at aaaaaaaaaaaa (default branch tip). Steps:'
+      'Plan v1 in force (feature), budget $10, spent $0.00, 10% of the weekly Claude limit, about 0% used, starting from fleet at aaaaaaaaaaaa (default branch tip). Steps:'
     );
     expect(note).toContain('- builder-1 (builder): running. Build the toggle');
     expect(note).toContain('- reviewer (reviewer, after builder-1): pending.');
-    expect(note).toContain('Plan v2 is waiting on the client');
   });
 });
 
@@ -538,32 +407,32 @@ describe('the raise-or-stop card', () => {
       .listQuestions(REPO.repoId, { jobId, statuses: ['open'] })
       .find((q) => q.kind === 'budget');
 
-  it('raises the budget as a new plan version the client approved, and lets the job go on', async () => {
+  it('keeps a job going past its own budget', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
-    service.spend.admiralTurn(job.id, 10.5);
+    await startPlan(tools);
+    service.spend.admiralTurn(job.id, 13);
+    expect(budgetCard(job.id)).toBeUndefined();
+    expect(service.store.getJob(job.id)?.holds).toEqual([]);
+  });
+
+  it('holds a job at the monthly cap, and a raised cap lets it go on', async () => {
+    const { job, tools } = openJob();
+    await startPlan(tools);
+    service.spend.admiralTurn(job.id, 100);
     const card = budgetCard(job.id);
-    expect(card?.options.map((o) => o.label)).toEqual(['Raise to $15.00', 'Stop the job']);
+    expect(card?.options.map((o) => o.label)).toEqual(['Raise the cap to $150.00', 'Stop the job']);
     expect(service.store.getJob(job.id)?.holds).toEqual(['budget']);
 
     service.answer({ id: card!.id, option: 0 });
 
-    expect(service.store.getJob(job.id)).toMatchObject({
-      approvedVersion: 2,
-      budgetUsd: 15,
-      holds: []
-    });
-    expect(service.store.plans.approved(job.id)?.plan.steps.map((s) => s.id)).toEqual([
-      'builder-1',
-      'reviewer'
-    ]);
-    expect(wakeupText(job.id)).toContain('The client raised the budget to $15.00 (plan v2)');
+    expect(service.store.getJob(job.id)?.holds).toEqual([]);
+    expect(wakeupText(job.id)).toContain('The client raised the monthly cap to $150.00');
   });
 
   it('cancels the job when the client stops it', async () => {
     const { job, tools } = openJob();
-    await approve(tools);
-    service.spend.admiralTurn(job.id, 10);
+    await startPlan(tools);
+    service.spend.admiralTurn(job.id, 100);
     service.answer({ id: budgetCard(job.id)!.id, option: 1 });
     await service.cleanup.start(job.id);
     expect(state(job.id)).toBe('cancelled');
@@ -574,7 +443,7 @@ describe('the raise-or-stop card', () => {
     await expect(propose(tools, plan({ budget: { usd: 500 } }))).rejects.toThrow(
       'monthly cap of $100.00'
     );
-    await approve(tools);
+    await startPlan(tools);
     service.spend.admiralTurn(job.id, 4);
     await expect(propose(tools, plan({ budget: { usd: 3 } }))).rejects.toThrow('$4.00');
   });

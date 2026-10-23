@@ -56,12 +56,12 @@ const PLAN: PlanInput = {
   budget: { usd: 10 }
 };
 
-const { openJob, approve } = planHelpers(() => service, PLAN);
+const { openJob, startPlan } = planHelpers(() => service, PLAN);
 
 /** A running job with a crew member on each step, the way the crew phase hires them. */
 async function runningJob(): Promise<number> {
   const { job, tools } = openJob();
-  await approve(tools);
+  await startPlan(tools);
   for (const [i, step] of ['builder-1', 'builder-2'].entries()) {
     await tools.jobUpdate!({ step, status: 'running' });
     service.store.tx(() => {

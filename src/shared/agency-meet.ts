@@ -1,23 +1,14 @@
 import { oneLine } from './agency-client-file';
-import type { TrustLevel } from './agency-projects';
 
 /**
  * Meet you: the questions the Admiral asks before the first job, so it need
  * not ask them on every job. The You questions are asked once for every
  * project; the project questions once per project. A pick writes its line to
- * the question's layer, except the last question's, which sets the project's
- * trust level. The recommended pick is always the first. No model is used.
+ * the question's layer. The recommended pick is always the first. No model is
+ * used.
  */
 
-export const MEET_QUESTION_IDS = [
-  'report',
-  'never',
-  'prs',
-  'delivery',
-  'tests',
-  'budget',
-  'checks'
-] as const;
+export const MEET_QUESTION_IDS = ['report', 'never', 'prs', 'delivery', 'tests', 'budget'] as const;
 
 export type MeetQuestionId = (typeof MEET_QUESTION_IDS)[number];
 
@@ -26,9 +17,7 @@ export type MeetPick = {
   /** A few words under the label. */
   hint?: string;
   /** The line the pick writes. */
-  line?: string;
-  /** The trust level the pick sets, for the last question. */
-  trust?: TrustLevel;
+  line: string;
 };
 
 export type MeetQuestion = {
@@ -120,11 +109,7 @@ export const MEET_QUESTIONS: readonly MeetQuestion[] = [
         label: 'Unit, plus end-to-end for UI changes',
         line: 'Add unit tests with every change, and end-to-end tests for UI changes.'
       },
-      {
-        label: 'My call per job',
-        hint: 'Ask in the plan.',
-        line: 'Ask me in the plan which tests a job needs.'
-      }
+      { label: 'Your call per job', line: 'Choose the tests each job needs.' }
     ]
   },
   {
@@ -134,25 +119,6 @@ export const MEET_QUESTIONS: readonly MeetQuestion[] = [
     budget: true,
     picks: [],
     note: 'Money pays for the Admiral’s model, eva and API crew. Claude sub is a share of your weekly Claude Code limit. Cloud costs, such as Neon, Vercel or AWS, are not counted.'
-  },
-  {
-    id: 'checks',
-    layer: 'project',
-    question: 'When a job is done and its checks pass, what should I do?',
-    picks: [
-      {
-        label: 'Show me the PR, I merge',
-        hint: 'Small plans start on their own. You see one card per job.',
-        trust: 'pr'
-      },
-      {
-        label: 'Merge it for me',
-        hint: 'Small plans start and merge on their own. You get a report after.',
-        trust: 'ship'
-      },
-      { label: 'Ask me each time', hint: 'You approve each plan and result.', trust: 'ask' }
-    ],
-    note: 'You can change this per project later.'
   }
 ];
 
@@ -177,29 +143,21 @@ export type MeetAnswer =
 export const MEET_TEXT_MAX = 500;
 
 /**
- * What an answer saves: the lines for the question's layer, and for the last
- * question the trust level its pick sets. A typed answer is saved as typed,
- * made one line; a skip saves nothing.
+ * The lines an answer saves to the question's layer. A typed answer is saved
+ * as typed, made one line; a skip saves nothing.
  */
-export function meetAnswerResult(
-  question: MeetQuestion,
-  answer: MeetAnswer
-): { lines: string[]; trust: TrustLevel | null } {
+export function meetAnswerLines(question: MeetQuestion, answer: MeetAnswer): string[] {
   if (answer.kind === 'text') {
     const text = oneLine(answer.text).slice(0, MEET_TEXT_MAX);
-    return { lines: text === '' ? [] : [text], trust: null };
+    return text === '' ? [] : [text];
   }
-  if (answer.kind === 'budget')
-    return { lines: [budgetLine(answer.usd, answer.weekPct)], trust: null };
-  if (answer.kind === 'skip') return { lines: [], trust: null };
-  const picks = [...new Set(answer.picks)]
+  if (answer.kind === 'budget') return [budgetLine(answer.usd, answer.weekPct)];
+  if (answer.kind === 'skip') return [];
+  return [...new Set(answer.picks)]
     .map((i) => question.picks.at(i))
     .filter((p): p is MeetPick => p !== undefined)
-    .slice(0, question.multi === true ? undefined : 1);
-  return {
-    lines: picks.flatMap((p) => (p.line === undefined ? [] : [p.line])),
-    trust: picks.find((p) => p.trust !== undefined)?.trust ?? null
-  };
+    .slice(0, question.multi === true ? undefined : 1)
+    .map((p) => p.line);
 }
 
 /**

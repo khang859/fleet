@@ -2,10 +2,12 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { normText, type PreferenceConflict } from '../../../shared/agency-client-file';
 import { MEET_QUESTION_IDS, type MeetQuestionId } from '../../../shared/agency-meet';
-import type { ProjectTrust, TrustLevel } from '../../../shared/agency-projects';
 import { parseJsonAs } from '../../../shared/parse-json';
 
-const Seen = z.array(z.enum(MEET_QUESTION_IDS));
+/** Ids no longer asked, such as the old trust question, are dropped on read. */
+const Seen = z.array(z.string());
+const isMeetId = (id: string): id is MeetQuestionId =>
+  (MEET_QUESTION_IDS as readonly string[]).includes(id);
 
 type ConflictRow = {
   id: number;
@@ -19,7 +21,7 @@ type ConflictRow = {
 /**
  * What Fleet keeps about the client's preference lines beside the Markdown
  * files: which jobs used a line, lines that clash with an instruction file,
- * topics the client said not to remember, and each project's trust level. A
+ * topics the client said not to remember, and Meet you progress. A
  * line is keyed by its layer and normal form, so a reworded line starts over.
  */
 export class PreferenceStore {
@@ -136,7 +138,7 @@ export class PreferenceStore {
       .prepare<[string], string>('SELECT seen_json FROM meet_progress WHERE layer = ?')
       .pluck()
       .get(layer);
-    return json === undefined ? null : (parseJsonAs(Seen, json) ?? []);
+    return json === undefined ? null : (parseJsonAs(Seen, json) ?? []).filter(isMeetId);
   }
 
   /** Note Meet you questions as gone through; with none, only that Meet you ran for the layer. */
@@ -148,28 +150,5 @@ export class PreferenceStore {
          ON CONFLICT(layer) DO UPDATE SET seen_json = excluded.seen_json, updated_at = excluded.updated_at`
       )
       .run(layer, JSON.stringify(seen), this.now());
-  }
-
-  /** The project's trust level: Ask me until the client picks another. */
-  trust(projectId: string): ProjectTrust {
-    const row = this.db
-      .prepare<
-        [string],
-        { level: TrustLevel; auto_start_usd: number | null }
-      >('SELECT level, auto_start_usd FROM project_trust WHERE project_id = ?')
-      .get(projectId);
-    return row === undefined
-      ? { level: 'ask', autoStartUsd: null }
-      : { level: row.level, autoStartUsd: row.auto_start_usd };
-  }
-
-  setTrust(projectId: string, trust: ProjectTrust): void {
-    this.db
-      .prepare(
-        `INSERT INTO project_trust (project_id, level, auto_start_usd, updated_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(project_id) DO UPDATE SET level = excluded.level,
-           auto_start_usd = excluded.auto_start_usd, updated_at = excluded.updated_at`
-      )
-      .run(projectId, trust.level, trust.autoStartUsd, this.now());
   }
 }

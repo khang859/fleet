@@ -13,7 +13,6 @@ import {
 import { localDateStamp } from '../../../shared/local-date';
 import type { PlanUse } from '../../../shared/agency-jobs';
 import type {
-  AutoStartRule,
   ClientLineChange,
   ClientLineInput,
   ClientLineResult,
@@ -36,8 +35,6 @@ export const CLIENT_FILE_CLEANUP_CHARS = 3_500;
 export type PreferencesNote = {
   you: ClientFileNote | null;
   project: ClientFileNote | null;
-  /** The project's trust level, when it lets a first plan start on its own. */
-  autoStart?: AutoStartRule | null;
 };
 
 /** One layer of the client's preferences as a turn's note carries it. */

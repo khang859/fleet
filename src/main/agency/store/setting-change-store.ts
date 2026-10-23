@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import {
-  settingKind,
   settingLabel,
   settingTarget,
   type SettingChange,
@@ -56,16 +55,12 @@ export type LastSettingWrite = SettingWrite & {
 const value = (json: string): SettingValue => parseJsonAs(Value, json) ?? null;
 
 function toChange(row: ProposalRow): SettingChange {
-  const before = value(row.before_json);
-  const after = value(row.value_json);
-  const kind = settingKind(row.key, before, after);
   return {
     id: row.id,
     key: row.key,
     label: settingLabel(row.key),
-    before,
-    after,
-    kind: kind === 'client-only' ? 'approve' : kind,
+    before: value(row.before_json),
+    after: value(row.value_json),
     status: row.status
   };
 }
@@ -82,16 +77,13 @@ export class SettingChangeStore {
     private readonly now: () => number
   ) {}
 
-  /**
-   * Put up a card for one `settings_change` call. Changes already written go
-   * in as `applied` with their history; the rest wait as `pending`.
-   */
+  /** Put up a card for one `settings_change` call: every change written, with its history. */
   addCard(input: {
     repoId: string;
     jobId: number | null;
     reason: string;
     /** In the order the Admiral sent them. */
-    changes: Array<SettingWrite & { status: 'applied' | 'pending' }>;
+    changes: SettingWrite[];
   }): number {
     return this.db.transaction(() => {
       const card =
@@ -107,7 +99,7 @@ export class SettingChangeStore {
            (project_id, job_id, group_id, key, value_json, before_json, reason, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      const add = (w: SettingWrite, status: SettingChangeStatus): number =>
+      const add = (w: SettingWrite): number =>
         Number(
           insert.run(
             input.repoId,
@@ -117,14 +109,11 @@ export class SettingChangeStore {
             JSON.stringify(w.after),
             JSON.stringify(w.before),
             input.reason,
-            status,
+            'applied',
             at
           ).lastInsertRowid
         );
-      for (const w of input.changes) {
-        const id = add(w, w.status);
-        if (w.status === 'applied') this.record(input.repoId, 'admiral', w, input.reason, id);
-      }
+      for (const w of input.changes) this.record(input.repoId, 'admiral', w, input.reason, add(w));
       return card;
     })();
   }
@@ -165,18 +154,6 @@ export class SettingChangeStore {
       repoId: row.project_id,
       jobId: row.job_id
     };
-  }
-
-  /** The client decided on a pending change; `write` is set when approving wrote it. */
-  decide(id: number, decision: { approved: boolean; write: SettingWrite | null }): void {
-    this.db.transaction(() => {
-      const change = this.change(id);
-      if (change?.status !== 'pending') return;
-      this.setStatus(id, decision.approved ? 'approved' : 'refused');
-      if (decision.write !== null) {
-        this.record(change.repoId, 'admiral', decision.write, 'approved by the client', id);
-      }
-    })();
   }
 
   /** The client put a change back: a new history row with the old value. */

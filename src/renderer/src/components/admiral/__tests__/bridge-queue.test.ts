@@ -1,24 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot, ClientDecision } from '../../../../../shared/agency';
 import type { AgencyJobDetail } from '../../../../../shared/agency-jobs';
-import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
-import { bridgeQueue, detail, job, permission, PLAN, snap, version } from './queue-fixtures';
+import { bridgeQueue, detail, job, permission, snap, version } from './queue-fixtures';
 
 /** The Bridge's right-hand column, in each state the client can find it in. */
 
 const queue = bridgeQueue;
 
-/** Two open jobs: j2 with a plan and a permission request, j3 with a question. */
+/** Two open jobs: j2 with a permission request, j3 with a question. */
 function twoJobs(over: Partial<AgencySnapshot> = {}): {
   snapshot: AgencySnapshot;
   details: Record<number, AgencyJobDetail>;
 } {
-  const planned = job({
-    title: 'Get PR #61 to green CI',
-    pendingPlan: { id: 7, version: 1 },
-    permissionsWaiting: [5]
-  });
+  const planned = job({ title: 'Get PR #61 to green CI', permissionsWaiting: [5] });
   const asking = job({ id: 3, title: 'Get the other two PRs to green CI', state: 'running' });
   return {
     snapshot: snap({
@@ -38,8 +33,8 @@ describe('the Bridge queue', () => {
     const { snapshot, details } = twoJobs();
     const html = queue(snapshot, details);
     expect(html).toContain('aria-label="Waiting on you"');
-    expect(html).toContain('WAITING ON YOU · 3');
-    const order = ['>PERMISSION<', '>PLAN v1<', '>QUESTION<'].map((s) => html.indexOf(s));
+    expect(html).toContain('WAITING ON YOU · 2');
+    const order = ['>PERMISSION<', '>QUESTION<'].map((s) => html.indexOf(s));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(html).toContain('Get PR #61 to green CI');
@@ -52,66 +47,29 @@ describe('the Bridge queue', () => {
   it('stands a one-line row in for an item whose job detail is still loading', () => {
     const { snapshot } = twoJobs();
     const html = queue(snapshot);
-    expect(html).toContain('WAITING ON YOU · 3');
-    expect(html.match(/aria-busy="true"/g)).toHaveLength(2);
+    expect(html).toContain('WAITING ON YOU · 2');
+    expect(html.match(/aria-busy="true"/g)).toHaveLength(1);
     expect(html).not.toContain('>Allow once');
   });
 
-  it('puts a plan up short, with its cost and Approve, Change and Reject', () => {
-    const long = PlanSchema.parse({
-      ...PLAN,
-      summary: 'Fix CI on both PRs.',
-      steps: ['a', 'b', 'c', 'd'].map((id) => ({ id, role: 'builder', title: `Step ${id}` })),
-      budget: { usd: 8, weekPct: 12 }
+  it('stays empty while a job runs with nothing to ask', () => {
+    const running = job({ id: 4, state: 'running' });
+    const html = queue(snap({ jobs: [running] }), {
+      4: detail(running, { versions: [version()] })
     });
-    const { snapshot, details } = twoJobs();
-    details[2].versions = [version({ plan: long })];
-    const html = queue(snapshot, details);
-    expect(html).toContain('Fix CI on both PRs.');
-    expect(html).toContain('Step c');
-    expect(html).not.toContain('Step d');
-    expect(html).toContain('+ 1 more step');
-    expect(html).toContain('$8 budget');
-    expect(html).toContain('12% Claude week');
-    expect(html).toContain('4 crew members');
-    expect(html).toMatch(/<button type="button" class="[^"]*"[^>]*>Approve plan<\/button>/);
-    expect(html).toContain('>Change<');
-    expect(html).toContain('>Reject<');
-    expect(html).toContain('>Open j2<');
-  });
-
-  it('sends a plan a check holds, or one with choices, to its job tab to approve', () => {
-    const { snapshot, details } = twoJobs();
-    const blocked = { code: 'env', severity: 'block' as const, text: 'The env file is missing.' };
-    details[2].versions = [version({ checks: { ...version().checks, issues: [blocked] } })];
-    const held = queue(snapshot, details);
-    expect(held).toContain('The env file is missing.');
-    expect(held).toMatch(/<button type="button" disabled=""[^>]*>Approve plan<\/button>/);
-
-    const accept = {
-      code: 'eva-cost',
-      severity: 'accept' as const,
-      text: 'eva cost',
-      step: 'builder-1'
-    };
-    details[2].versions = [version({ checks: { ...version().checks, issues: [accept] } })];
-    const choices = queue(snapshot, details);
-    expect(choices).toMatch(
-      /It has choices to make before you approve it\.[^]*>Read it in full<\/button>[^]*to make them\./
-    );
-    expect(choices).toMatch(/<button type="button" disabled=""[^>]*>Approve plan<\/button>/);
+    expect(html).toContain('WAITING ON YOU · 0');
+    expect(html).toContain('Nothing waits on you');
+    expect(html).not.toContain('>PLAN');
   });
 
   it('shows a held decision as one line with Undo in place of its card', () => {
     const { snapshot, details } = twoJobs({
-      held: [
-        { id: 4, jobId: 2, key: 'plan:7', label: 'Approved plan v1', runsAt: Date.now() + 5000 }
-      ]
+      held: [{ id: 4, jobId: 3, key: 'q:35', label: 'Answered q35', runsAt: Date.now() + 5000 }]
     });
     const html = queue(snapshot, details);
-    expect(html).toContain('WAITING ON YOU · 2');
-    expect(html).not.toContain('>PLAN v1<');
-    expect(html).toMatch(/Approved plan v1<span> · <span[^>]*>j2<\/span><\/span>/);
+    expect(html).toContain('WAITING ON YOU · 1');
+    expect(html).not.toContain('>QUESTION<');
+    expect(html).toMatch(/Answered q35<span> · <span[^>]*>j3<\/span><\/span>/);
     expect(html).toMatch(/>Undo · [45]s</);
   });
 
@@ -119,18 +77,13 @@ describe('the Bridge queue', () => {
     const { snapshot, details } = twoJobs();
     const html = queue(snapshot, details, [
       { key: 'q:35', jobId: 3, label: 'Answer q35', reason: 'q35 is already answered.' },
-      {
-        key: 'plan:6',
-        jobId: 2,
-        label: 'Approve plan v0',
-        reason: 'Plan v0 was replaced by v1.'
-      }
+      { key: 'q:6', jobId: 2, label: 'Answer q6', reason: 'q6 was withdrawn.' }
     ]);
     expect(html).toContain('Answer q35 did not go through: q35 is already answered.');
-    expect(html).toContain('Approve plan v0 did not go through: Plan v0 was replaced by v1.');
+    expect(html).toContain('Answer q6 did not go through: q6 was withdrawn.');
     // The question's refusal sits in its card, after the card's kind.
     expect(html.indexOf('>QUESTION<')).toBeLessThan(html.indexOf('Answer q35 did not'));
-    expect(html.indexOf('Approve plan v0 did not')).toBeLessThan(html.indexOf('>PERMISSION<'));
+    expect(html.indexOf('Answer q6 did not')).toBeLessThan(html.indexOf('>PERMISSION<'));
   });
 
   it("says nothing waits once the queue is empty, and lists today's decisions with where each job is", () => {
@@ -148,7 +101,7 @@ describe('the Bridge queue', () => {
         jobs: [job({ id: 3, state: 'running' })],
         decisions: [
           decision({}),
-          decision({ key: 'plan:2', label: 'Approved plan v2', detail: null, jobState: 'closed' }),
+          decision({ key: 'q:2', label: 'Answered q2', detail: null, jobState: 'closed' }),
           decision({ key: 'q:9', jobId: null, label: 'Answered q9', detail: 'Yes', jobState: null })
         ]
       })

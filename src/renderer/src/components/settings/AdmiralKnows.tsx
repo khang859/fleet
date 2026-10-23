@@ -18,9 +18,9 @@ import type { AgencyRepoRef } from '../../../../shared/agency';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 import { ReadYourWork } from '../admiral/ReadYourWork';
 import { ClientFileEditor } from './ClientFileEditor';
+import { CrewLessons } from './CrewLessons';
 import { LayerPicker } from './LayerPicker';
 import { OutsideChange } from './OutsideChange';
-import { TrustPicker } from './TrustPicker';
 
 const FIELD =
   'min-w-0 rounded border border-fleet-border-strong bg-fleet-surface-3 px-2 py-1 text-sm text-fleet-text';
@@ -115,14 +115,13 @@ export function AdmiralKnows(): React.JSX.Element {
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-fleet-text">What the Admiral knows</h3>
         <p className="text-xs text-fleet-text-subtle">
-          How you like the work. The Admiral reads this at the start of every job, and adds a line
-          only when you say yes. A project&apos;s lines win over yours where they disagree.
+          How you like the work. The Admiral reads this at the start of every job, and adds what it
+          learns on its own. Remove any line you do not want. A project&apos;s lines win over yours
+          where they disagree.
         </p>
       </div>
 
       <LayerPicker projects={projects ?? []} layer={layer} onLayer={setLayer} />
-
-      {layer !== YOU_LAYER && <TrustPicker repoId={layer} />}
 
       {project !== null && (
         <ReadMyWork key={project.repoId} repo={project} onKept={() => void load(layer)} />
@@ -173,6 +172,8 @@ export function AdmiralKnows(): React.JSX.Element {
           />
         </>
       )}
+
+      {project !== null && <CrewLessons key={project.repoId} repoId={project.repoId} />}
     </div>
   );
 }
@@ -270,7 +271,7 @@ export function PreferenceLines(props: {
   if (entries.length === 0 && draft === null) {
     return (
       <p className="rounded border border-dashed border-fleet-border px-3 py-4 text-center text-xs text-fleet-text-subtle">
-        Nothing yet. Add a line, or answer the Admiral when it asks to remember something.
+        Nothing yet. Add a line, or the Admiral adds one when it learns something on a job.
       </p>
     );
   }

@@ -33,7 +33,7 @@ export type AdmiralDeps = {
     | 'preferencesForNote'
     | 'jobs'
     | 'results'
-    | 'proposeClientFile'
+    | 'learnClientLines'
     | 'settings'
     | 'crewCatalog'
     | 'crewSkills'

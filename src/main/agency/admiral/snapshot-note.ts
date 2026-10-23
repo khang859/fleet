@@ -8,7 +8,6 @@ import {
 } from '../../../shared/agency';
 import type { AgencyJob } from '../../../shared/agency';
 import type { PlanBases } from '../../../shared/agency-jobs';
-import { TRUST_NAME, type AutoStartRule } from '../../../shared/agency-projects';
 import { pctText, usdText } from '../../../shared/agency-spend';
 import {
   CLIENT_FILE_CLEANUP_CHARS,
@@ -17,7 +16,6 @@ import {
 } from '../projects/client-file';
 import type { AgencyStore } from '../store/agency-store';
 import { findingsHeadline } from '../findings/render';
-import { proposalLines } from '../wakeup-text';
 import { permissionDisplayId } from '../../../shared/agency-permissions';
 
 type SnapshotReader = Pick<
@@ -53,11 +51,7 @@ function describeQuestion(q: AgencyQuestion): string {
   const step = q.step === null ? '' : ` (step ${q.step})`;
   return fence(
     id,
-    [
-      `${id}${step}: ${q.question}`,
-      ...(q.proposal === null ? [] : proposalLines(q.proposal)),
-      ...optionLines(q, 'your recommendation')
-    ].join('\n')
+    [`${id}${step}: ${q.question}`, ...optionLines(q, 'your recommendation')].join('\n')
   );
 }
 
@@ -72,8 +66,8 @@ function describeHeld(q: AgencyQuestion): string {
 }
 
 /**
- * The job's plan as Fleet holds it: the approved version with each step's
- * status, the version waiting on the client, the budget and what holds the
+ * The job's plan as Fleet holds it: the version in force with each step's
+ * status, a version its checks held back, the budget and what holds the
  * job. Step titles are the Admiral's own words, so they go in a fence.
  */
 function planLines(store: SnapshotReader, job: AgencyJob): string[] {
@@ -81,7 +75,7 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
   const pending = store.plans.pending(job.id);
   const lines: string[] = [];
   if (approved === null) {
-    lines.push('No plan is approved yet; nothing may start. Propose one with job_plan.');
+    lines.push('No plan has started yet; nothing may start. Send one with job_plan.');
   } else {
     const steps = store.plans.steps(job.id);
     const spent = store.spend.jobTotals(job.id);
@@ -91,7 +85,7 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
         ? ''
         : `, ${pctText(weekPct)} of the weekly Claude limit, about ${pctText(spent.weekPct)} used`;
     lines.push(
-      `Approved plan v${approved.version} (${approved.plan.playbook}), budget $${usd}, spent ${usdText(spent.usd)}${share}${baseText(approved.bases)}. Steps:`,
+      `Plan v${approved.version} in force (${approved.plan.playbook}), budget $${usd}, spent ${usdText(spent.usd)}${share}${baseText(approved.bases)}. Steps:`,
       fence(
         `plan v${approved.version}`,
         approved.plan.steps
@@ -106,7 +100,7 @@ function planLines(store: SnapshotReader, job: AgencyJob): string[] {
   }
   if (pending !== null) {
     lines.push(
-      `Plan v${pending.version} is waiting on the client; do not propose it again. A new job_plan replaces it.`
+      `Plan v${pending.version} did not start: its checks held it back. Fix it and send it again with job_plan.`
     );
   }
   if (job.holds.length > 0) lines.push(`On hold: ${job.holds.join(', ')}.`);
@@ -174,44 +168,22 @@ export function admiralSnapshotNote(
   preferences: PreferencesNote = { you: null, project: null }
 ): string {
   const records = recordsNote(store, scope);
-  const trust = preferences.autoStart == null ? [] : ['', ...trustLines(preferences.autoStart)];
-  if (preferences.you === null && preferences.project === null)
-    return [records, ...trust].join('\n');
-  return [records, '', ...preferenceLines(store, scope.repoId, preferences), ...trust].join('\n');
+  if (preferences.you === null && preferences.project === null) return records;
+  return [records, '', ...preferenceLines(preferences)].join('\n');
 }
 
-/** What Fleet does on its own under the project's trust level. It gives the Admiral no new power. */
-function trustLines(rule: AutoStartRule): string[] {
+function preferenceLines({ you, project }: PreferencesNote): string[] {
   const lines = [
-    `The client set this project's trust level to ${TRUST_NAME[rule.level]}. Fleet itself approves a first plan you propose when it adds no roles, passes every check, and stays within ${usdText(rule.usd)} and ${pctText(rule.weekPct)} of the weekly Claude limit; the job_plan result says when it did. Nothing else changes for you: propose plans as always.`
-  ];
-  if (rule.level === 'ship') {
-    lines.push(
-      'When such a job delivers only PRs and their checks pass, Fleet merges them and closes the job, then wakes you on the Bridge to report.'
-    );
-  }
-  return lines;
-}
-
-function preferenceLines(
-  store: SnapshotReader,
-  repoId: string,
-  { you, project }: PreferencesNote
-): string[] {
-  const lines = [
-    "The client's preferences, written by their own answers and picks. Follow them, and do not ask what they already settle. The project lines win over the You lines where they disagree."
+    "The client's preferences, from their own words and what you learned on past jobs. Follow them, and do not ask what they already settle. The project lines win over the You lines where they disagree."
   ];
   if (you !== null) {
     lines.push('', 'You (every project):', ...layerLines(you));
   }
   if (project !== null) {
     lines.push('', 'This project:', ...layerLines(project));
-    const proposing = store
-      .listQuestions(repoId, { statuses: ['open'] })
-      .some((q) => q.kind === 'client_file');
-    if (project.oversize && !project.changedOutside && !proposing) {
+    if (project.oversize && !project.changedOutside) {
       lines.push(
-        `The project lines are over their ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Propose a cleanup with client_file_propose: merge repeats and remove lines that no longer apply.`
+        `The project lines are over their ${CLIENT_FILE_CLEANUP_CHARS}-character limit. Clean them up with client_file_propose: merge repeats and remove lines that no longer apply.`
       );
     }
   }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { queueKey } from '../queue-keys';
-import { bridgeQueue, detail, job, permission, snap, version } from './queue-fixtures';
+import { agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
+import { bridgeQueue, detail, job, permission, snap } from './queue-fixtures';
 
 /** The Bridge's keys: what each does, and where they do nothing. */
 
@@ -29,18 +30,18 @@ const press = (over: Partial<Parameters<typeof queueKey>[0]>): ReturnType<typeof
 describe('the Bridge keys', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('maps J, K, Enter, Esc, A, D, C and R, and nothing else', () => {
-    expect(['j', 'k', 'Enter', 'Escape', 'a', 'd', 'c', 'r'].map((key) => press({ key }))).toEqual([
+  it('maps J, K, Enter, Esc, A, D and R, and nothing else', () => {
+    expect(['j', 'k', 'Enter', 'Escape', 'a', 'd', 'r'].map((key) => press({ key }))).toEqual([
       'next',
       'previous',
       'read',
       'close',
       'approve',
       'deny',
-      'change',
       'reply'
     ]);
     expect(press({ key: 'x' })).toBeNull();
+    expect(press({ key: 'c' })).toBeNull();
     expect(press({ key: 'A' })).toBeNull();
   });
 
@@ -60,18 +61,18 @@ describe('the Bridge keys', () => {
   });
 
   it('marks the buttons each key presses, and puts one card at a time in the tab order', () => {
-    const planned = job({ pendingPlan: { id: 7, version: 1 }, permissionsWaiting: [5] });
-    const html = bridgeQueue(snap({ jobs: [planned] }), {
-      2: detail(planned, { versions: [version()], permissions: [permission()] })
-    });
+    const asking = job({ permissionsWaiting: [5] });
+    const html = bridgeQueue(
+      snap({ jobs: [asking], questions: [agencyQuestion({ id: 35, jobId: 2, createdAt: 40 })] }),
+      { 2: detail(asking, { permissions: [permission()] }) }
+    );
     expect(html).toContain('data-queue-scope="queue"');
     expect(html).toMatch(/data-item="perm:5" tabindex="0"/);
-    expect(html).toMatch(/data-item="plan:7" tabindex="-1"/);
+    expect(html).toMatch(/data-item="q:35" tabindex="-1"/);
     expect(html).toMatch(/data-key="approve" aria-keyshortcuts="A">Allow once/);
     expect(html).toMatch(/data-key="deny" aria-keyshortcuts="D">Deny/);
-    expect(html).toMatch(/data-key="approve" aria-keyshortcuts="A">Approve plan/);
-    expect(html).toMatch(/data-key="change" aria-keyshortcuts="C">Change/);
-    expect(html).toMatch(/data-key="deny" aria-keyshortcuts="D">Reject/);
+    expect(html).toMatch(/data-key="reply" aria-keyshortcuts="R"/);
+    expect(html).not.toContain('data-key="change"');
     expect(html).toContain(
       '<kbd class="font-sans font-medium text-fleet-text-muted">J K</kbd> move'
     );

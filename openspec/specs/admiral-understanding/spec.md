@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets the Admiral learn how the client likes to work, keep it where the client can see and change it, and use it to ask fewer questions and act alone as far as the client trusts it.
+Lets the Admiral learn how the client likes to work, keep it where the client can see and change it, and use it to ask fewer questions and work on its own like a dev team.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ Where a project line and a You line disagree, the project line SHALL win.
 
 ### Requirement: Meet you
 
-The first time the client opens an Admiral after this change, the Admiral SHALL ask seven questions, one at a time.
+The first time the client opens an Admiral after this change, the Admiral SHALL ask six questions, one at a time.
 Each question SHALL offer picks with one recommended, and SHALL accept a free-text answer instead.
 The client SHALL be able to skip any question, and to finish later.
 Each answer SHALL be saved as a line in the layer the question belongs to, and a side panel SHALL show the saved lines as they are added.
@@ -77,34 +77,42 @@ The read SHALL count as Admiral spend and SHALL be refused while the monthly cap
 
 ### Requirement: Conflicts with instruction files
 
-When a proposed or saved line clashes with a rule in the project's `CLAUDE.md` or `AGENTS.md`, the system SHALL flag the line with the rule it clashes with.
+When a line the client added clashes with a rule in the project's `CLAUDE.md` or `AGENTS.md`, the system SHALL flag the line with the rule it clashes with.
 The client SHALL pick which one wins.
 When the line wins, the Admiral SHALL tell crew that the client's line overrides the rule.
 When the rule wins, the line SHALL be removed.
+A line taken from Read your work that clashes with a rule SHALL be dropped without asking, because crew read the rule anyway.
 
 #### Scenario: Rule wins
 
 - **WHEN** "Skip docs unless asked" clashes with the rule "Update docs with every user-facing change" and the client picks the rule
 - **THEN** "Skip docs unless asked" is removed
 
+#### Scenario: Read line clashes
+
+- **WHEN** Read your work takes "Skip docs unless asked" and `CLAUDE.md` says "Update docs with every user-facing change"
+- **THEN** the line is dropped and the client is not asked
+
 ### Requirement: Learn from you
 
-When the client edits or rejects a plan, the Admiral SHALL consider whether the change is a lasting preference and MAY ask "Remember this?" with the line it would save.
-When the client answers a question in a way that applies beyond the job, the Admiral MAY ask the same.
-The card SHALL offer This project, All projects and Just this job, and SHALL let the client rewrite the line before saving.
-Just this job SHALL save nothing.
-A card the client does not answer SHALL save nothing, and SHALL be withdrawn when the job closes.
-After the client declines a kind of change, the Admiral SHALL NOT ask about it again on that project.
+When a job shows a lasting preference, such as a client plan edit or an answer that applies beyond the job, the Admiral SHALL save it as a line at once, without asking.
+The Admiral SHALL pick the layer, and the line SHALL be marked as learned on that job.
+The Admiral SHALL save only what holds for later jobs, and SHALL NOT save what a line already says.
+The client SHALL be able to remove any learned line in What the Admiral knows.
+
+When a job ends, Fleet SHALL review its record once for a crew lesson.
+A lesson SHALL change the project's copy of the role at once, and SHALL NOT change a bundled role or the client's role for all projects.
+Each applied lesson SHALL be recorded with the text it replaced, the new text, and the job.
 
 #### Scenario: Removed step
 
-- **WHEN** the client removes the end-to-end test step from a plan for a CLI flag and picks This project on the card
-- **THEN** the project layer gets the line, marked as learned on that job, and later plans for CLI flags leave out end-to-end tests
+- **WHEN** the client removes the end-to-end test step from a plan for a CLI flag
+- **THEN** the project layer gets a line, marked as learned on that job, and later plans for CLI flags leave out end-to-end tests
 
-#### Scenario: Declined once
+#### Scenario: Crew lesson
 
-- **WHEN** the client picks Just this job on a card about reviewer models
-- **THEN** the Admiral does not ask about reviewer models again on that project
+- **WHEN** a job's record shows that the builder forgot to run the linter
+- **THEN** the project's builder role gets the lesson, and What the Admiral knows lists it with Undo
 
 ### Requirement: What the Admiral knows
 
@@ -112,35 +120,37 @@ The system SHALL show a page with a You tab and a tab for each project, listing 
 The client SHALL be able to add, edit and remove lines, and to edit each layer as text.
 Lines the client typed by hand SHALL be kept as they are.
 Open conflicts SHALL show on the line they belong to, with the choice of winner.
+A project tab SHALL list the crew lessons applied to the project's roles, each with Undo.
+Undo SHALL put the old text back, and SHALL refuse with the reason when the client has edited that part of the role since.
 
 #### Scenario: Edit a line
 
 - **WHEN** the client edits a line read from commits
 - **THEN** the line is saved as told by the client and keeps its use count
 
-### Requirement: Trust levels
+#### Scenario: Undo a crew lesson after an edit
 
-Each project SHALL have a trust level: Ask me, Show me the PR, or Ship it, with Ask me as the default.
-Under Show me the PR, a plan whose budget is within the project's auto-start budget, that adds no new role, and that needs no client tick SHALL start without a plan card, and the client SHALL see it as started on its own, with Stop and Change.
-Any other plan SHALL wait for the client as today.
-Under Ship it, plans SHALL start as under Show me the PR, and when every deliverable of a job is a pull request whose required checks pass, Fleet SHALL merge them in order, close the job, and post a report.
-A merge that fails or a check that fails SHALL stop and wait for the client.
-Trust levels SHALL NOT change how crew permission requests are answered.
+- **WHEN** the client edited the text a crew lesson added, then clicks Undo on that lesson
+- **THEN** the role is unchanged and the client sees why Undo refused
 
-#### Scenario: Small plan starts on its own
+### Requirement: Plans start on their own
 
-- **WHEN** the project is at Show me the PR with a $10 auto-start budget and the Admiral proposes a $4 plan
-- **THEN** the plan is approved without a card and the client sees "Started on its own"
+There SHALL be one mode, with no trust levels.
+Every plan the Admiral writes SHALL start as soon as it passes Fleet's checks, without a plan card, and the client SHALL see it running with Stop and Change.
+A plan with a blocking finding SHALL NOT start; the Admiral SHALL fix it, or ask the client when only the client can.
+A plan the client writes SHALL also start once it passes the checks.
+Fleet SHALL NOT merge a pull request unless the client asks.
+Crew permission requests for risky acts SHALL still go to the client.
 
-#### Scenario: Big plan waits
+#### Scenario: A plan starts
 
-- **WHEN** the project is at Show me the PR with a $10 auto-start budget and the Admiral proposes a $25 plan
-- **THEN** the plan card waits for the client
+- **WHEN** the Admiral proposes a $25 plan that passes the checks
+- **THEN** the plan starts and nothing waits on the client
 
-#### Scenario: Ship it with a red check
+#### Scenario: A check holds the plan
 
-- **WHEN** the project is at Ship it and a job's pull request has a failing required check
-- **THEN** nothing is merged and the job waits for the client
+- **WHEN** a plan delivers a pull request in a repository with no GitHub remote
+- **THEN** the plan does not start and the Admiral gets the finding to fix
 
 ### Requirement: Preferences used
 

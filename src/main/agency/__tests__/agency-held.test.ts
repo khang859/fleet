@@ -41,9 +41,8 @@ const PLAN: PlanInput = {
   budget: { usd: 10 }
 };
 
-const { openJob, propose, approve } = planHelpers(() => service, PLAN);
+const { openJob } = planHelpers(() => service, PLAN);
 
-const state = (jobId: number): string | undefined => service.store.getJob(jobId)?.state;
 const snapshot = (): ReturnType<AgencyService['snapshot']> => service.snapshot(REPO.repoId);
 
 /** Track how a hold settles without awaiting it. */
@@ -54,19 +53,23 @@ function track(p: Promise<HoldResult>): { result: HoldResult | null } {
 }
 
 describe('held decisions', () => {
-  it('holds an approval for undo, and Undo leaves the plan waiting', async () => {
+  /** A job with one open question, and that question. */
+  async function asked(): Promise<{ jobId: number; questionId: number }> {
     const { job, tools } = openJob();
-    const v1 = await propose(tools);
+    await tools.askClient({ question: 'Dark by default?', options: YES_NO });
+    return { jobId: job.id, questionId: snapshot().questions[0].id };
+  }
 
-    const held = track(
-      service.hold({ kind: 'plan', action: { planVersionId: v1, action: 'approve' } })
-    );
+  it('holds an answer for undo, and Undo leaves the question open', async () => {
+    const { jobId, questionId } = await asked();
+
+    const held = track(service.hold({ kind: 'answer', answer: { id: questionId, option: 0 } }));
     expect(snapshot().held).toEqual([
       {
         id: 1,
-        jobId: job.id,
-        key: `plan:${v1}`,
-        label: 'Approved plan v1',
+        jobId,
+        key: `q:${questionId}`,
+        label: `Answered q${questionId}`,
         runsAt: clock + HOLD_MS
       }
     ]);
@@ -75,55 +78,37 @@ describe('held decisions', () => {
 
     expect(held.result).toEqual({ outcome: 'undone' });
     expect(snapshot().held).toEqual([]);
-    expect(service.store.plans.version(v1)?.status).toBe('proposed');
-    expect(state(job.id)).toBe('planned');
+    expect(service.store.getQuestion(questionId)?.status).toBe('open');
     expect(service.undo(1)).toBe(false);
   });
 
-  it('carries the approval out once its time comes', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
+  it('carries the answer out once its time comes', async () => {
+    const { questionId } = await asked();
 
-    const hold = service.hold({ kind: 'plan', action: { planVersionId: v1, action: 'approve' } });
-    const held = track(hold);
+    const held = track(service.hold({ kind: 'answer', answer: { id: questionId, option: 0 } }));
     await vi.advanceTimersByTimeAsync(HOLD_MS - 1);
     expect(held.result).toBeNull();
-    expect(state(job.id)).toBe('planned');
+    expect(service.store.getQuestion(questionId)?.status).toBe('open');
     await vi.advanceTimersByTimeAsync(1);
 
-    // The approval's checks read git, so it settles a little after its time.
-    expect(await hold).toEqual({ outcome: 'done' });
-    expect(state(job.id)).toBe('running');
+    expect(held.result).toEqual({ outcome: 'done' });
+    expect(service.store.getQuestion(questionId)?.status).toBe('answered');
     expect(snapshot().held).toEqual([]);
   });
 
-  it('reports a refusal when the plan moved on during the hold', async () => {
-    const { tools } = openJob();
-    const v1 = await propose(tools);
-
-    const hold = service.hold({ kind: 'plan', action: { planVersionId: v1, action: 'approve' } });
-    await propose(tools, { ...PLAN, summary: 'Add dark mode everywhere.' });
-    await vi.advanceTimersByTimeAsync(HOLD_MS);
-
-    expect(await hold).toEqual({ outcome: 'refused', reason: 'Plan v1 was replaced by v2.' });
-  });
-
   it('refuses at once what no longer waits, and a second hold on the same item', async () => {
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-    void service.hold({
-      kind: 'plan',
-      action: { planVersionId: v1, action: 'reject', note: 'No' }
-    });
+    const { questionId } = await asked();
+    void service.hold({ kind: 'answer', answer: { id: questionId, option: 0 } });
 
-    expect(
-      await service.hold({ kind: 'plan', action: { planVersionId: v1, action: 'approve' } })
-    ).toEqual({ outcome: 'refused', reason: 'A decision on this is already held.' });
+    expect(await service.hold({ kind: 'answer', answer: { id: questionId, option: 1 } })).toEqual({
+      outcome: 'refused',
+      reason: 'A decision on this is already held.'
+    });
     await vi.advanceTimersByTimeAsync(HOLD_MS);
-    expect(state(job.id)).toBe('briefing');
-    expect(
-      await service.hold({ kind: 'plan', action: { planVersionId: v1, action: 'approve' } })
-    ).toEqual({ outcome: 'refused', reason: 'Plan v1 is already rejected.' });
+    expect(await service.hold({ kind: 'answer', answer: { id: questionId, option: 1 } })).toEqual({
+      outcome: 'refused',
+      reason: `q${questionId} is not open.`
+    });
   });
 
   it('sends a held answer at once when Fleet quits', async () => {
@@ -159,39 +144,25 @@ describe('held decisions', () => {
 });
 
 describe('done today', () => {
-  it("lists the client's plan and question decisions since local midnight, newest first", async () => {
-    const yesterday = openJob('Yesterday');
+  it("lists the client's answers since local midnight, newest first", async () => {
+    const { tools } = openJob();
     clock -= 13 * 60 * 60 * 1000;
-    await approve(yesterday.tools);
+    await tools.askClient({ question: 'Yesterday?', options: YES_NO });
+    const yesterday = snapshot().questions.find((q) => q.status === 'open');
+    service.answer({ id: yesterday!.id, option: 0 });
     clock += 13 * 60 * 60 * 1000;
 
-    const { job, tools } = openJob();
-    const v1 = await propose(tools);
-    await service.jobs.decide({
-      planVersionId: v1,
-      action: 'revise',
-      note: 'Smaller, please',
-      steps: []
-    });
-    clock += 1_000;
-    await approve(tools);
-    clock += 1_000;
     await tools.askClient({ question: 'Dark by default?', options: YES_NO });
-    const asked = snapshot().questions.find((q) => q.status === 'open');
-    service.answer({ id: asked!.id, option: 1 });
+    const first = snapshot().questions.find((q) => q.status === 'open');
+    service.answer({ id: first!.id, option: 0 });
+    clock += 1_000;
+    await tools.askClient({ question: 'Teal accents?', options: YES_NO });
+    const second = snapshot().questions.find((q) => q.status === 'open');
+    service.answer({ id: second!.id, option: 1 });
 
     expect(snapshot().decisions).toEqual([
-      expect.objectContaining({
-        key: `q:${asked!.id}`,
-        label: `Answered q${asked!.id}`,
-        detail: 'No'
-      }),
-      expect.objectContaining({ label: 'Approved plan v2', jobId: job.id, jobState: 'running' }),
-      expect.objectContaining({
-        key: `plan:${v1}`,
-        label: 'Asked for a change to plan v1',
-        detail: 'Smaller, please'
-      })
+      expect.objectContaining({ key: `q:${second!.id}`, detail: 'No' }),
+      expect.objectContaining({ key: `q:${first!.id}`, detail: 'Yes' })
     ]);
   });
 });

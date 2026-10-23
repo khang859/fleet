@@ -3,13 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot } from '../../../../../shared/agency';
 import type { SettingChange, SettingsCard } from '../../../../../shared/agency-settings';
-import { agencyJob } from '../../../../../shared/__tests__/agency-fixtures';
 import { AdmiralChangeNote } from '../../settings/AdmiralChangeNote';
 import { bridgeQueue } from './queue-fixtures';
 import { JobSheet } from '../JobSheet';
 import { SettingsCardView } from '../SettingsCard';
 
-/** Settings cards in the chat and under WAITING ON YOU, and "Changed by the Admiral". */
+/** Settings cards in the chat, and "Changed by the Admiral". */
 
 const REPO = '0123456789abcdef';
 
@@ -19,7 +18,6 @@ const change = (over: Partial<SettingChange> = {}): SettingChange => ({
   label: 'web: setup command',
   before: 'pnpm install',
   after: 'corepack enable && pnpm install',
-  kind: 'apply',
   status: 'applied',
   ...over
 });
@@ -34,14 +32,12 @@ const card = (over: Partial<SettingsCard> = {}): SettingsCard => ({
   ...over
 });
 
-const WIDER = change({
+const BUDGET = change({
   id: 2,
   key: 'agency.admiral.defaultBudgetUsd',
   label: 'Default job budget (USD)',
   before: 10,
-  after: 500,
-  kind: 'approve',
-  status: 'pending'
+  after: 500
 });
 
 const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
@@ -53,7 +49,6 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
   leftovers: [],
   clientFileChanged: false,
-  trust: { level: 'ask', autoStartUsd: null },
   pastJobs: [],
   settingsCards: [],
   decisions: [],
@@ -93,23 +88,13 @@ describe('a settings card', () => {
     expect(html).not.toContain('>Approve<');
   });
 
-  it('asks for each change that gives more, beside the ones already made', () => {
-    const html = view(card({ changes: [change(), WIDER] }));
-    expect(html).toContain('Change these settings?');
-    expect(html).toContain('border-amber-400/35');
-    expect(html).toContain('aria-label="Approve Default job budget (USD)"');
-    expect(html).toContain('aria-label="Do not change Default job budget (USD)"');
-    expect(html).toContain('aria-label="Undo web: setup command"');
-    expect(html).not.toContain('aria-label="Undo Default job budget (USD)"');
-  });
-
   it('says how a decided change ended', () => {
     const html = view(
       card({
         changes: [
           change({ status: 'undone' }),
-          { ...WIDER, status: 'refused' },
-          { ...WIDER, id: 4, status: 'approved' }
+          { ...BUDGET, status: 'refused' },
+          { ...BUDGET, id: 4, status: 'approved' }
         ]
       })
     );
@@ -122,16 +107,10 @@ describe('a settings card', () => {
 });
 
 describe('the job sheet', () => {
-  it('counts a settings card waiting on the client in its own job or lobby only', () => {
-    const waiting = card({ changes: [WIDER] });
-    const lobby = sheet(snap({ settingsCards: [card(), waiting] }));
-    expect(lobby).toContain('WAITING ON YOU · 1');
-    expect(lobby).toContain('aria-label="Settings s3"');
-
-    const job = agencyJob({ id: 9, state: 'running' });
-    const inJob = sheet(snap({ jobs: [job], settingsCards: [waiting] }), 9);
-    expect(inJob).not.toContain('aria-label="Settings s3"');
-    expect(inJob).not.toContain('WAITING ON YOU · 1');
+  it('never waits on the client for a settings card', () => {
+    expect(sheet(snap({ settingsCards: [card({ changes: [BUDGET] })] }))).not.toContain(
+      'aria-label="Settings s3"'
+    );
   });
 });
 

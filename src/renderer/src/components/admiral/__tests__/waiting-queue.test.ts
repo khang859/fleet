@@ -8,10 +8,12 @@ import { crew, detail, job, permission, settings, snap, version } from './queue-
 
 /** What waits on the client, of each kind, as the Bridge queue and a job sheet read it. */
 
-/** A job with one of everything waiting, and the lobby with a question and a settings card. */
+/**
+ * A job with one of everything waiting, and the lobby with a question. Its
+ * settings cards never wait on the client.
+ */
 function busy(): { snapshot: AgencySnapshot; details: Record<number, AgencyJobDetail> } {
   const waiting = job({
-    pendingPlan: { id: 7, version: 1 },
     permissionsWaiting: [5, 8],
     crewNeedingYou: 1
   });
@@ -48,13 +50,11 @@ describe('waitingItems', () => {
     expect(keys(waitingItems(snapshot, details, 2))).toEqual([
       'perm:5',
       'perm:8',
-      'plan:7',
       'q:35',
-      'settings:6',
       'crew:9'
     ]);
     expect(keys(waitingItems(snapshot, details, 3))).toEqual(['delivered:3']);
-    expect(keys(waitingItems(snapshot, details, null))).toEqual(['q:36', 'settings:4']);
+    expect(keys(waitingItems(snapshot, details, null))).toEqual(['q:36']);
   });
 
   it('takes every open job and the lobby for the whole project', () => {
@@ -62,15 +62,21 @@ describe('waitingItems', () => {
     expect(keys(waitingItems(snapshot, details))).toEqual([
       'perm:5',
       'perm:8',
-      'plan:7',
       'q:35',
-      'settings:6',
       'crew:9',
       'delivered:3',
-      'q:36',
-      'settings:4'
+      'q:36'
     ]);
     expect(waitingItems(undefined, details)).toEqual([]);
+  });
+
+  it('leaves a delivered job off until its PRs are ready', () => {
+    const { snapshot, details } = busy();
+    const waiting = snap({
+      ...snapshot,
+      jobs: snapshot.jobs.map((j) => (j.id === 3 ? { ...j, prsWaiting: true } : j))
+    });
+    expect(keys(waitingItems(waiting, details, 3))).toEqual([]);
   });
 
   it('dates a permission from when the client was asked, and lets only a client card expire', () => {
@@ -83,18 +89,10 @@ describe('waitingItems', () => {
   it('stands a loading row in for what the snapshot says waits, under the same key', () => {
     const { snapshot, details } = busy();
     const loading = waitingItems(snapshot, {}, 2);
-    expect(keys(loading)).toEqual([
-      'perm:5',
-      'perm:8',
-      'plan:7',
-      'q:35',
-      'settings:6',
-      'crew:job2-0'
-    ]);
+    expect(keys(loading)).toEqual(['perm:5', 'perm:8', 'q:35', 'crew:job2-0']);
     expect(itemsOf(loading, 'loading').map((i) => i.what)).toEqual([
       'permission',
       'permission',
-      'plan',
       'crew'
     ]);
     expect(itemsOf(waitingItems(snapshot, {}, 3), 'delivered')[0].detail).toBeUndefined();
@@ -106,14 +104,14 @@ describe('waitingItems', () => {
     const held = snap({
       ...snapshot,
       held: [
-        { id: 1, jobId: 2, key: 'plan:7', label: 'Approved plan v1', runsAt: 99 },
+        { id: 1, jobId: 2, key: 'q:35', label: 'Answered q35', runsAt: 99 },
         { id: 2, jobId: null, key: 'q:36', label: 'Answered q36', runsAt: 99 }
       ]
     });
     const left = keys(waitingItems(held, details));
-    expect(left).not.toContain('plan:7');
+    expect(left).not.toContain('q:35');
     expect(left).not.toContain('q:36');
-    expect(keys(waitingItems(held, {}, 2))).not.toContain('plan:7');
+    expect(keys(waitingItems(held, {}, 2))).not.toContain('q:35');
   });
 });
 
@@ -129,9 +127,6 @@ describe('queueOrder', () => {
       'q:36',
       'crew:9',
       'q:35',
-      'plan:7',
-      'settings:4',
-      'settings:6',
       'delivered:3'
     ]);
   });
@@ -142,7 +137,7 @@ describe('waitingCount', () => {
     const { snapshot, details } = busy();
     expect(waitingCount(snapshot)).toBe(waitingItems(snapshot, details).length);
     expect(waitingCount(snapshot, 2)).toBe(waitingItems(snapshot, details, 2).length);
-    expect(waitingCount(snapshot, null)).toBe(2);
+    expect(waitingCount(snapshot, null)).toBe(1);
     expect(waitingCount(undefined)).toBe(0);
   });
 });

@@ -6,22 +6,18 @@ import {
   type SettingChange,
   type SettingsCard
 } from '../../../../shared/agency-settings';
-import { PRIMARY, SECONDARY } from './JobClose';
 
 const STATUS_TEXT: Record<SettingChange['status'], string> = {
   applied: 'Changed',
   approved: 'Approved',
-  pending: '',
   refused: 'Not changed',
   undone: 'Undone'
 };
 
 /**
- * The settings one `settings_change` call changed or asked to change. A change
- * that gave no more money or reach is already in place, with Undo; one that
- * gives more waits for its own Approve or No, so the client can take part of a
- * card. The same card in the conversation, under WAITING ON YOU and in the
- * Bridge queue, which names the job in `head`.
+ * The settings one `settings_change` call changed, each with Undo. The Admiral
+ * changes them on its own; `head` names the job where the card shows outside
+ * its conversation.
  */
 export function SettingsCardView({
   card,
@@ -30,19 +26,14 @@ export function SettingsCardView({
   card: SettingsCard;
   head?: React.ReactNode;
 }): React.JSX.Element {
-  const waiting = card.changes.some((c) => c.status === 'pending');
   return (
     <section
       aria-label={`Settings ${settingsCardDisplayId(card.id)}`}
-      className={`flex flex-col gap-1.5 rounded-md border bg-fleet-bg p-2.5 ${
-        waiting ? 'border-amber-400/35' : 'border-fleet-border'
-      }`}
+      className="flex flex-col gap-1.5 rounded-md border border-fleet-border bg-fleet-bg p-2.5"
     >
       {head}
       <div className="flex items-baseline gap-2">
-        <span className="flex-1 text-[13px] font-medium text-fleet-text">
-          {waiting ? 'Change these settings?' : 'Settings changed'}
-        </span>
+        <span className="flex-1 text-[13px] font-medium text-fleet-text">Settings changed</span>
         <span className="shrink-0 font-mono text-[11px] text-fleet-text-subtle">
           {settingsCardDisplayId(card.id)}
         </span>
@@ -65,12 +56,6 @@ function ChangeRow({ change }: { change: SettingChange }): React.JSX.Element {
     setRefused(await act().catch(() => 'That did not go through.'));
     setBusy(false);
   };
-  const decide = async (approved: boolean): Promise<void> =>
-    run(async () =>
-      (await window.fleet.agency.settings.decide({ changeId: change.id, approved }))
-        ? null
-        : 'That change was already decided.'
-    );
   const undo = async (): Promise<void> =>
     run(async () => {
       const out = await window.fleet.agency.settings.undo(change.id);
@@ -82,32 +67,9 @@ function ChangeRow({ change }: { change: SettingChange }): React.JSX.Element {
     <li className="flex flex-col gap-1 px-2 py-1.5">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs text-fleet-text">{change.label}</span>
-        {change.status === 'pending' ? (
-          <div className="flex shrink-0 gap-1.5">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void decide(true)}
-              aria-label={`Approve ${change.label}`}
-              className={PRIMARY}
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void decide(false)}
-              aria-label={`Do not change ${change.label}`}
-              className={SECONDARY}
-            >
-              No
-            </button>
-          </div>
-        ) : (
-          <span className="shrink-0 text-[11px] text-fleet-text-subtle">
-            {STATUS_TEXT[change.status]}
-          </span>
-        )}
+        <span className="shrink-0 text-[11px] text-fleet-text-subtle">
+          {STATUS_TEXT[change.status]}
+        </span>
         {inPlace && (
           <button
             type="button"

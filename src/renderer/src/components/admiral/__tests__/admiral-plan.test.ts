@@ -103,7 +103,7 @@ const card = (v: AgencyPlanVersion, d = detail([v])): string =>
   renderToStaticMarkup(createElement(PlanCard, { version: v, detail: d }));
 
 describe('PlanCard', () => {
-  it('shows a new role with its runtime, description and instructions, saved only on approval', () => {
+  it('shows a new role with its runtime, description and instructions', () => {
     const html = card(
       version({
         plan: PlanSchema.parse({
@@ -129,8 +129,8 @@ describe('PlanCard', () => {
     expect(card(version())).not.toContain('NEW ROLE');
   });
 
-  it('puts a first plan up with its steps, deliverables, asks and budget', () => {
-    const html = card(version());
+  it('shows the plan in force with its steps, deliverables, asks, budget, Stop and Change', () => {
+    const html = card(version({ status: 'approved' }));
     expect(html).toContain('aria-label="Plan v1"');
     expect(html).toContain('>PLAN<');
     expect(html).toContain('Add dark mode to settings.');
@@ -139,43 +139,24 @@ describe('PlanCard', () => {
     expect(html).toContain('Branch and PR');
     expect(html).toContain('I ask you first: merge.');
     expect(html).toContain('Budget $10 and 10% of week · 2 steps');
-    expect(html).toContain('Approve plan');
+    expect(html).toContain('>Stop<');
     expect(html).toContain('Change something');
-    expect(html).not.toContain('WHAT CHANGES');
+    expect(html).not.toContain('Approve');
+    expect(html).not.toContain('held this plan back');
   });
 
-  it('shows a change with what it changes, what it stops and a choice per swap', () => {
-    const html = card(
-      version({
-        id: 8,
-        version: 2,
-        kind: 'change',
-        parentVersion: 1,
-        diff: [
-          { kind: 'removed', step: 'reviewer' },
-          { kind: 'changed', step: 'builder-1', fields: ['role'] }
-        ],
-        effects: {
-          stopCrew: [{ crewId: 3, stepId: 'reviewer', label: 'Reviewer' }],
-          swaps: [{ stepId: 'builder-1', fields: ['role'] }],
-          withdrawnQuestions: [11],
-          deliveredResults: 0,
-          spendUsd: 2.5
-        }
-      })
+  it('labels a change, and says when a check held it back while the Admiral fixes it', () => {
+    const v1 = version({ status: 'approved' });
+    const v2 = version({ id: 8, version: 2, kind: 'change', parentVersion: 1 });
+    const html = card(v2, detail([v1, v2]));
+    expect(html).toContain('PLAN CHANGE · v2');
+    expect(html).toContain(
+      'Fleet&#x27;s checks held this plan back. It starts once that is fixed.'
     );
-    expect(html).toContain('PLAN CHANGE · v2 · NEEDS YOUR OK');
-    expect(html).toContain('Removes reviewer');
-    expect(html).toContain('Changes builder-1: role');
-    expect(html).toContain('Stops Reviewer when you approve');
-    expect(html).toContain('Withdraws 1 open question');
-    expect(html).toContain('$2.50 spent so far · 0 results delivered');
-    expect(html).toContain('Continue its work');
-    expect(html).toContain('Start over');
-    expect(html).toContain('Approve change');
+    expect(html).not.toContain('NEEDS YOUR OK');
   });
 
-  it('keeps Approve off while a check blocks the plan', () => {
+  it('shows what a blocking check found, with the local branch fix', () => {
     const html = card(
       version({
         checks: {
@@ -194,8 +175,8 @@ describe('PlanCard', () => {
       })
     );
     expect(html).toContain('fleet has no GitHub remote.');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
     expect(html).toContain('Deliver local branches instead');
+    expect(html).toContain('held this plan back');
   });
 
   it('offers the Claude Code trust step without holding Approve', () => {
@@ -218,7 +199,6 @@ describe('PlanCard', () => {
       })
     );
     expect(html).toContain('Open Claude Code there');
-    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Approve plan<\/button>/);
   });
 
   it('lists the env files each step gets, and nothing when no step gets one', () => {
@@ -227,49 +207,6 @@ describe('PlanCard', () => {
     expect(html).toContain('ENV FILES');
     expect(html).toContain('>api/.env · .env<');
     expect(card(version())).not.toContain('ENV FILES');
-  });
-
-  it('offers where the work starts when the default tip and HEAD differ', () => {
-    const base = {
-      member: 'fleet',
-      defaultBranch: 'main',
-      defaultSha: 'a1b2c3d4e5'.padEnd(40, '0'),
-      headBranch: 'feat/x',
-      headSha: 'f6e5d4c3b2'.padEnd(40, '0'),
-      pinned: null
-    };
-    const html = card(
-      version({ checks: { envFiles: [], issues: [], overlap: [], bases: [base] } })
-    );
-    expect(html).toContain('STARTS FROM');
-    expect(html).toContain('aria-label="Where fleet starts"');
-    expect(html).toContain('main a1b2c3d');
-    expect(html).toContain('feat/x f6e5d4c');
-
-    const same = card(
-      version({
-        checks: {
-          envFiles: [],
-          issues: [],
-          overlap: [],
-          bases: [{ ...base, headSha: base.defaultSha }]
-        }
-      })
-    );
-    expect(same).toContain('main a1b2c3d');
-    expect(same).not.toContain('role="radiogroup"');
-
-    const pinned = card(
-      version({
-        checks: {
-          envFiles: [],
-          issues: [],
-          overlap: [],
-          bases: [{ ...base, pinned: { sha: base.headSha, from: 'head' } }]
-        }
-      })
-    );
-    expect(pinned).not.toContain('STARTS FROM');
   });
 
   it('lists the paths another running job touches', () => {
@@ -288,24 +225,24 @@ describe('PlanCard', () => {
     expect(html).not.toContain('Deliver local branches instead');
   });
 
-  it('folds a version that is no longer waiting to one line', () => {
+  it('folds a version that no longer runs to one line', () => {
     const replaced = version({ status: 'replaced' });
     const newer = version({ id: 8, version: 2 });
     expect(card(replaced, detail([replaced, newer]))).toContain('Plan v1 was replaced by v2');
-    const rejected = version({ status: 'rejected', decisionNote: 'Too big' });
-    expect(card(rejected)).toContain('You rejected Plan v1: Too big');
     const revised = version({ status: 'replaced', decisionNote: 'Fewer steps' });
     expect(card(revised, detail([revised, newer]))).toContain(
       'You asked for a change to Plan v1: Fewer steps'
     );
-    const approved = version({
+    const superseded = version({ status: 'superseded' });
+    expect(card(superseded)).toContain('Plan v1 ran, then a later version changed it');
+    const started = version({
       status: 'approved',
       bases: { fleet: { sha: 'a1b2c3d4e5'.padEnd(40, '0'), from: 'default' } }
     });
-    expect(card(approved)).toContain('Plan v1 approved · 2 steps, $10 · from a1b2c3d');
-    expect(card(approved)).not.toContain('Approve plan');
-    const one = version({ status: 'approved', plan: { ...PLAN, steps: PLAN.steps.slice(0, 1) } });
-    expect(card(one)).toContain('Plan v1 approved · 1 step, $10');
+    const closed = { ...detail([started]), job: agencyJob({ id: 2, state: 'closed' }) };
+    expect(card(started, closed)).toContain('Plan v1 started · 2 steps, $10 · from a1b2c3d');
+    expect(card(started, closed)).not.toContain('>Stop<');
+    expect(card(started, detail([started, newer]))).toContain('Plan v1 started');
   });
 
   it('lists the saved lines a plan follows as chips, and nothing when it cites none', () => {
@@ -318,25 +255,6 @@ describe('PlanCard', () => {
     expect(html).toContain('title="You · every project: Never push to main."');
     expect(html).toContain('title="This project: Open PRs as drafts."');
     expect(card(version())).not.toContain('USING WHAT I KNOW ABOUT YOU');
-  });
-
-  it('keeps a plan that started on its own open, with Stop and Change instead of Approve', () => {
-    const started = version({ status: 'approved', autoStartUsd: 10 });
-    const html = card(started);
-    expect(html).toContain('Started on its own · within $10');
-    expect(html).toContain('>Stop<');
-    expect(html).toContain('Change something');
-    expect(html).not.toContain('Approve plan');
-    expect(html).not.toContain('Reject');
-  });
-
-  it('folds a plan that started on its own once it is replaced or the job ends', () => {
-    const started = version({ status: 'approved', autoStartUsd: 10 });
-    const newer = version({ id: 8, version: 2, kind: 'change' });
-    expect(card(started, detail([started, newer]))).not.toContain('>Stop<');
-    const closed = { ...detail([started]), job: agencyJob({ id: 2, state: 'closed' }) };
-    expect(card(started, closed)).toContain('Plan v1 approved');
-    expect(card(started, closed)).not.toContain('>Stop<');
   });
 });
 
@@ -352,7 +270,6 @@ describe('the sheet', () => {
     onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
     leftovers: [],
     clientFileChanged: false,
-    trust: { level: 'ask', autoStartUsd: null },
     pastJobs: [],
     settingsCards: [],
     decisions: [],
@@ -371,13 +288,11 @@ describe('the sheet', () => {
       })
     );
 
-  it('puts a waiting plan under WAITING ON YOU and counts it', () => {
+  it('says a check held the plan, without anything waiting on the client', () => {
     const html = sheet(snap(true), detail([version()]));
-    expect(html).toContain('WAITING ON YOU · 1');
-    expect(html).toContain('Approve plan');
-    expect(html).toContain('Nothing starts until you approve the plan above.');
-    expect(waitingCount(snap(true), 2)).toBe(1);
-    expect(waitingCount(snap(true), null)).toBe(0);
+    expect(html).toContain('A check held the plan. It starts once that is fixed.');
+    expect(html).toContain('Nothing needs you right now.');
+    expect(waitingCount(snap(true), 2)).toBe(0);
   });
 
   it('lists the approved plan step by step with progress and spend', () => {
@@ -389,7 +304,6 @@ describe('the sheet', () => {
         [step('builder-1', 'done'), step('reviewer', 'running', 'Reading the diff')]
       )
     );
-    expect(html).toContain('v1 approved');
     expect(html).not.toContain('USING WHAT I KNOW ABOUT YOU');
     expect(html).toContain('1 of 2 steps done');
     expect(html).toContain('Build the toggle');
@@ -400,22 +314,19 @@ describe('the sheet', () => {
     expect(html).toContain('Nothing needs you right now.');
   });
 
-  it('says when the approved plan started on its own, with the lines it follows', () => {
+  it('lists the saved lines the plan follows', () => {
     const started = version({
       status: 'approved',
-      autoStartUsd: 10,
       uses: [{ id: 'P1', layer: 'project', text: 'Open PRs as drafts.' }]
     });
-    const html = sheet(snap(false), detail([started]));
-    expect(html).toContain('v1 started on its own');
-    expect(html).toMatch(/USING WHAT I KNOW ABOUT YOU.*Open PRs as drafts\./s);
+    expect(sheet(snap(false), detail([started]))).toMatch(
+      /USING WHAT I KNOW ABOUT YOU.*Open PRs as drafts\./s
+    );
   });
 
-  it('says a small first plan starts on its own under a trust level that allows it', () => {
+  it('says the plan starts on its own before there is one', () => {
     const job = { ...detail([]), job: agencyJob({ id: 2, approvedVersion: null }) };
-    expect(sheet(snap(false), job)).toContain('Nothing starts until you approve it.');
-    const pr = { ...snap(false), trust: { level: 'pr' as const, autoStartUsd: null } };
-    expect(sheet(pr, job)).toContain('A small first plan starts on its own.');
+    expect(sheet(snap(false), job)).toContain('It starts on its own.');
   });
 
   it('shows both meters, who spent what, the estimate marker and the overshoot', () => {
@@ -539,10 +450,8 @@ describe('the sheet', () => {
     expect(html).toMatch(/<option value="claude" selected="">Claude Code<\/option>/);
     expect(html).toContain('<option value="eva">eva</option>');
     expect(html).toContain('placeholder="The role&#x27;s own"');
-    expect(html).toContain(
-      'This makes a plan change. The member keeps working until you approve it.'
-    );
-    expect(html).toContain('>Propose swap<');
+    expect(html).toContain('This changes the plan. It starts as soon as Fleet&#x27;s checks pass.');
+    expect(html).toContain('>Swap<');
   });
 
   it('shows each flag in place of the status, with Hand back or Resume where the client can act', () => {

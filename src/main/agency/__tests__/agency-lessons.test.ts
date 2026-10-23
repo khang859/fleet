@@ -3,7 +3,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgencyQuestion } from '../../../shared/agency';
 import { lessonTopic } from '../../../shared/agency-lessons';
 import type { PlanInput } from '../../../shared/agency-plan';
 import { projectCrewDir } from '../crew/catalog';
@@ -12,12 +11,19 @@ import type { AdmiralCompletion } from '../understanding';
 import { factsGit, fakeGh, REPO } from './fixture';
 import { planHelpers } from './plan-helpers';
 
-/** Crew lessons: the review after a job, its card, and what answering it writes. */
+/** Crew lessons: the review after a job, the lesson it writes, and Undo. */
 
 const SHIPPED_CREW = fileURLToPath(new URL('../../../../resources/crew', import.meta.url));
 const BUNDLED_BUILDER = join(SHIPPED_CREW, 'roles', 'builder.md');
 
-const LESSON = {
+const LESSON: {
+  role: string;
+  cue: string;
+  lesson: string;
+  evidence: string;
+  replace: string | null;
+  with: string;
+} = {
   role: 'builder',
   cue: 'When the project has a lint step',
   lesson: 'Run lint before you finish.',
@@ -74,48 +80,70 @@ const PLAN: PlanInput = {
   budget: { usd: 5 }
 };
 
-const { openJob, approve } = planHelpers(() => service, PLAN);
+const { openJob, startPlan } = planHelpers(() => service, PLAN);
 
 /** A job whose builder step ran, ended by the client's cancel. */
 async function endedJob(stepStatus: 'done' | 'pending' = 'done'): Promise<number> {
   const { job, tools } = openJob();
-  await approve(tools);
+  await startPlan(tools);
   service.store.plans.setStepStatus(job.id, 'builder-1', stepStatus);
   service.store.applyJobEvent(job.id, { type: 'cancel' }, 'test');
   service.store.finishClose(job.id, 'cleanup done');
   return job.id;
 }
 
-const lessonCards = (): AgencyQuestion[] =>
-  service.store
-    .listQuestions(REPO.repoId, { statuses: ['open'] })
-    .filter((q) => q.kind === 'crew_lesson');
-
 const projectBuilder = (): string =>
   join(projectCrewDir(REPO.repoId, join(dir, 'home')), 'roles', 'builder.md');
 
+const lessons = () => service.lessons.list(REPO.repoId);
+
+async function builderRole() {
+  const role = (await service.crewCatalog(REPO.repoId)).roles.find((r) => r.name === 'builder');
+  if (role === undefined) throw new Error('no builder');
+  return role;
+}
+
+/** The project's builder saved from Settings with these instructions. */
+async function editBuilder(instructions: string): Promise<void> {
+  const builder = await builderRole();
+  const draft = {
+    name: 'builder',
+    description: builder.description,
+    runtime: builder.runtime,
+    stack: builder.stack,
+    instructions: builder.prompt
+  };
+  const saved = await service.saveCrewRole({
+    repoId: REPO.repoId,
+    base: draft,
+    role: { ...draft, instructions }
+  });
+  expect(saved.ok).toBe(true);
+}
+
 describe('the review after a job', () => {
-  it('puts a lesson the record supports up as a card on the Bridge', async () => {
+  it("writes a lesson the record supports into the project's copy of the role", async () => {
+    const bundled = readFileSync(BUNDLED_BUILDER, 'utf8');
     answers = [lessonAnswer()];
     const jobId = await endedJob();
     await service.lessons.review(jobId);
     expect(calls).toHaveLength(1);
     expect(calls[0].user).toContain('<<<role: builder>>>');
     expect(calls[0].user).toContain('<<<record>>>');
-    const [card] = lessonCards();
-    expect(card).toMatchObject({
-      jobId: null,
-      question: 'Teach the builder role?',
-      options: [{ label: 'This project' }, { label: 'All projects' }, { label: 'Not now' }],
-      lesson: { jobId, role: 'builder', source: 'bundled', replace: LESSON.replace }
-    });
-    expect(card.context).toContain(LESSON.evidence);
+    expect(readFileSync(projectBuilder(), 'utf8')).toContain(LESSON.with);
+    expect(readFileSync(BUNDLED_BUILDER, 'utf8')).toBe(bundled);
+    expect(await builderRole()).toMatchObject({ source: 'project', runtime: 'claude' });
+    expect(lessons()).toMatchObject([
+      { jobId, role: 'builder', replace: LESSON.replace, with: LESSON.with, undoneAt: null }
+    ]);
+    expect(service.store.listQuestions(REPO.repoId, { statuses: ['open'] })).toEqual([]);
   });
 
-  it('puts nothing up when the model finds no lesson', async () => {
+  it('writes nothing when the model finds no lesson', async () => {
     await service.lessons.review(await endedJob());
     expect(calls).toHaveLength(1);
-    expect(lessonCards()).toEqual([]);
+    expect(existsSync(projectBuilder())).toBe(false);
+    expect(lessons()).toEqual([]);
   });
 
   it('sends a refused lesson back once with the reason', async () => {
@@ -123,14 +151,14 @@ describe('the review after a job', () => {
     await service.lessons.review(await endedJob());
     expect(calls).toHaveLength(2);
     expect(calls[1].user).toContain('It was refused: "replace" must be text of the builder role');
-    expect(lessonCards()).toHaveLength(1);
+    expect(lessons()).toHaveLength(1);
   });
 
   it('drops a lesson refused twice', async () => {
     answers = [lessonAnswer({ replace: 'Nope.' }), lessonAnswer({ replace: 'Nope.' })];
     await service.lessons.review(await endedJob());
     expect(calls).toHaveLength(2);
-    expect(lessonCards()).toEqual([]);
+    expect(lessons()).toEqual([]);
   });
 
   it('skips a job whose crew never started, and a job reviewed already', async () => {
@@ -142,89 +170,64 @@ describe('the review after a job', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('skips the model while a lesson card is open', async () => {
-    answers = [lessonAnswer()];
-    await service.lessons.review(await endedJob());
-    await service.lessons.review(await endedJob());
-    expect(calls).toHaveLength(1);
-  });
-
   it('runs when cleanup ends a job', async () => {
     answers = [lessonAnswer()];
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     service.store.plans.setStepStatus(job.id, 'builder-1', 'done');
     expect(service.closeJob({ jobId: job.id, action: 'cancel' }).ok).toBe(true);
-    await vi.waitFor(() => expect(lessonCards()).toHaveLength(1));
+    await vi.waitFor(() => expect(lessons()).toHaveLength(1));
   });
 });
 
-describe('answering a lesson card', () => {
-  async function card(): Promise<AgencyQuestion> {
+describe('undoing a lesson', () => {
+  async function learned(): Promise<number> {
     answers = [lessonAnswer()];
     await service.lessons.review(await endedJob());
-    const [q] = lessonCards();
-    return q;
+    const [lesson] = lessons();
+    return lesson.id;
   }
 
-  it("This project saves the project's copy and leaves the bundled role alone", async () => {
-    const bundled = readFileSync(BUNDLED_BUILDER, 'utf8');
-    const q = await card();
-    expect((await service.answerClient({ id: q.id, option: 0 }))?.status).toBe('answered');
-    expect(readFileSync(projectBuilder(), 'utf8')).toContain(LESSON.with);
-    expect(readFileSync(BUNDLED_BUILDER, 'utf8')).toBe(bundled);
-    const role = (await service.crewCatalog(REPO.repoId)).roles.find((r) => r.name === 'builder');
-    expect(role).toMatchObject({ source: 'project', runtime: 'claude' });
-  });
-
-  it("All projects saves the user's own copy", async () => {
-    const q = await card();
-    await service.answerClient({ id: q.id, option: 1 });
-    expect(readFileSync(join(dir, 'user-crew', 'roles', 'builder.md'), 'utf8')).toContain(
-      LESSON.with
-    );
-    expect(existsSync(projectBuilder())).toBe(false);
-  });
-
-  it('Not now writes nothing and the lesson is not proposed again', async () => {
-    const q = await card();
-    await service.answerClient({ id: q.id, option: 2 });
-    expect(existsSync(projectBuilder())).toBe(false);
+  it('puts the old text back, and the lesson is not learned again', async () => {
+    const id = await learned();
+    expect(await service.lessons.undo(id)).toEqual({ ok: true });
+    const role = readFileSync(projectBuilder(), 'utf8');
+    expect(role).toContain(LESSON.replace);
+    expect(role).not.toContain(LESSON.with);
+    expect(lessons()[0].undoneAt).not.toBeNull();
     expect(
       service.store.preferences.topicDeclined(REPO.repoId, lessonTopic('builder', LESSON.cue))
     ).toBe(true);
+
     answers = [lessonAnswer(), lessonAnswer()];
     await service.lessons.review(await endedJob());
     expect(calls.at(-2)?.user).toContain('when the project has a lint step');
-    expect(lessonCards()).toEqual([]);
+    expect(lessons()).toHaveLength(1);
   });
 
-  it('refuses an answer without one of its options', async () => {
-    const q = await card();
-    expect(await service.answerClient({ id: q.id, text: 'Sure.' })).toBeNull();
-    expect(lessonCards()).toHaveLength(1);
+  it('takes out a lesson that added a paragraph', async () => {
+    answers = [lessonAnswer({ replace: null, with: 'Run lint before you finish.' })];
+    await service.lessons.review(await endedJob());
+    const before = (await builderRole()).prompt;
+    expect(await service.lessons.undo(lessons()[0].id)).toEqual({ ok: true });
+    const after = (await builderRole()).prompt;
+    expect(before).toContain('Run lint before you finish.');
+    expect(after).not.toContain('Run lint before you finish.');
   });
 
-  it('refuses the answer when the role no longer has the replaced text', async () => {
-    const q = await card();
-    const builder = (await service.crewCatalog(REPO.repoId)).roles.find(
-      (r) => r.name === 'builder'
-    );
-    if (builder === undefined) throw new Error('no builder');
-    const draft = {
-      name: 'builder',
-      description: builder.description,
-      runtime: builder.runtime,
-      stack: builder.stack,
-      instructions: builder.prompt
-    };
-    const saved = await service.saveCrewRole({
-      repoId: REPO.repoId,
-      base: draft,
-      role: { ...draft, instructions: 'You are a Builder. Ship it.' }
+  it('refuses once the client changed that part of the role', async () => {
+    const id = await learned();
+    await editBuilder('You are a Builder. Ship it.');
+    expect(await service.lessons.undo(id)).toEqual({
+      ok: false,
+      reason: 'The builder role changed there since. Edit it in Settings instead.'
     });
-    expect(saved.ok).toBe(true);
-    expect(await service.answerClient({ id: q.id, option: 1 })).toBeNull();
-    expect(lessonCards()).toHaveLength(1);
+    expect(lessons()[0].undoneAt).toBeNull();
+  });
+
+  it('refuses a second undo', async () => {
+    const id = await learned();
+    await service.lessons.undo(id);
+    expect(await service.lessons.undo(id)).toMatchObject({ ok: false });
   });
 });

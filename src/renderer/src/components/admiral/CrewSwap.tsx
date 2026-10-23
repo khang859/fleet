@@ -11,9 +11,8 @@ import { useRefusable } from './use-refusable';
 
 /**
  * Swap on a crew card: the role, runtime and model the member's step moves
- * to. Sending it makes a plan change card in the conversation, where the
- * client picks whether the new member continues the work or starts over;
- * nothing stops until they approve it.
+ * to. Sending it makes the client's own plan change, which starts as soon
+ * as Fleet's checks pass.
  */
 export function CrewSwapForm({
   repoId,
@@ -114,13 +113,13 @@ export function CrewSwapForm({
         />
       </div>
       <p className="text-[11px] text-fleet-text-subtle">
-        This makes a plan change. The member keeps working until you approve it.
+        This changes the plan. It starts as soon as Fleet&apos;s checks pass.
       </p>
       {swap.refused !== null && <p className="text-[11px] text-red-400">{swap.refused}</p>}
       <div className="flex justify-end gap-2">
         <OnboardingButton onClick={onClose}>Cancel</OnboardingButton>
         <OnboardingButton type="submit" kind="primary" disabled={swap.busy}>
-          Propose swap
+          Swap
         </OnboardingButton>
       </div>
     </form>

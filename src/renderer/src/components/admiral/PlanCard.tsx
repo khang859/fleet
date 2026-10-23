@@ -3,38 +3,26 @@ import { Check, CircleAlert, Lock } from 'lucide-react';
 import type {
   AgencyJobDetail,
   AgencyPlanVersion,
-  MemberBase,
   PlanAction,
   PlanUse,
-  StepEnvFiles,
-  SwapChoice
+  StepEnvFiles
 } from '../../../../shared/agency-jobs';
-import {
-  diffLine,
-  withLocalBranches,
-  type NewRole,
-  type PlanInput
-} from '../../../../shared/agency-plan';
+import { withLocalBranches, type NewRole, type PlanInput } from '../../../../shared/agency-plan';
 import { jobDisplayId, TERMINAL_JOB_STATES } from '../../../../shared/agency';
 import { useAgencyStore } from '../../store/agency-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { CancelConfirm } from './JobClose';
 import { OnboardingButton } from './onboarding-ui';
-import { PillRadio } from '../ui/pill-radio';
 import { PlanEditor } from './PlanEditor';
-import { baseChoice, formatUsd, plural, runtimeName } from './job-view';
+import { formatUsd, plural, runtimeName } from './job-view';
 import { useRefusable, type RefusableAction } from './use-refusable';
 
 /**
- * A plan version the Admiral proposed, as the card the client decides on:
- * the steps, what each hands back, what the Admiral asks before doing, the
- * budget, and Approve, Change something and Reject.
- *
- * A change to an approved plan also says what changes and what approving it
- * does: the crew it stops, the questions it withdraws, a choice for each
- * running step it swaps, and what was delivered and spent so far. Only the
- * newest waiting version takes a decision; any other one says what became of
- * it, in one line.
+ * A plan version, as its row in the chat. A plan starts on its own once
+ * Fleet's checks pass, so the newest version of an open job shows what runs,
+ * with Stop and Change something. A version the checks held back also says
+ * why, while the Admiral fixes it. Any other version says what became of it,
+ * in one line.
  */
 export function PlanCard({
   version,
@@ -44,9 +32,7 @@ export function PlanCard({
   detail: AgencyJobDetail;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
-  const started = startedOnItsOwn(version, detail);
-  if (version.status !== 'proposed' && !started)
-    return <SettledPlan version={version} detail={detail} />;
+  if (!current(version, detail)) return <SettledPlan version={version} detail={detail} />;
   if (editing) {
     return (
       <PlanEditor
@@ -63,65 +49,17 @@ export function PlanCard({
       />
     );
   }
-  if (started)
-    return <StartedPlan version={version} detail={detail} onEdit={() => setEditing(true)} />;
   return <OpenPlan version={version} detail={detail} onEdit={() => setEditing(true)} />;
 }
 
-/**
- * Fleet approved the version on its own, it is still the newest, and the job
- * is open: the client can still stop the job or change the plan.
- */
-function startedOnItsOwn(version: AgencyPlanVersion, detail: AgencyJobDetail): boolean {
+/** The newest version of an open job, started or held back by a check. */
+function current(version: AgencyPlanVersion, detail: AgencyJobDetail): boolean {
   const { state } = detail.job;
   return (
-    version.status === 'approved' &&
-    version.autoStartUsd !== null &&
+    (version.status === 'approved' || version.status === 'proposed') &&
     detail.versions[detail.versions.length - 1]?.id === version.id &&
     state !== 'closing' &&
     !TERMINAL_JOB_STATES.includes(state)
-  );
-}
-
-/** A plan the project's trust level started: what runs, and Stop and Change instead of Approve. */
-function StartedPlan({
-  version,
-  detail,
-  onEdit
-}: {
-  version: AgencyPlanVersion;
-  detail: AgencyJobDetail;
-  onEdit: () => void;
-}): React.JSX.Element {
-  const { plan } = version;
-  const [stopping, setStopping] = useState(false);
-  return (
-    <section
-      aria-label={`Plan v${version.version}`}
-      className="flex flex-col overflow-hidden rounded-lg border border-fleet-border-strong bg-fleet-surface"
-    >
-      <PlanSteps version={version} />
-      <UsesChips uses={version.uses} />
-      {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
-      <div className="flex flex-col gap-2 px-3.5 py-3">
-        {stopping ? (
-          <CancelConfirm job={detail.job} onKeep={() => setStopping(false)} />
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-fleet-text-muted">
-              Budget ${formatUsd(plan.budget.usd)}
-              {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
-              {plural(plan.steps.length, 'step')}
-            </span>
-            <div className="flex-1" />
-            <OnboardingButton kind="ghost" onClick={() => setStopping(true)}>
-              Stop
-            </OnboardingButton>
-            <OnboardingButton onClick={onEdit}>Change something</OnboardingButton>
-          </div>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -153,6 +91,7 @@ export function UseChipList({ uses }: { uses: PlanUse[] }): React.JSX.Element {
   );
 }
 
+/** The plan in force or held back: what runs, what the checks found, and Stop and Change. */
 function OpenPlan({
   version,
   detail,
@@ -163,9 +102,9 @@ function OpenPlan({
   onEdit: () => void;
 }): React.JSX.Element {
   const { plan, checks } = version;
-  const [swaps, setSwaps] = useState<Record<string, SwapChoice>>({});
-  const [bases, setBases] = useState<Record<string, BaseChoice>>({});
-  const decision = useDecision(detail.job.id);
+  const [stopping, setStopping] = useState(false);
+  const edit = useDecision(detail.job.id);
+  const held = version.status === 'proposed';
   return (
     <section
       aria-label={`Plan v${version.version}`}
@@ -173,26 +112,14 @@ function OpenPlan({
     >
       <PlanSteps version={version} />
       <UsesChips uses={version.uses} />
-      {version.kind === 'change' && (
-        <ChangeBlock
-          version={version}
-          swaps={swaps}
-          onSwap={(stepId, choice) => setSwaps({ ...swaps, [stepId]: choice })}
-        />
-      )}
       {plan.newRoles.length > 0 && <NewRoles roles={plan.newRoles} />}
       {plan.steps.some((s) => s.deliverables.length > 0) && <YouGet version={version} />}
-      <StartsFrom
-        bases={checks.bases}
-        choice={bases}
-        onChoose={(member, choice) => setBases({ ...bases, [member]: choice })}
-      />
       <EnvFiles files={checks.envFiles} />
       {(plan.asksFirst.length > 0 || checks.issues.length > 0) && (
         <Cautions
           version={version}
           onUseBranch={() =>
-            void decision.run({
+            void edit.run({
               planVersionId: version.id,
               action: 'edit',
               plan: withLocalBranches(plan)
@@ -200,20 +127,36 @@ function OpenPlan({
           }
         />
       )}
-      <DecisionBar
-        version={version}
-        decision={decision}
-        onApprove={(acceptCost) =>
-          void decision.run({
-            planVersionId: version.id,
-            action: 'approve',
-            swaps,
-            baseChoice: bases,
-            acceptCost
-          })
-        }
-        onEdit={onEdit}
-      />
+      <div className="flex flex-col gap-2 px-3.5 py-3">
+        {held && (
+          <p className="text-xs text-fleet-text-muted">
+            Fleet&apos;s checks held this plan back. It starts once that is fixed.
+          </p>
+        )}
+        {stopping ? (
+          <CancelConfirm job={detail.job} onKeep={() => setStopping(false)} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-fleet-text-muted">
+              Budget ${formatUsd(plan.budget.usd)}
+              {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
+              {plural(plan.steps.length, 'step')}
+            </span>
+            <div className="flex-1" />
+            <OnboardingButton kind="ghost" onClick={() => setStopping(true)}>
+              Stop
+            </OnboardingButton>
+            <OnboardingButton disabled={edit.busy} onClick={onEdit}>
+              Change something
+            </OnboardingButton>
+          </div>
+        )}
+        {edit.refused !== null && (
+          <p role="status" className="text-[11px] text-amber-700 dark:text-amber-400/90">
+            {edit.refused}
+          </p>
+        )}
+      </div>
     </section>
   );
 }
@@ -225,18 +168,13 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
     <Block>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 whitespace-nowrap">
         <Label tone={change ? 'amber' : 'muted'}>
-          {change ? `PLAN CHANGE · v${version.version} · NEEDS YOUR OK` : 'PLAN'}
+          {change ? `PLAN CHANGE · v${version.version}` : 'PLAN'}
         </Label>
         <span className="rounded bg-fleet-surface-2 px-1.5 text-[11px] text-fleet-text-muted">
           {plan.playbook}
         </span>
         {version.author === 'client' && (
           <span className="text-[11px] text-fleet-text-subtle">your edit</span>
-        )}
-        {version.autoStartUsd !== null && (
-          <span className="rounded bg-blue-500/10 px-1.5 text-[11px] text-blue-600 dark:text-blue-400">
-            Started on its own · within ${formatUsd(version.autoStartUsd)}
-          </span>
         )}
       </div>
       <p className="text-[13px] text-fleet-text-secondary">{plan.summary}</p>
@@ -261,61 +199,6 @@ function PlanSteps({ version }: { version: AgencyPlanVersion }): React.JSX.Eleme
   );
 }
 
-/** What a change changes against the approved plan, and what approving it does. */
-export function ChangeBlock({
-  version,
-  swaps,
-  onSwap
-}: {
-  version: AgencyPlanVersion;
-  swaps: Record<string, SwapChoice>;
-  onSwap: (stepId: string, choice: SwapChoice) => void;
-}): React.JSX.Element {
-  const { effects } = version;
-  return (
-    <Block>
-      <Label>WHAT CHANGES</Label>
-      <ul className="flex flex-col gap-0.5 text-xs text-fleet-text-secondary">
-        {version.diff.length === 0 ? (
-          <li>Nothing changes from v{version.parentVersion}.</li>
-        ) : (
-          version.diff.map((entry, i) => <li key={i}>{diffLine(entry)}</li>)
-        )}
-      </ul>
-      {effects !== null && (
-        <ul className="flex flex-col gap-0.5 text-xs text-fleet-text-muted">
-          {effects.stopCrew.length > 0 && (
-            <li className="text-amber-700 dark:text-amber-400">
-              Stops {effects.stopCrew.map((c) => c.label).join(', ')} when you approve
-            </li>
-          )}
-          {effects.withdrawnQuestions.length > 0 && (
-            <li>Withdraws {plural(effects.withdrawnQuestions.length, 'open question')}</li>
-          )}
-          <li>
-            ${formatUsd(effects.spendUsd)} spent so far ·{' '}
-            {plural(effects.deliveredResults, 'result')} delivered
-          </li>
-        </ul>
-      )}
-      {effects?.swaps.map((swap) => (
-        <div key={swap.stepId} className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-fleet-text-secondary">
-            {swap.stepId}: new {swap.fields.join(' and ')}. Its work so far
-          </span>
-          <PillRadio
-            label={`What ${swap.stepId} does with its work so far`}
-            value={swaps[swap.stepId] ?? 'continue'}
-            options={SWAP_OPTIONS}
-            onChange={(choice) => onSwap(swap.stepId, choice)}
-            className="bg-fleet-bg"
-          />
-        </div>
-      ))}
-    </Block>
-  );
-}
-
 /** The env files each step's crew get a copy of, so the client sees where its secrets go. */
 export function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Element | null {
   if (files.length === 0) return null;
@@ -332,7 +215,7 @@ export function EnvFiles({ files }: { files: StepEnvFiles[] }): React.JSX.Elemen
   );
 }
 
-/** Roles the plan brings, each with what it says, saved only if the client approves. */
+/** Roles the plan brings, each with what it says, saved in the project's crew when it starts. */
 export function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
   return (
     <Block>
@@ -359,8 +242,8 @@ export function NewRoles({ roles }: { roles: NewRole[] }): React.JSX.Element {
         </details>
       ))}
       <p className="text-[11px] text-fleet-text-subtle">
-        Approving saves {roles.length === 1 ? 'it' : 'them'} in this project&apos;s crew in Fleet.
-        The repository gets no file.
+        Saved in this project&apos;s crew in Fleet when the plan starts. The repository gets no
+        file.
       </p>
     </Block>
   );
@@ -386,7 +269,7 @@ function YouGet({ version }: { version: AgencyPlanVersion }): React.JSX.Element 
   );
 }
 
-/** What the Admiral asks before doing, and what the pre-approval check found. */
+/** What the Admiral asks before doing, and what Fleet's checks found. */
 export function Cautions({
   version,
   onUseBranch
@@ -463,183 +346,9 @@ function useDecision(jobId: number): Decision {
   );
 }
 
-export type BaseChoice = 'default' | 'head';
-
 const shortSha = (sha: string | null): string => sha?.slice(0, 7) ?? 'no commit';
 
-/**
- * Where each member's work starts, pinned at approval: its default branch
- * tip, or its current HEAD when the client picks it. A member an earlier
- * approval pinned keeps its pin.
- */
-export function StartsFrom({
-  bases,
-  choice,
-  onChoose
-}: {
-  bases: MemberBase[];
-  choice: Record<string, BaseChoice>;
-  onChoose: (member: string, choice: BaseChoice) => void;
-}): React.JSX.Element | null {
-  // A plan change keeps the commits the first approval pinned.
-  if (bases.every((b) => b.pinned !== null)) return null;
-  return (
-    <Block>
-      <Label>STARTS FROM</Label>
-      {bases.map((base) => (
-        <div key={base.member} className="flex flex-wrap items-center gap-2 text-xs">
-          {bases.length > 1 && <span className="text-fleet-text-secondary">{base.member}</span>}
-          <BaseValue base={base} value={choice[base.member] ?? 'default'} onChoose={onChoose} />
-        </div>
-      ))}
-    </Block>
-  );
-}
-
-function BaseValue({
-  base,
-  value,
-  onChoose
-}: {
-  base: MemberBase;
-  value: BaseChoice;
-  onChoose: (member: string, choice: BaseChoice) => void;
-}): React.JSX.Element {
-  if (base.pinned !== null) {
-    return (
-      <span className="font-mono text-fleet-text-muted">
-        {shortSha(base.pinned.sha)}
-        <span className="font-sans text-fleet-text-subtle"> · pinned by the approved plan</span>
-      </span>
-    );
-  }
-  const tip = `${base.defaultBranch ?? 'default'} ${shortSha(base.defaultSha)}`;
-  if (!baseChoice(base)) {
-    return (
-      <span className="font-mono text-fleet-text-muted">
-        {base.defaultSha === null ? `HEAD ${shortSha(base.headSha)}` : tip}
-      </span>
-    );
-  }
-  return (
-    <PillRadio
-      label={`Where ${base.member} starts`}
-      value={value}
-      options={[
-        { value: 'default', label: tip },
-        { value: 'head', label: `${base.headBranch ?? 'HEAD'} ${shortSha(base.headSha)}` }
-      ]}
-      onChange={(next) => onChoose(base.member, next)}
-      className="bg-fleet-bg font-mono"
-    />
-  );
-}
-
-/** The budget line and Approve, Change something and Reject, with a note for a reject. */
-function DecisionBar({
-  version,
-  decision,
-  onApprove,
-  onEdit
-}: {
-  version: AgencyPlanVersion;
-  decision: Decision;
-  /** `acceptCost`: the client accepted the steps whose cost Fleet cannot measure. */
-  onApprove: (acceptCost: boolean) => void;
-  onEdit: () => void;
-}): React.JSX.Element {
-  const { plan } = version;
-  const { busy, refused, run: decide } = decision;
-  const [rejecting, setRejecting] = useState(false);
-  const [note, setNote] = useState('');
-  const blocked = version.checks.issues.some((i) => i.severity === 'block');
-  const unmeasured = version.checks.issues.filter((i) => i.severity === 'accept');
-  const [accepted, setAccepted] = useState(false);
-
-  return (
-    <div className="flex flex-col gap-2 px-3.5 py-3">
-      {rejecting ? (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const text = note.trim();
-            if (text !== '')
-              void decide({ planVersionId: version.id, action: 'reject', note: text });
-          }}
-        >
-          <textarea
-            value={note}
-            autoFocus
-            rows={2}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="What should the Admiral do instead?"
-            aria-label="Why you reject the plan"
-            className="resize-none rounded-md border border-fleet-border bg-fleet-bg px-2 py-1.5 text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
-          />
-          <div className="flex justify-end gap-2">
-            <OnboardingButton kind="ghost" onClick={() => setRejecting(false)}>
-              Cancel
-            </OnboardingButton>
-            <OnboardingButton type="submit" disabled={busy || note.trim() === ''}>
-              Reject plan
-            </OnboardingButton>
-          </div>
-        </form>
-      ) : (
-        <>
-          {unmeasured.length > 0 && (
-            <label className="flex items-start gap-2 text-xs text-fleet-text">
-              <input
-                type="checkbox"
-                checked={accepted}
-                onChange={(e) => setAccepted(e.target.checked)}
-                className="fleet-accent-input mt-0.5"
-              />
-              <span>
-                I accept that the budget may not count {unmeasured.map((i) => i.step).join(', ')}.
-                Fleet stops their crew at the cap.
-              </span>
-            </label>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-fleet-text-muted">
-              Budget ${formatUsd(plan.budget.usd)}
-              {plan.budget.weekPct !== undefined && ` and ${plan.budget.weekPct}% of week`} ·{' '}
-              {plural(plan.steps.length, 'step')}
-            </span>
-            <div className="flex-1" />
-            <OnboardingButton kind="ghost" disabled={busy} onClick={() => setRejecting(true)}>
-              Reject
-            </OnboardingButton>
-            <OnboardingButton disabled={busy} onClick={onEdit}>
-              Change something
-            </OnboardingButton>
-            <OnboardingButton
-              kind="primary"
-              disabled={busy || blocked || (unmeasured.length > 0 && !accepted)}
-              onClick={() => onApprove(accepted)}
-            >
-              {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
-            </OnboardingButton>
-          </div>
-        </>
-      )}
-      {!rejecting && (
-        <p className="text-[11px] text-fleet-text-subtle">
-          Cloud costs, such as Neon, Vercel or AWS, are not counted in the budget.
-        </p>
-      )}
-      {refused !== null && (
-        <p role="status" className="text-[11px] text-amber-700 dark:text-amber-400/90">
-          {refused}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Where a one-repository job starts, for its approved line. */
+/** Where a one-repository job starts, for its started line. */
 function baseNote(version: AgencyPlanVersion): string {
   const pins = Object.values(version.bases ?? {});
   return pins.length === 1 ? ` · from ${shortSha(pins[0].sha)}` : '';
@@ -659,11 +368,11 @@ function SettledPlan({
     switch (version.status) {
       case 'approved':
         return {
-          text: `${name} approved · ${plural(version.plan.steps.length, 'step')}, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
+          text: `${name} started · ${plural(version.plan.steps.length, 'step')}, $${formatUsd(version.plan.budget.usd)}${baseNote(version)}`,
           icon: <Check size={12} className="shrink-0 text-green-500" />
         };
       case 'superseded':
-        return { text: `${name} was approved, then changed by a later version`, icon: null };
+        return { text: `${name} ran, then a later version changed it`, icon: null };
       case 'rejected':
         return {
           text: `You rejected ${name}${version.decisionNote ? `: ${version.decisionNote}` : ''}`,
@@ -716,8 +425,3 @@ function Label({
     </h4>
   );
 }
-
-const SWAP_OPTIONS: ReadonlyArray<{ value: SwapChoice; label: string }> = [
-  { value: 'continue', label: 'Continue its work' },
-  { value: 'restart', label: 'Start over' }
-];

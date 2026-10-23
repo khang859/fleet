@@ -432,14 +432,19 @@ describe('Admiral turn', () => {
     );
   });
 
-  it('tells the Admiral to weigh plan edits, rejects and answers as lasting preferences, once per topic', () => {
+  it('tells the Admiral to save lasting preferences on its own, without asking', () => {
     expect(ADMIRAL_SYSTEM_PROMPT).toContain(
-      'Fleet wakes you when the client edits a plan, asks for a change to it, rejects it or swaps a step, with what changed. After that, and after an answer to a question, consider whether it is a lasting preference'
+      'After an answer to a question, or a change the client made to a plan, consider whether it is a lasting preference'
     );
-    expect(ADMIRAL_SYSTEM_PROMPT).toContain('Ask at most once per topic.');
-    expect(ADMIRAL_SYSTEM_PROMPT).toContain(
-      'Never ask to remember what a line in your note already says.'
-    );
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('Do not ask first and do not tell them');
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('Never save what a line in your note already says.');
+  });
+
+  it('tells the Admiral to write to the client only to ask intent, report ready work, or say it is stuck', () => {
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('Write to them in three cases only:');
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('While work runs, say nothing to the client');
+    expect(ADMIRAL_SYSTEM_PROMPT).toContain('the client does not approve it');
+    expect(ADMIRAL_SYSTEM_PROMPT).not.toContain('anything outside the plan');
   });
 
   it('marks a line the client chose over a CLAUDE.md rule, and tells the Admiral to pass it on', async () => {
@@ -462,19 +467,6 @@ describe('Admiral turn', () => {
       'P1. Skip docs unless asked. (from CLAUDE.md, 2026-10-18) (overrides CLAUDE.md)'
     );
     expect(ADMIRAL_SYSTEM_PROMPT).toContain('say so in the brief of every crew member it concerns');
-  });
-
-  it('tells the Admiral what Fleet does on its own under the trust level, and no more', async () => {
-    agency.store.preferences.setTrust(REPO.repoId, { level: 'pr', autoStartUsd: 4 });
-
-    const { rounds } = await turn();
-
-    const note = rounds[0].messages.map(text).find((t) => t.includes('trust level'));
-    expect(note).toContain(
-      "The client set this project's trust level to Show me the PR. Fleet itself approves a first plan you propose"
-    );
-    expect(note).toContain('within $4.00');
-    expect(note).toContain('Nothing else changes for you: propose plans as always.');
   });
 
   it('refuses a turn whose thread is not the scope it claims', async () => {

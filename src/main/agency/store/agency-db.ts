@@ -449,6 +449,34 @@ const MIGRATIONS: readonly string[] = [
   ALTER TABLE plan_versions ADD COLUMN uses_json TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE plan_versions ADD COLUMN auto_start_usd REAL;
   ALTER TABLE merge_runs ADD COLUMN started_by TEXT NOT NULL DEFAULT 'client';
+  `,
+  // One mode: settings changes apply at once, so one still waiting on a card
+  // never will, and the trust levels and Ship it merges are gone.
+  `
+  UPDATE settings_proposals SET status = 'refused', decided_at = created_at WHERE status = 'pending';
+  DROP TABLE project_trust;
+  ALTER TABLE merge_runs DROP COLUMN started_by;
+  `,
+  // Learning is silent: the Admiral writes client lines and crew lessons at
+  // once, so a Remember this? or Teach the role? card still up never will.
+  `
+  UPDATE questions SET status = 'withdrawn', withdrawn_reason = 'Fleet learns on its own now'
+    WHERE kind IN ('client_file', 'crew_lesson') AND status IN ('open', 'hidden');
+  CREATE TABLE crew_lessons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    job_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    cue TEXT NOT NULL,
+    lesson TEXT NOT NULL,
+    replace_text TEXT,
+    with_text TEXT NOT NULL,
+    path TEXT NOT NULL,
+    created_copy INTEGER NOT NULL,
+    applied_at INTEGER NOT NULL,
+    undone_at INTEGER
+  );
+  CREATE INDEX crew_lessons_project ON crew_lessons(project_id, applied_at);
   `
 ];
 

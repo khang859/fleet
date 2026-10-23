@@ -1,7 +1,7 @@
 import { ACCEPTS_RESULTS, type AgencyResult, type PrState } from '../../../shared/agency-jobs';
 import type { PrReview } from '../../../shared/pr-review';
 import { joinOnce } from '../join-once';
-import type { GhRun } from '../projects/gh';
+import { ghLogin, type GhRun } from '../projects/gh';
 import { loadSetup } from '../projects/project-store';
 import { memberOf, projectMembers, type ProjectMember } from '../projects/workspace-projects';
 import type { AgencyStore, AgencyTouched } from '../store/agency-store';
@@ -22,6 +22,8 @@ export type PrCardsDeps = {
   home: () => string;
   now: () => number;
   changed: (touched: AgencyTouched[]) => void;
+  /** Every PR of a delivered job is merged on GitHub. */
+  allMerged: (jobId: number) => void;
 };
 
 /**
@@ -33,6 +35,8 @@ export type PrCardsDeps = {
 export class PrCards {
   private readonly refreshing = new Map<number, Promise<void>>();
   private readonly ticker = new Ticker();
+  /** The client's GitHub login, read once it is needed and kept for the session. */
+  private login: string | null = null;
 
   constructor(private readonly deps: PrCardsDeps) {}
 
@@ -66,6 +70,9 @@ export class PrCards {
       if (this.record(id, seen)) changed = true;
     }
     if (changed) this.deps.changed([{ repoId: job.repoId, jobId }]);
+    if (job.state === 'delivered' && allMerged(store.results.forJob(jobId))) {
+      this.deps.allMerged(jobId);
+    }
   }
 
   /** While jobs under way have open PRs, ask GitHub about them every `intervalMs`. */
@@ -84,8 +91,8 @@ export class PrCards {
   }
 
   /**
-   * What an open PR waits on by its member's setup, and its open bot
-   * comments. When GitHub cannot be read it waits on everything setup lists,
+   * What an open PR waits on by its member's setup, and its open comments
+   * from the client and the listed bots. When GitHub cannot be read it waits on everything setup lists,
    * and keeps what it knew of the rest.
    */
   async withReview(
@@ -100,7 +107,8 @@ export class PrCards {
       requiredChecks: [],
       reviewBots: []
     };
-    const facts = await readPrReview(this.deps.gh, member.root, pr.url);
+    const client = await this.clientLogin(member.root);
+    const facts = await readPrReview(this.deps.gh, member.root, pr.url, client);
     const review: PrReview =
       facts === null
         ? {
@@ -111,6 +119,12 @@ export class PrCards {
           }
         : prReview(facts, wants, this.deps.now());
     return { ...pr, review };
+  }
+
+  /** Who the client is on GitHub. A failed read is tried again next time. */
+  private async clientLogin(cwd: string): Promise<string | null> {
+    this.login ??= await ghLogin(this.deps.gh, cwd);
+    return this.login;
   }
 
   /**
@@ -146,6 +160,12 @@ export class PrCards {
     await this.refreshPrs(jobId, 0);
     return prCloseNotes(this.deps.store.results.forJob(jobId));
   }
+}
+
+/** Whether the results hold a PR, and GitHub last showed each one merged. */
+export function allMerged(results: AgencyResult[]): boolean {
+  const prs = results.flatMap((r) => (r.body.kind === 'pr' ? [r.body.pr] : []));
+  return prs.length > 0 && prs.every((pr) => pr.state === 'merged');
 }
 
 /** A delivered PR closed without merging is worth a line in the close summary. */

@@ -1667,7 +1667,6 @@ describe('Admiral panes', () => {
           onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
           leftovers: [],
           clientFileChanged: false,
-          trust: { level: 'ask', autoStartUsd: null },
           pastJobs: [],
           settingsCards: [],
           decisions: [],

@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
 import { clockTime } from '../../../../shared/agency-crew';
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
-import type { SettingsCard } from '../../../../shared/agency-settings';
-import type { TrustLevel } from '../../../../shared/agency-projects';
 import type { AgencyPermission, PermissionState } from '../../../../shared/agency-permissions';
 import { jobDisplayId } from '../../../../shared/agency';
 import type {
   AgencyCrewMember,
   AgencyJobDetail,
-  AgencyPlanVersion,
   AgencyStep,
   StepStatus
 } from '../../../../shared/agency-jobs';
@@ -19,9 +16,8 @@ import { ClientFileNotice } from './ClientFileViews';
 import { CrewSwapForm } from './CrewSwap';
 import { CancelJob, DeliveredCard, LeftoverList, SECONDARY } from './JobClose';
 import { PermissionCard } from './PermissionCard';
-import { PlanCard, UseChipList } from './PlanCard';
+import { UseChipList } from './PlanCard';
 import { ResultCard } from './ResultCard';
-import { SettingsCardView } from './SettingsCard';
 import { QuestionCard, type QuestionAnswer } from './QuestionCard';
 import { useRefusable } from './use-refusable';
 import {
@@ -72,11 +68,7 @@ export function JobSheet({
 }): React.JSX.Element {
   const job = snapshot?.jobs.find((j) => j.id === jobId) ?? null;
   const { approved } = planVersions(detail);
-  const { pending, waiting, settings, delivered, crew, permissions, count } = waitingOnClient(
-    snapshot,
-    job,
-    detail
-  );
+  const { waiting, delivered, crew, permissions, count } = waitingOnClient(snapshot, job, detail);
 
   return (
     <aside
@@ -96,19 +88,16 @@ export function JobSheet({
         <WaitingSection
           count={count}
           delivered={delivered}
-          pending={pending}
           detail={detail}
           questions={waiting}
-          settings={settings}
           crew={crew}
           permissions={permissions}
-          clientFileChanged={snapshot?.clientFileChanged === true}
           onAnswer={onAnswer}
           onOpenSettings={onOpenSettings}
         />
       )}
 
-      {job !== null && <PlanSection detail={detail} trust={snapshot?.trust.level ?? 'ask'} />}
+      {job !== null && <PlanSection detail={detail} />}
 
       <CrewSection detail={detail} />
 
@@ -145,9 +134,7 @@ function waitingOnClient(
   job: AgencyJob | null,
   detail: AgencyJobDetail | undefined
 ): {
-  pending: AgencyPlanVersion | null;
   waiting: AgencyQuestion[];
-  settings: SettingsCard[];
   delivered: AgencyJob | null;
   crew: AgencyCrewMember[];
   permissions: AgencyPermission[];
@@ -158,9 +145,7 @@ function waitingOnClient(
     (i) => i.kind !== 'loading'
   );
   return {
-    pending: itemsOf(items, 'plan')[0]?.version ?? null,
     waiting: itemsOf(items, 'question').map((i) => i.question),
-    settings: itemsOf(items, 'settings').map((i) => i.card),
     delivered: itemsOf(items, 'delivered')[0]?.job ?? null,
     crew: itemsOf(items, 'crew').map((i) => i.member),
     permissions: itemsOf(items, 'permission').map((i) => i.permission),
@@ -207,32 +192,26 @@ export function LeftoversSection({
 }
 
 /**
- * Open questions, settings changes, a plan version, permission requests and
- * crew members waiting on the client, as cards.
+ * Open questions, permission requests and crew members waiting on the
+ * client, as cards.
  */
 function WaitingSection({
   count,
   delivered,
-  pending,
   detail,
   questions,
-  settings,
   crew,
   permissions,
-  clientFileChanged,
   onAnswer,
   onOpenSettings
 }: {
   count: number;
   /** The job on screen, when it waits on the client to accept it. */
   delivered: AgencyJob | null;
-  pending: AgencyPlanVersion | null;
   detail: AgencyJobDetail | undefined;
   questions: AgencyQuestion[];
-  settings: SettingsCard[];
   crew: AgencyCrewMember[];
   permissions: AgencyPermission[];
-  clientFileChanged: boolean;
   onAnswer: (question: AgencyQuestion, answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
 }): React.JSX.Element {
@@ -252,18 +231,13 @@ function WaitingSection({
           paneId={detail?.crew.find((c) => c.id === p.crewId)?.paneId ?? null}
         />
       ))}
-      {pending !== null && detail !== undefined && <PlanCard version={pending} detail={detail} />}
       {questions.map((q) => (
         <QuestionCard
           key={q.id}
           question={q}
           onAnswer={async (answer) => onAnswer(q, answer)}
           onOpenSettings={onOpenSettings}
-          clientFileChanged={clientFileChanged}
         />
-      ))}
-      {settings.map((card) => (
-        <SettingsCardView key={`s${card.id}`} card={card} />
       ))}
       {crew.map((member) => (
         <NeedsYouCard key={`c${member.id}`} member={member} />
@@ -309,25 +283,16 @@ export function NeedsYouCard({
   );
 }
 
-function PlanSection({
-  detail,
-  trust
-}: {
-  detail: AgencyJobDetail | undefined;
-  trust: TrustLevel;
-}): React.JSX.Element {
+function PlanSection({ detail }: { detail: AgencyJobDetail | undefined }): React.JSX.Element {
   const { pending, approved } = planVersions(detail);
-  const aside =
-    approved === null
-      ? undefined
-      : `v${approved.version} ${approved.autoStartUsd === null ? 'approved' : 'started on its own'}`;
+  const aside = approved === null ? undefined : `v${approved.version}`;
   return (
     <Section label="PLAN" gap="gap-1" aside={aside}>
       {approved === null || detail === undefined ? (
         <p className="text-[13px] text-fleet-text-muted">
           {pending === null
-            ? `The plan shows up here once the Admiral writes one: the crew, what you get back, and a budget. ${trust === 'ask' ? 'Nothing starts until you approve it.' : 'A small first plan starts on its own.'}`
-            : 'Nothing starts until you approve the plan above.'}
+            ? 'The plan shows up here once the Admiral writes one: the crew, what you get back, and a budget. It starts on its own.'
+            : 'A check held the plan. It starts once that is fixed.'}
         </p>
       ) : (
         <>
@@ -881,15 +846,13 @@ function JobHeading({
   );
 }
 
-/** The four steps of a job, for a client who has not run one yet; the third follows the trust level. */
-export function HowAJobGoes({ trust }: { trust: TrustLevel }): React.JSX.Element {
+/** The four steps of a job, for a client who has not run one yet. */
+export function HowAJobGoes(): React.JSX.Element {
   const steps = [
     'You brief me.',
-    'I send a plan: the crew, what you get back, and a budget.',
-    trust === 'ask'
-      ? 'You approve. Crew start in their own tab, and you can peek any time.'
-      : 'A small plan starts on its own, a bigger one when you approve. Crew work in their own tab, and you can peek any time.',
-    'Questions show up under WAITING ON YOU. Results come back as cards.'
+    'I ask what I need to know about what you want. Questions show up under WAITING ON YOU.',
+    'I plan the work and hire crew. They work in their own tab, and you can peek any time.',
+    'You hear from me when the PR is ready, or when I am stuck. You merge.'
   ];
   return (
     <Section label="HOW A JOB GOES" gap="gap-2.5">

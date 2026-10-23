@@ -47,7 +47,6 @@ const line = (over: Partial<ReadProposal> = {}): ReadProposal => ({
   layer: 'project',
   source: 'your commits',
   evidence: 'All 3 commits have one.',
-  clash: null,
   ...over
 });
 
@@ -76,7 +75,6 @@ beforeEach(() => {
     changed: () => {},
     now: () => clock.now,
     working: () => false,
-    interruptCrew: () => {},
     admitQueued: () => {}
   });
   understanding = new Understanding({
@@ -109,7 +107,7 @@ describe('sources', () => {
       ['commits', true, 'Commits by test@example.com.'],
       ['reviews', false, 'Sign in to the GitHub CLI to read this.'],
       ['prs', false, 'Sign in to the GitHub CLI to read this.'],
-      ['jobs', false, 'No past job here has a plan change or answer yet.']
+      ['jobs', false, 'No past job here has your answers yet.']
     ]);
   });
 
@@ -155,7 +153,7 @@ describe('read', () => {
     expect(sent).not.toContain('<<<source: CLAUDE.md>>>');
   });
 
-  it('keeps good lines, drops saved, unread and repeated ones, and checks a clash against the rules', async () => {
+  it('keeps good lines, and drops saved, unread and repeated ones and one a project rule goes against', async () => {
     files.merge(repo.repoId, {
       name: 'fleet',
       lines: [{ text: 'Open PRs as drafts.', source: 'you' }]
@@ -183,15 +181,7 @@ describe('read', () => {
     const result = await understanding.read(repo, ['commits', 'instructions']);
     expect(result).toEqual({
       ok: true,
-      lines: [
-        line(),
-        line({
-          text: 'Skip docs unless asked.',
-          source: 'CLAUDE.md',
-          clash: { source: 'CLAUDE.md', rule: 'Update docs with every user-facing change.' }
-        }),
-        line({ text: 'Ship on Fridays.' })
-      ]
+      lines: [line(), line({ text: 'Ship on Fridays.' })]
     });
     expect(complete.mock.calls[0][0].user).toContain('- Open PRs as drafts.');
     expect(spentUsd()).toBeCloseTo(0.02);
@@ -251,11 +241,19 @@ describe('read', () => {
 });
 
 describe('keep and conflicts', () => {
-  const clash = line({
-    text: 'Skip docs unless asked.',
-    source: 'CLAUDE.md',
-    clash: { source: 'CLAUDE.md', rule: 'Update docs with every user-facing change.' }
-  });
+  const RULE = 'Update docs with every user-facing change.';
+  const clash = line({ text: 'Skip docs unless asked.', source: 'CLAUDE.md' });
+
+  /** A saved line with a clash still open from before the rule won on its own. */
+  function clashing(): void {
+    understanding.keep(repo, [clash]);
+    store.preferences.openConflict({
+      layer: repo.repoId,
+      text: clash.text,
+      ruleSource: 'CLAUDE.md',
+      ruleText: RULE
+    });
+  }
 
   it('saves only kept lines, each tagged with its source, on its layer', () => {
     expect(
@@ -271,16 +269,9 @@ describe('keep and conflicts', () => {
     expect(store.preferences.conflicts(repo.repoId)).toEqual([]);
   });
 
-  it('opens one conflict for a kept line that clashes, however often it is kept', () => {
-    understanding.keep(repo, [clash]);
-    understanding.keep(repo, [clash]);
-    expect(store.preferences.conflicts(repo.repoId)).toMatchObject([
-      { ruleSource: 'CLAUDE.md', ruleText: clash.clash?.rule, status: 'open' }
-    ]);
-  });
-
   it('removes the line when the rule wins', () => {
-    understanding.keep(repo, [clash, line()]);
+    clashing();
+    understanding.keep(repo, [line()]);
     const [c] = store.preferences.conflicts(repo.repoId);
     expect(
       understanding.settle({ repoId: repo.repoId, layer: repo.repoId, id: c.id, winner: 'rule' })
@@ -291,7 +282,7 @@ describe('keep and conflicts', () => {
   });
 
   it('marks the line as overriding the rule in the note when the line wins', () => {
-    understanding.keep(repo, [clash]);
+    clashing();
     expect(files.forNote(repo.repoId)?.text).not.toContain('overrides');
     const [c] = store.preferences.conflicts(repo.repoId);
     understanding.settle({ repoId: repo.repoId, layer: repo.repoId, id: c.id, winner: 'line' });

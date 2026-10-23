@@ -16,7 +16,8 @@ type Row = { step: PlanStep; removed: boolean; added: boolean; locked: boolean }
  * The client's own version of a plan: the summary, each step's title and
  * role, steps removed or added, and the budget. Steps that are done are
  * locked, and the budget cannot go below what was spent; main checks both
- * again. Sending it makes a new version that waits like any other.
+ * again. Sending it makes a new version, which starts like any other once
+ * Fleet's checks pass.
  */
 export function PlanEditor({
   version,
@@ -95,7 +96,7 @@ export function PlanEditor({
           EDITING THE PLAN · FROM v{version.version}
         </h4>
         <p className="text-xs text-fleet-text-subtle">
-          Done steps are locked. Nothing changes until you approve your version.
+          Done steps are locked. Your version starts as soon as Fleet&apos;s checks pass.
         </p>
       </div>
 

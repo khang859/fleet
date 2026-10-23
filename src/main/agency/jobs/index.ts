@@ -24,7 +24,6 @@ import {
   type StepSwapRequest
 } from '../../../shared/agency-jobs';
 import { YOU_LAYER } from '../../../shared/agency-client-file';
-import { TRUST_NAME, type AutoStartRule } from '../../../shared/agency-projects';
 import { jsonEqual } from '../../../shared/json-equal';
 import {
   PlanSchema,
@@ -81,10 +80,6 @@ function reportBody(status: CrewReportStatus, deliver: string[]): string {
 /** A job another one queues behind holds it until it delivers or ends. */
 const UNDER_WAY: readonly JobState[] = ['planned', 'running', 'waiting', 'interrupted'];
 
-/** Closes the wakeup for a client plan edit or reject, so the Admiral weighs it beyond this job. */
-const LEARN_HINT =
-  'Consider whether this is a lasting preference. If it is, and no line in your note says it, offer to remember it with `client_file_propose`.';
-
 /**
  * How Fleet stops a crew member's pane. The crew phase wires the real panes;
  * until then nothing is ever hired, so there is nothing to stop.
@@ -106,22 +101,10 @@ export type ProposeResult =
       version: PlanVersionRecord;
       /** Ids in the plan's `uses` that name no saved line, left out. */
       dropped: string[];
-      /** Fleet approved it on its own, under the project's trust level. */
-      autoStarted: boolean;
+      /** Whether it started, or why not: a blocking check, or a role gone since. */
+      started: { ok: true } | { ok: false; reason: string };
     }
   | { ok: false; error: string };
-
-/** Whether a plan is small enough to start without the client, before the pre-approval checks. */
-export function autoStartable(version: PlanVersionRecord, rule: AutoStartRule): boolean {
-  const { plan } = version;
-  return (
-    version.kind === 'initial' &&
-    version.author === 'admiral' &&
-    plan.newRoles.length === 0 &&
-    plan.budget.usd <= rule.usd &&
-    (plan.budget.weekPct ?? 0) <= rule.weekPct
-  );
-}
 
 /** What the Admiral may set a step to with `job_update`. Removal is a plan change. */
 export type StepUpdate = { step: string; status?: 'running' | 'blocked' | 'done'; note?: string };
@@ -168,17 +151,15 @@ export type JobsServiceDeps = {
   defaultWeekPct?: () => number;
   /** The project's saved preference lines by their note id, for a plan's `uses`; none unless set. */
   preferenceLines?: (repoId: string) => PlanUse[];
-  /** When the project lets Fleet start a plan on its own; never unless set. */
-  autoStart?: (repoId: string) => AutoStartRule | null;
   /** A job just delivered everything; nothing happens unless set. */
   delivered?: (jobId: number) => void;
 };
 
 /**
- * A job's plan and steps: proposing a version, the client's approve, edit and
- * reject, and the Admiral's step updates. Every write goes through the job
- * state machine, and nothing here starts work: approval only says which steps
- * may start, and starting asks `canStartStep`.
+ * A job's plan and steps: proposing a version, which starts once it passes its
+ * checks, the client's edit, and the Admiral's step updates. Every write goes
+ * through the job state machine, and nothing here starts work: approval only
+ * says which steps may start, and starting asks `canStartStep`.
  */
 export class JobsService {
   constructor(private readonly deps: JobsServiceDeps) {}
@@ -188,8 +169,8 @@ export class JobsService {
   }
 
   /**
-   * Put a plan version up for the client and return at once. Earlier versions
-   * still waiting are replaced, so only the newest can be approved.
+   * Record a plan version and start it when it passes its checks. Earlier
+   * versions still waiting are replaced, so only the newest can start.
    */
   async propose(
     jobId: number,
@@ -229,12 +210,12 @@ export class JobsService {
       return inserted;
     });
     this.deps.changed([{ repoId: job.repoId, jobId }]);
-    const autoStarted = await this.autoStart(job, version);
+    const started = await this.start(version);
     return {
       ok: true,
       version: this.store.plans.version(version.id) ?? version,
       dropped,
-      autoStarted
+      started: started.ok ? { ok: true } : { ok: false, reason: started.reason }
     };
   }
 
@@ -249,60 +230,15 @@ export class JobsService {
   }
 
   /**
-   * Approve a first plan without a card when the project's trust level lets
-   * Fleet: it must be small enough and pass the same checks the client's
-   * Approve runs, with nothing for the client to tick. False leaves the card.
+   * Approve a version as soon as it is proposed: it runs the same checks a
+   * click once did, and a blocking one leaves it waiting for the Admiral's
+   * next version. Fleet stops eva crew at their caps, so the steps whose cost
+   * it cannot measure are accepted.
    */
-  private async autoStart(job: AgencyJob, version: PlanVersionRecord): Promise<boolean> {
-    const rule = this.deps.autoStart?.(job.repoId) ?? null;
-    if (rule === null || !autoStartable(version, rule)) return false;
-    const current = this.store.getJob(job.id) ?? job;
-    const result = await this.approve(
-      current,
-      version,
-      { planVersionId: version.id, action: 'approve' },
-      rule
-    );
-    return result.ok;
-  }
-
-  /**
-   * The client raised a job's budget on its raise-or-stop card: the approved
-   * plan with the new budget becomes a new approved version, with the same
-   * steps, bases and crew. A change still waiting is replaced, as it was
-   * measured against the old budget. Returns the new version, or null
-   * without an approved plan.
-   */
-  raiseBudget(jobId: number, budget: Plan['budget']): number | null {
-    const job = this.store.getJob(jobId);
-    if (!job) return null;
-    const version = this.store.tx(() => {
-      const approved = this.store.plans.approved(jobId);
-      if (approved === null) return null;
-      this.store.plans.replacePending(jobId);
-      const inserted = this.store.plans.insertVersion({
-        jobId,
-        kind: 'change',
-        author: 'client',
-        parentVersion: approved.version,
-        plan: { ...approved.plan, budget },
-        checks: approved.checks,
-        uses: approved.uses
-      });
-      this.store.plans.supersede(jobId);
-      this.store.plans.decide(inserted.id, 'approved');
-      if (approved.bases !== null) this.store.plans.setBases(inserted.id, approved.bases);
-      if (approved.crew !== null) this.store.plans.setCrew(inserted.id, approved.crew);
-      this.store.setApprovedVersion(jobId, inserted.version, budget);
-      this.store.plans.log({
-        jobId,
-        kind: 'plan',
-        text: `Plan v${inserted.version}: the client raised the budget`
-      });
-      return inserted.version;
-    });
-    this.deps.changed([{ repoId: job.repoId, jobId }]);
-    return version;
+  private async start(version: PlanVersionRecord): Promise<PlanActionResult> {
+    const job = this.store.getJob(version.jobId);
+    if (!job) return { ok: false, reason: `There is no job ${jobDisplayId(version.jobId)}.` };
+    return this.approve(job, version);
   }
 
   /** Run the pre-approval check against the project as it is now. */
@@ -364,53 +300,23 @@ export class JobsService {
     return problems.length === 0 ? null : problems.join(' ');
   }
 
-  /** The client's approve, edit, change request or reject on a plan card. */
+  /** The client's edit of the plan a job runs: their version starts at once. */
   async decide(action: PlanAction): Promise<PlanActionResult> {
     const version = this.store.plans.version(action.planVersionId);
-    if (action.action === 'edit' && version !== null && this.changesStarted(version)) {
-      return this.editStarted(version, action.plan);
+    if (version === null || !this.changesStarted(version)) {
+      return { ok: false, reason: 'Only the plan the job runs now can be changed.' };
     }
-    const verdict = canDecide(
-      version,
-      version === null ? null : this.store.plans.newest(version.jobId)
-    );
-    if (!verdict.ok || version === null) {
-      return verdict.ok ? { ok: false, reason: 'There is no such plan version.' } : verdict;
-    }
-    const job = this.store.getJob(version.jobId);
-    if (!job || !acceptsPlans(job.state)) {
-      return { ok: false, reason: `${jobDisplayId(version.jobId)} takes no plan decisions now.` };
-    }
-    switch (action.action) {
-      case 'approve':
-        return this.approve(job, version, action);
-      case 'reject':
-        return this.reject(job, version, action.note);
-      case 'revise':
-        return this.revise(job, version, action.note, action.steps);
-      case 'edit': {
-        const parsed = PlanSchema.safeParse(action.plan);
-        if (!parsed.success) return { ok: false, reason: parsed.error.issues[0]?.message ?? '' };
-        return this.proposeForClient(
-          job,
-          parsed.data,
-          version.plan,
-          (v) => `Client edited plan v${version.version} into v${v}`
-        );
-      }
-    }
+    return this.editStarted(version, action.plan);
   }
 
-  /** A plan Fleet started on its own that is still the newest, which the client may change. */
+  /** The approved plan, while it is still the newest, which the client may change. */
   private changesStarted(version: PlanVersionRecord): boolean {
     return (
-      version.autoStartUsd !== null &&
-      version.status === 'approved' &&
-      this.store.plans.newest(version.jobId)?.id === version.id
+      version.status === 'approved' && this.store.plans.newest(version.jobId)?.id === version.id
     );
   }
 
-  /** Change on a plan Fleet started on its own: the client's edit, as a plan change card. */
+  /** The client's edit of the plan the job runs, as their own version. */
   private async editStarted(version: PlanVersionRecord, input: unknown): Promise<PlanActionResult> {
     const job = this.store.getJob(version.jobId);
     if (!job || !acceptsPlans(job.state)) {
@@ -422,14 +328,14 @@ export class JobsService {
       job,
       parsed.data,
       version.plan,
-      (v) => `Client changed plan v${version.version}, which started on its own, into v${v}`
+      (v) => `Client changed plan v${version.version} into v${v}`
     );
   }
 
   /**
    * Swap on a crew card: the approved plan with a running step's role, runtime
-   * or model changed, as the client's plan change card. Refused while another
-   * version waits, so the client decides on that one first.
+   * or model changed, as the client's own version. Refused while a version of
+   * the Admiral's waits on a blocking check, as the swap would replace it.
    */
   async swapStep(swap: StepSwapRequest): Promise<PlanActionResult> {
     const job = this.store.getJob(swap.jobId);
@@ -442,7 +348,7 @@ export class JobsService {
     if (newest?.status === 'proposed') {
       return {
         ok: false,
-        reason: `Plan v${newest.version} is waiting for you. Approve or reject it first.`,
+        reason: `Plan v${newest.version} is waiting for the Admiral to fix a check. Try again once it starts.`,
         newestVersion: newest.version
       };
     }
@@ -466,8 +372,9 @@ export class JobsService {
   }
 
   /**
-   * A plan version from the client, which wakes the Admiral with `line` and
-   * the steps before and after, so it can ask whether to remember the change.
+   * A plan version from the client, which starts as the Admiral's do and wakes
+   * the Admiral with `line` and the steps before and after, so it can save the
+   * change as a preference.
    */
   private async proposeForClient(
     job: AgencyJob,
@@ -477,6 +384,12 @@ export class JobsService {
   ): Promise<PlanActionResult> {
     const result = await this.propose(job.id, plan, 'client');
     if (!result.ok) return { ok: false, reason: result.error };
+    if (!result.started.ok) {
+      // The client sees why at once, so their version does not wait on a fix.
+      this.store.plans.replacePending(job.id);
+      this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
+      return { ok: false, reason: result.started.reason };
+    }
     this.store.tx(() => {
       this.store.resetChain(job.id);
       this.store.enqueueWakeup({
@@ -486,7 +399,7 @@ export class JobsService {
         payload: {
           line: line(result.version.version),
           note: null,
-          detail: `Before: ${planStepList(before)}\nAfter: ${planStepList(plan)}\n${LEARN_HINT}`
+          detail: `Before: ${planStepList(before)}\nAfter: ${planStepList(plan)}`
         }
       });
     });
@@ -494,15 +407,9 @@ export class JobsService {
     return { ok: true, version: result.version.version };
   }
 
-  /** Approve a plan version: the client's Approve, or Fleet's under `rule`. */
-  private async approve(
-    job: AgencyJob,
-    version: PlanVersionRecord,
-    action: Extract<PlanAction, { action: 'approve' }>,
-    rule: AutoStartRule | null = null
-  ): Promise<PlanActionResult> {
-    const swapChoice = action.swaps ?? {};
-    const gate = await this.approvable(job, version, action);
+  /** Approve a plan version, as soon as it is proposed. */
+  private async approve(job: AgencyJob, version: PlanVersionRecord): Promise<PlanActionResult> {
+    const gate = await this.approvable(job, version);
     if (!gate.ok) return gate;
     const { checks, bases } = gate;
     const hired = await this.approvedCrew(job, version.plan);
@@ -513,12 +420,10 @@ export class JobsService {
       const approved = this.store.plans.approved(job.id);
       const steps = this.store.plans.steps(job.id);
       const preview = this.effectsOf(job, version.plan, approved?.plan ?? null);
-      const swaps = Object.fromEntries(
-        preview.swaps.map((s) => [s.stepId, swapChoice[s.stepId] ?? 'continue'] as const)
-      );
+      const swaps = Object.fromEntries(preview.swaps.map((s) => [s.stepId, 'continue'] as const));
       this.store.plans.supersede(job.id);
       this.store.plans.decide(version.id, 'approved');
-      if (rule !== null) this.store.plans.markAutoStarted(version.id, rule.usd);
+      this.store.plans.markAutoStarted(version.id, version.plan.budget.usd);
       for (const use of version.uses) {
         this.store.preferences.recordUse(
           use.layer === 'you' ? YOU_LAYER : job.repoId,
@@ -556,22 +461,11 @@ export class JobsService {
         `plan v${version.version} approved`
       );
       this.store.resetChain(job.id);
-      // Fleet's own approval answers the Admiral's job_plan call, so no wakeup says it again.
-      if (rule === null) {
-        this.store.enqueueWakeup({
-          repoId: job.repoId,
-          jobId: job.id,
-          kind: 'client_action',
-          payload: { line: `Client approved plan v${version.version}`, note: swapNote(swaps) }
-        });
-      }
+      // The approval answers the job_plan call, so no wakeup says it again.
       this.store.plans.log({
         jobId: job.id,
         kind: 'decision',
-        text:
-          rule === null
-            ? `Plan v${version.version} approved`
-            : `Plan v${version.version} started on its own: ${TRUST_NAME[rule.level]}, within $${rule.usd}`
+        text: `Plan v${version.version} started`
       });
       for (const name of saved) {
         this.store.plans.log({
@@ -615,13 +509,13 @@ export class JobsService {
 
   /**
    * Checks a plan again just before approval, since a step may have finished,
-   * gh signed out or a branch appeared since the card went up, and pins the
-   * commits its crew start from.
+   * gh signed out or a branch appeared since it was proposed, and pins the
+   * commits its crew start from: the default branch tip, unless a member's
+   * default branch has no commit yet.
    */
   private async approvable(
     job: AgencyJob,
-    version: PlanVersionRecord,
-    { baseChoice = {}, acceptCost = false }: Extract<PlanAction, { action: 'approve' }>
+    version: PlanVersionRecord
   ): Promise<{ ok: false; reason: string } | { ok: true; checks: PlanChecks; bases: PlanBases }> {
     const refused = this.refusePlan(job, version.plan);
     if (refused !== null) return { ok: false, reason: refused };
@@ -632,103 +526,15 @@ export class JobsService {
       this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
       return { ok: false, reason: blocked.map((i) => i.text).join(' ') };
     }
-    if (!acceptCost && checks.issues.some((i) => i.severity === 'accept')) {
-      this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
-      return {
-        ok: false,
-        reason: 'Accept the steps whose cost Fleet cannot measure on the plan card first.'
-      };
-    }
-    const pin = pinBases(checks.bases, baseChoice);
+    const pin = pinBases(checks.bases, {});
     if (!pin.ok) return { ok: false, reason: pin.reason };
-    // Another click may have decided it, or a newer version replaced it, while the check ran.
+    // A newer version may have replaced it while the check ran.
     const verdict = canDecide(
       this.store.plans.version(version.id),
       this.store.plans.newest(job.id)
     );
     if (!verdict.ok) return verdict;
     return { ok: true, checks, bases: pin.bases };
-  }
-
-  private reject(job: AgencyJob, version: PlanVersionRecord, note: string): PlanActionResult {
-    return this.sendBack(job, version, {
-      status: 'rejected',
-      note,
-      line: `Client rejected plan v${version.version}`,
-      detail: LEARN_HINT,
-      what: 'rejected'
-    });
-  }
-
-  /**
-   * The client asks for a different plan: the version is replaced with their
-   * note, and the Admiral is woken to propose the next one. A first plan goes
-   * back to briefing; a change on a running job leaves it on its approved plan.
-   */
-  private revise(
-    job: AgencyJob,
-    version: PlanVersionRecord,
-    note: string,
-    stepIds: string[]
-  ): PlanActionResult {
-    const steps = stepIds.map((id) => version.plan.steps.find((s) => s.id === id));
-    const unknown = stepIds.filter((_, i) => steps[i] === undefined);
-    if (unknown.length > 0) {
-      return { ok: false, reason: `Plan v${version.version} has no step ${unknown.join(', ')}.` };
-    }
-    const about = steps.flatMap((s) => (s === undefined ? [] : [`${s.id} (${s.title})`]));
-    return this.sendBack(job, version, {
-      status: 'replaced',
-      note,
-      line: `Client asked for a change to plan v${version.version}`,
-      detail: [
-        ...(about.length === 0 ? [] : [`About these steps: ${about.join('; ')}.`]),
-        'Propose a new plan for this job with `job_plan`.',
-        LEARN_HINT
-      ].join('\n'),
-      what: 'sent back for a change'
-    });
-  }
-
-  /**
-   * A reject or a change request: record the client's note on the version,
-   * send a first plan back to briefing, and wake the Admiral with it.
-   */
-  private sendBack(
-    job: AgencyJob,
-    version: PlanVersionRecord,
-    back: {
-      status: 'rejected' | 'replaced';
-      note: string;
-      line: string;
-      detail: string;
-      what: string;
-    }
-  ): PlanActionResult {
-    this.store.tx(() => {
-      this.store.plans.decide(version.id, back.status, back.note);
-      if (job.approvedVersion === null) {
-        this.store.applyJobEvent(
-          job.id,
-          { type: 'plan_rejected' },
-          `plan v${version.version} ${back.what}`
-        );
-      }
-      this.store.resetChain(job.id);
-      this.store.enqueueWakeup({
-        repoId: job.repoId,
-        jobId: job.id,
-        kind: 'client_action',
-        payload: { line: back.line, note: back.note, detail: back.detail }
-      });
-      this.store.plans.log({
-        jobId: job.id,
-        kind: 'decision',
-        text: `Plan v${version.version} ${back.what}`
-      });
-    });
-    this.deps.changed([{ repoId: job.repoId, jobId: job.id }]);
-    return { ok: true, version: version.version };
   }
 
   /** Stop crew members by id, then mark them ended. A failure is logged and the rest go on. */
@@ -1135,7 +941,10 @@ export class JobsService {
     }
   }
 
-  /** A running job whose every live step is done and delivered what it listed is delivered. */
+  /**
+   * A running job whose every live step is done and delivered what it listed
+   * is delivered. Its questions still open are moot then, so they are withdrawn.
+   */
   afterStepChange(jobId: number): void {
     const job = this.store.getJob(jobId);
     const approved = this.store.plans.approved(jobId);
@@ -1148,6 +957,7 @@ export class JobsService {
       return;
     }
     this.store.applyJobEvent(jobId, { type: 'delivered' }, 'every step is done and delivered');
+    this.store.withdrawForJob({ jobId, reason: 'the job delivered' });
     this.deps.delivered?.(jobId);
   }
 
@@ -1281,13 +1091,3 @@ function previousVersion(
 
 const mergeView = (run: AgencyMergeRun | null): AgencyMergeRun | null =>
   run === null ? null : { status: run.status, note: run.note };
-
-function swapNote(swaps: Record<string, 'continue' | 'restart'>): string | null {
-  const lines = Object.entries(swaps).map(
-    ([step, choice]) =>
-      `${step}: ${choice === 'continue' ? 'continue its work in the same workspace' : 'start over on a new branch'}`
-  );
-  return lines.length === 0
-    ? null
-    : `Swaps: ${lines.join('; ')}. Hire each swapped step again once its old member has stopped.`;
-}

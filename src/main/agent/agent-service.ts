@@ -1152,8 +1152,6 @@ export class AgentService {
   private readonly inflight = new Map<string, AbortController>();
   /** The inbox of each running Admiral turn, by stream. */
   private readonly inboxes = new Map<string, AgentInbox>();
-  /** The job (null: the lobby) of each running Admiral turn, by stream. */
-  private readonly admiralJobs = new Map<string, number | null>();
 
   constructor(private readonly deps: Deps) {}
 
@@ -1172,7 +1170,6 @@ export class AgentService {
       const inbox = new AgentInbox();
       const jobId = req.admiral?.jobId ?? null;
       this.inboxes.set(req.streamId, inbox);
-      this.admiralJobs.set(req.streamId, jobId);
       void this.run(
         req.streamId,
         this.modelFor(mode),
@@ -1182,7 +1179,6 @@ export class AgentService {
       ).finally(() => {
         inbox.close();
         this.inboxes.delete(req.streamId);
-        this.admiralJobs.delete(req.streamId);
       });
       return;
     }
@@ -1217,13 +1213,6 @@ export class AgentService {
 
   cancel(streamId: string): void {
     this.inflight.get(streamId)?.abort();
-  }
-
-  /** Stop a job's running Admiral turns, as its spend passed 120% of a budget. */
-  cancelAdmiral(jobId: number): void {
-    for (const [streamId, turnJob] of this.admiralJobs) {
-      if (turnJob === jobId) this.cancel(streamId);
-    }
   }
 
   /** Aborts every live turn, e.g. on window teardown. */

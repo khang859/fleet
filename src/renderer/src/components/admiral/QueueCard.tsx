@@ -1,35 +1,20 @@
-import { useState } from 'react';
 import { CircleAlert, Maximize2, X } from 'lucide-react';
 import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
 import { jobDisplayId } from '../../../../shared/agency';
-import type { AgencyJobDetail, AgencyPlanVersion } from '../../../../shared/agency-jobs';
-import {
-  holdAnswer,
-  holdPlan,
-  holdPlanNote,
-  useBridgeStore,
-  type RefusedDecision
-} from '../../store/bridge-store';
+import { holdAnswer, useBridgeStore, type RefusedDecision } from '../../store/bridge-store';
 import { relativeTime } from '../agent/settings/format';
 import { NeedsYouCard } from './JobSheet';
-import { DeliveredCard, PRIMARY, SECONDARY } from './JobClose';
+import { DeliveredCard } from './JobClose';
 import { PermissionCard } from './PermissionCard';
-import { PlanNoteForm, type NoteAction } from './PlanNoteForm';
 import { QuestionCard } from './QuestionCard';
-import { SettingsCardView } from './SettingsCard';
-import { crewPaneId, formatUsd, needsChoices, plural } from './job-view';
-import { keyProps } from './queue-keys';
+import { crewPaneId } from './job-view';
 import { kindLabel, type WaitingItem } from './waiting-queue';
-
-/** How many of a plan's steps its queue card lists before "+ N more". */
-const PLAN_STEPS_SHOWN = 3;
 
 /**
  * One item in the Bridge queue: the card the job sheet shows for it, headed
  * by its kind and job, with its main actions on the card and Read for the
- * item in full in the main column. A plan gets a short card of its own.
- * Plan and question decisions are held for undo, so the card leaves the queue
- * at once.
+ * item in full in the main column. Question answers are held for undo, so
+ * the card leaves the queue at once.
  */
 export function QueueCard({
   item,
@@ -38,7 +23,6 @@ export function QueueCard({
   refusal,
   reading,
   onRead,
-  onOpenJob,
   onOpenSettings
 }: {
   item: WaitingItem;
@@ -50,7 +34,6 @@ export function QueueCard({
   /** The reader shows this item. */
   reading: boolean;
   onRead: () => void;
-  onOpenJob: (jobId: number) => void;
   onOpenSettings: () => void;
 }): React.JSX.Element {
   // A permission counts down to its expiry in its own title row.
@@ -75,28 +58,15 @@ export function QueueCard({
           head={head}
         />
       );
-    case 'plan':
-      return (
-        <PlanQueueCard
-          version={item.version}
-          detail={item.detail}
-          head={head}
-          onRead={onRead}
-          onOpenJob={onOpenJob}
-        />
-      );
     case 'question':
       return (
         <QuestionCard
           question={item.question}
           head={head}
-          clientFileChanged={snapshot.clientFileChanged}
           onOpenSettings={onOpenSettings}
           onAnswer={holdAnswer(snapshot.repoId, item.question)}
         />
       );
-    case 'settings':
-      return <SettingsCardView card={item.card} head={head} />;
     case 'delivered':
       return <DeliveredCard job={item.job} detail={item.detail} head={head} />;
     case 'crew':
@@ -207,165 +177,5 @@ export function RefusalLine({
         <X size={11} />
       </button>
     </p>
-  );
-}
-
-/**
- * A plan waiting on the client, short: its summary, its first steps, what it
- * costs, and Approve, Change and Reject. A plan that takes a choice only its
- * full form asks for is approved from the reader; one a check holds, not at all.
- */
-function PlanQueueCard({
-  version,
-  detail,
-  head,
-  onRead,
-  onOpenJob
-}: {
-  version: AgencyPlanVersion;
-  detail: AgencyJobDetail;
-  head: React.ReactNode;
-  onRead: () => void;
-  onOpenJob: (jobId: number) => void;
-}): React.JSX.Element {
-  const job = detail.job;
-  const [noting, setNoting] = useState<NoteAction | null>(null);
-  const blocked = version.checks.issues.find((i) => i.severity === 'block');
-  const choices = needsChoices(version);
-
-  return (
-    <section
-      aria-label={`Plan v${version.version} for ${jobDisplayId(job.id)}`}
-      className="flex flex-col gap-1.5 rounded-md border border-amber-400/35 bg-fleet-bg p-2.5"
-    >
-      {head}
-      <PlanGist version={version} />
-      <PlanHeld blocked={blocked?.text ?? null} choices={choices} onRead={onRead} />
-      {noting === null ? (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <button
-            type="button"
-            disabled={blocked !== undefined || choices}
-            onClick={() =>
-              holdPlan(job, version, `Approve plan v${version.version}`, {
-                planVersionId: version.id,
-                action: 'approve'
-              })
-            }
-            className={PRIMARY}
-            {...keyProps('approve')}
-          >
-            {version.kind === 'change' ? 'Approve change' : 'Approve plan'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setNoting('revise')}
-            className={SECONDARY}
-            {...keyProps('change')}
-          >
-            Change
-          </button>
-          <button
-            type="button"
-            onClick={() => setNoting('reject')}
-            className={SECONDARY}
-            {...keyProps('deny')}
-          >
-            Reject
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenJob(job.id)}
-            className="ml-auto rounded text-xs text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-          >
-            Open {jobDisplayId(job.id)}
-          </button>
-        </div>
-      ) : (
-        <PlanNoteForm
-          action={noting}
-          onCancel={() => setNoting(null)}
-          onSend={(note) => holdPlanNote(job, version, noting, note, [])}
-        />
-      )}
-    </section>
-  );
-}
-
-/** Why a plan cannot be approved from its card: a check holds it, or it has choices to make. */
-function PlanHeld({
-  blocked,
-  choices,
-  onRead
-}: {
-  blocked: string | null;
-  choices: boolean;
-  onRead: () => void;
-}): React.JSX.Element | null {
-  if (blocked !== null) {
-    return (
-      <p className="flex gap-1.5 text-xs text-red-600 dark:text-red-400">
-        <CircleAlert size={12} className="mt-0.5 shrink-0" />
-        {blocked}
-      </p>
-    );
-  }
-  if (!choices) return null;
-  return (
-    <p className="text-xs text-fleet-text-muted">
-      It has choices to make before you approve it.{' '}
-      <button
-        type="button"
-        onClick={onRead}
-        className="rounded text-blue-500 transition-colors hover:text-blue-400 focus-ring dark:text-blue-400 dark:hover:text-blue-300"
-      >
-        Read it in full
-      </button>{' '}
-      to make them.
-    </p>
-  );
-}
-
-/** A plan at a glance: its summary, its first steps, and what it costs. */
-function PlanGist({ version }: { version: AgencyPlanVersion }): React.JSX.Element {
-  const { plan } = version;
-  const more = plan.steps.length - PLAN_STEPS_SHOWN;
-  return (
-    <>
-      <p className="line-clamp-2 text-[13px] font-medium text-fleet-text" title={plan.summary}>
-        {plan.summary}
-      </p>
-      <ol className="flex flex-col gap-0.5 text-xs text-fleet-text-secondary">
-        {plan.steps.slice(0, PLAN_STEPS_SHOWN).map((step, i) => (
-          <li key={step.id} className="flex min-w-0 gap-1.5">
-            <span className="w-3 shrink-0 text-right text-fleet-text-subtle">{i + 1}.</span>
-            <span className="min-w-0 truncate" title={step.title}>
-              {step.title}
-              <span className="text-fleet-text-subtle"> · {step.role}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-      {more > 0 && (
-        <span className="pl-[18px] text-[11px] text-fleet-text-subtle">
-          + {plural(more, 'more step')}
-        </span>
-      )}
-      <div className="flex flex-wrap gap-1.5 pt-0.5">
-        <Chip>${formatUsd(plan.budget.usd)} budget</Chip>
-        {plan.budget.weekPct !== undefined && <Chip>{plan.budget.weekPct}% Claude week</Chip>}
-        <Chip>{plural(plan.steps.length, 'crew member')}</Chip>
-        {version.uses.length > 0 && <Chip>Uses {version.uses.length} of your lines</Chip>}
-      </div>
-    </>
-  );
-}
-
-/** A short fact about a plan, such as its budget. */
-export function Chip({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return (
-    <span className="rounded bg-fleet-surface-2 px-1.5 py-0.5 text-[11px] text-fleet-text-secondary">
-      {children}
-    </span>
   );
 }

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { WorktreeService } from '../../../worktree-service';
 import { NO_CREW } from '../../jobs';
 import { readOnlyGit } from '../../projects/repo-reader';
-import { storeFixture } from '../../__tests__/fixture';
+import { REPO, storeFixture } from '../../__tests__/fixture';
 import type { ResourceRecord } from '../../store/resource-store';
 import { defaultCleaners } from '../cleaners';
 import { removalVerdict } from '../worktree-safety';
@@ -136,6 +136,33 @@ describe('worktree cleaner', () => {
     expect(await clean(wt)).toEqual({ status: 'kept', reason });
 
     expect(existsSync(wt.path!)).toBe(true);
+    expect(branches()).toContain(BRANCH);
+  });
+
+  it('keeps a branch the job delivered, and removes the worktree on it', async () => {
+    const job = fixture.store.openJob({
+      repoId: REPO.repoId,
+      title: 'Add subtract',
+      brief: 'add subtract',
+      sessionId: 'sess-a',
+      budgetUsd: 10
+    });
+    const wt = { ...crewWorktree(), jobId: job.id };
+    commit(wt.path!, 'feature.txt');
+    fixture.store.results.insert({
+      jobId: job.id,
+      stepId: 'builder-1',
+      planVersion: 1,
+      label: 'Local branch',
+      listed: true,
+      title: 'Local branch',
+      member: null,
+      body: { kind: 'branch', branch: BRANCH, sha: git(wt.path!, 'rev-parse', 'HEAD') }
+    });
+
+    expect(await clean(wt)).toEqual({ status: 'cleaned' });
+
+    expect(existsSync(wt.path!)).toBe(false);
     expect(branches()).toContain(BRANCH);
   });
 

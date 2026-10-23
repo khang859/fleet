@@ -69,7 +69,6 @@ const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
   leftovers: [],
   clientFileChanged: false,
-  trust: { level: 'ask', autoStartUsd: null },
   pastJobs: [],
   settingsCards: [],
   decisions: [],
@@ -141,10 +140,7 @@ describe('JobSheet', () => {
     expect(html).toContain('Default budget');
     expect(html).toContain('$10');
     expect(html).not.toContain('THE JOB');
-    expect(html).toContain('You approve. Crew start in their own tab');
-    expect(sheet(snap({ trust: { level: 'pr', autoStartUsd: null } }), null)).toContain(
-      'A small plan starts on its own, a bigger one when you approve.'
-    );
+    expect(html).toContain('You hear from me when the PR is ready, or when I am stuck. You merge.');
   });
 
   it('shows the job on screen with only its own questions', () => {
@@ -276,9 +272,15 @@ describe('job view helpers', () => {
     });
     expect(jobStatus({ state: 'planned' }, { asking: false, working: true }).label).toBe('Working');
     expect(jobStatus({ state: 'planned' }, { asking: false, working: false })).toEqual({
-      label: 'Plan ready',
+      label: 'Planning',
       tone: 'blue'
     });
+  });
+
+  it('says a delivered job is in review while its PRs wait on checks', () => {
+    const idle = { asking: false, working: false };
+    expect(jobStatus({ state: 'delivered', prsWaiting: true }, idle).label).toBe('PR in review');
+    expect(jobStatus({ state: 'delivered', prsWaiting: false }, idle).label).toBe('Delivered');
   });
 
   it('reads the question id an ask_client call put up', () => {

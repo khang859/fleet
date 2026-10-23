@@ -34,6 +34,7 @@ describe('agency.db', () => {
       'agency_meta',
       'claude_trust',
       'client_files',
+      'crew_lessons',
       'crew_members',
       'declined_topics',
       'job_events',
@@ -52,7 +53,6 @@ describe('agency.db', () => {
       'preference_conflicts',
       'preference_uses',
       'project_members',
-      'project_trust',
       'projects',
       'questions',
       'repos',
@@ -139,8 +139,8 @@ describe('agency.db', () => {
     const path = tempPath();
     mkdirSync(dirname(path), { recursive: true });
     const old = new Database(path);
-    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 3);
-    expect(tables(old)).not.toContain('project_trust');
+    migrateAgencyDb(old, 11);
+    expect(tables(old)).not.toContain('preference_uses');
     old.close();
 
     const db = openAgencyDb(path);
@@ -148,7 +148,6 @@ describe('agency.db', () => {
       'preference_uses',
       'preference_conflicts',
       'declined_topics',
-      'project_trust',
       'meet_progress'
     ]) {
       expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
@@ -156,11 +155,11 @@ describe('agency.db', () => {
     db.close();
   });
 
-  it('gives older plan versions no uses and no auto-start, and older merges the client as starter', () => {
+  it('gives older plan versions no uses and no auto-start', () => {
     const path = tempPath();
     mkdirSync(dirname(path), { recursive: true });
     const old = new Database(path);
-    migrateAgencyDb(old, AGENCY_SCHEMA_VERSION - 1);
+    migrateAgencyDb(old, 13);
     old.close();
 
     const db = openAgencyDb(path);
@@ -177,7 +176,61 @@ describe('agency.db', () => {
         { name: 'auto_start_usd', dflt_value: null }
       ])
     );
-    expect(columns('merge_runs')).toContainEqual({ name: 'started_by', dflt_value: "'client'" });
+    db.close();
+  });
+
+  it('moves a v14 database to one mode: no waiting settings change, no trust, no Ship it', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const old = new Database(path);
+    migrateAgencyDb(old, 14);
+    const insert = old.prepare(
+      `INSERT INTO settings_proposals
+         (project_id, job_id, group_id, key, value_json, before_json, reason, status, created_at)
+       VALUES ('r', NULL, '1', 'agency.admiral.defaultBudgetUsd', '20', '10', 'r', ?, 5)`
+    );
+    insert.run('pending');
+    insert.run('applied');
+    old.prepare("INSERT INTO project_trust VALUES ('r', 'ship', NULL, 1)").run();
+    old.close();
+
+    const db = openAgencyDb(path);
+    expect(
+      db.prepare('SELECT status, decided_at FROM settings_proposals ORDER BY id').all()
+    ).toEqual([
+      { status: 'refused', decided_at: 5 },
+      { status: 'applied', decided_at: null }
+    ]);
+    expect(tables(db)).not.toContain('project_trust');
+    expect(
+      db.prepare("SELECT name FROM pragma_table_info('merge_runs')").pluck().all()
+    ).not.toContain('started_by');
+    db.close();
+  });
+
+  it('moves a v15 database to silent learning: no Remember this? or lesson card left up', () => {
+    const path = tempPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const old = new Database(path);
+    migrateAgencyDb(old, 15);
+    const insert = old.prepare(
+      `INSERT INTO questions (repo_id, kind, question, options_json, status, created_at)
+       VALUES ('r', ?, 'q', '[]', ?, 1)`
+    );
+    insert.run('client_file', 'open');
+    insert.run('crew_lesson', 'hidden');
+    insert.run('client_file', 'answered');
+    insert.run('ask', 'open');
+    old.close();
+
+    const db = openAgencyDb(path);
+    expect(db.prepare('SELECT kind, status FROM questions ORDER BY id').all()).toEqual([
+      { kind: 'client_file', status: 'withdrawn' },
+      { kind: 'crew_lesson', status: 'withdrawn' },
+      { kind: 'client_file', status: 'answered' },
+      { kind: 'ask', status: 'open' }
+    ]);
+    expect(tables(db)).toContain('crew_lessons');
     db.close();
   });
 

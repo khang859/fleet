@@ -188,7 +188,6 @@ import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
-  ProjectTrust,
   ClientLineChange,
   ClientLineResult,
   ClientLineInput,
@@ -199,6 +198,7 @@ import type {
   SetupScan
 } from '../shared/agency-projects';
 import type { MeetAnswer, MeetQuestionId } from '../shared/agency-meet';
+import type { AppliedCrewLesson, CrewLessonUndo } from '../shared/agency-lessons';
 import type {
   ReadProposal,
   ReadResult,
@@ -1221,10 +1221,8 @@ const fleetApi = {
     exportJob: async (jobId: number): Promise<string | null> =>
       typedInvoke(IPC_CHANNELS.AGENCY_JOB_EXPORT, jobId),
     preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
-    /** The Admiral's settings cards: approve or refuse a change, undo one, and what it changed last. */
+    /** The Admiral's settings cards: undo a change, and what it changed last. */
     settings: {
-      decide: async (input: { changeId: number; approved: boolean }): Promise<boolean> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_DECIDE, input),
       undo: async (changeId: number): Promise<SettingsUndoOutcome> =>
         typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_UNDO, changeId),
       /** Agency settings when `repoId` is null, else the project's too. */
@@ -1275,14 +1273,15 @@ const fleetApi = {
       /** Put a layer changed outside Fleet back to Fleet's last version. */
       undoClientFile: async (layer: string): Promise<void> =>
         typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_UNDO, layer),
-      /** How much Fleet does on its own in a project. */
-      trust: async (repoId: string): Promise<ProjectTrust> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_PROJECT_TRUST, repoId),
-      setTrust: async (input: { repoId: string; trust: ProjectTrust }): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_PROJECT_TRUST_SET, input),
+      /** The crew lessons Fleet wrote into a project's roles, newest first. */
+      crewLessons: async (repoId: string): Promise<AppliedCrewLesson[]> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LESSONS, repoId),
+      /** Take a crew lesson out of its role again. */
+      undoCrewLesson: async (id: number): Promise<CrewLessonUndo> =>
+        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LESSON_UNDO, id),
       ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
         typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
-      /** Save one Meet you answer to its layer, or the project's trust level. */
+      /** Save one Meet you answer to its layer. */
       meetAnswer: async (input: {
         repo: AgencyRepoRef;
         id: MeetQuestionId;
