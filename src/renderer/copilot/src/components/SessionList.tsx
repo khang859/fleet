@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { PawPrint } from 'lucide-react';
 import { PermissionRequest } from './PermissionRequest';
 import { GoToTerminalButton } from './GoToTerminalButton';
+import { ModeLabel } from './ModeLabel';
 import { sessionStatus, sortSessions, statusLabel } from '../lib/sessions';
 import { formatAge } from '../../../../shared/claude-sessions';
 import { useNow } from '../lib/use-now';
@@ -146,6 +147,7 @@ export function SessionList(): React.JSX.Element {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 ml-2 shrink-0">
+                      <ModeLabel mode={session.permissionMode} />
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-xs text-neutral-500 tabular-nums">{waited}</span>
