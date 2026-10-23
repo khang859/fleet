@@ -1,8 +1,9 @@
 import type { CopilotToolInfo } from '../../../../shared/types';
 import type {
+  ClaudePermissionMode,
   PermissionDestination,
   PermissionSuggestion,
-  SuggestedMode
+  PlanApprovalMode
 } from '../../../../shared/claude-sessions';
 
 type PermissionSummary = {
@@ -33,8 +34,14 @@ const TOOL_MAPPINGS: ToolMapping[] = [
   { names: ['glob'], prefix: 'glob', fields: ['pattern'] },
   { names: ['grep'], prefix: 'grep', fields: ['pattern'] },
   { names: ['websearch'], prefix: 'search', fields: ['query'] },
-  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] }
+  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] },
+  { names: ['exitplanmode'], prefix: 'plan', fields: ['plan'] }
 ];
+
+/** A plan Claude asks to start on, as `ExitPlanMode` sends it: `{ plan, planFilePath }`. */
+export function isPlanApproval(tool: CopilotToolInfo): boolean {
+  return tool.toolName === 'ExitPlanMode' && typeof tool.toolInput.plan === 'string';
+}
 
 function truncate(value: string, max: number): string {
   if (value.length <= max) return value;
@@ -77,12 +84,26 @@ const SCOPES: Record<PermissionDestination, string> = {
   userSettings: ' in all projects'
 };
 
-const MODE_NAMES: Record<SuggestedMode, string> = {
-  default: 'default mode',
+/** Each mode as the terminal's status line names it ("⏸ manual mode on"). */
+const MODE_NAMES: Record<ClaudePermissionMode, string> = {
+  default: 'manual mode',
   acceptEdits: 'accept edits',
   plan: 'plan mode',
-  auto: 'auto mode'
+  auto: 'auto mode',
+  dontAsk: "don't ask",
+  bypassPermissions: 'bypass permissions'
 };
+
+export function modeName(mode: ClaudePermissionMode): string {
+  return MODE_NAMES[mode];
+}
+
+/** The plan card's Allow buttons, in the order the terminal's plan dialog offers them. */
+export const PLAN_APPROVAL_CHOICES: ReadonlyArray<{ mode: PlanApprovalMode; label: string }> = [
+  { mode: 'auto', label: 'Allow, and use auto mode' },
+  { mode: 'acceptEdits', label: 'Allow, and accept edits' },
+  { mode: 'default', label: 'Allow, and approve edits manually' }
+];
 
 /** The label of the button that allows a request along with one of Claude Code's suggestions. */
 export function suggestionLabel(suggestion: PermissionSuggestion): string {
