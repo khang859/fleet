@@ -74,6 +74,21 @@ describe('ClaudeSessionRegistry', () => {
     expect(registry.get('e1')?.runtime).toBe('eva');
   });
 
+  it('keeps the mode a session last reported, through events that report none', () => {
+    registry.ingest(ev(), pane);
+    expect(registry.get('s1')?.permissionMode).toBeUndefined();
+
+    registry.ingest(ev({ permissionMode: 'plan' }), pane);
+    registry.ingest(ev({ event: 'Notification', status: 'waiting_for_input' }), pane);
+    expect(registry.get('s1')?.permissionMode).toBe('plan');
+
+    registry.ingest(
+      ev({ event: 'Stop', status: 'waiting_for_input', permissionMode: 'acceptEdits' }),
+      pane
+    );
+    expect(registry.get('s1')?.permissionMode).toBe('acceptEdits');
+  });
+
   it('tracks a session in the pane it was placed in', () => {
     registry.ingest(ev({ transcriptPath: '/c/projects/-repo/s1.jsonl', configDir: '/c' }), pane);
 
@@ -193,6 +208,27 @@ describe('ClaudeSessionRegistry', () => {
       const session = registry.get('s1');
       expect(session?.phase).toBe('waitingForApproval');
       expect(session?.pendingPermissions.map((p) => p.toolUseId)).toEqual(['tu-1']);
+    });
+
+    it('takes the id a request names, and leaves the Go hook the next call', () => {
+      const toolInput = { command: 'npm test' };
+      const pre = (toolUseId: string): HookEvent =>
+        ev({ event: 'PreToolUse', status: 'running_tool', tool: 'Bash', toolInput, toolUseId });
+      const request = (toolUseId?: string): HookEvent =>
+        ev({
+          event: 'PermissionRequest',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          toolInput,
+          toolUseId
+        });
+      registry.ingest(pre('tu-1'), pane);
+      registry.ingest(pre('tu-2'), pane);
+
+      // The mod names the second call; the Go hook's request without an id gets the first.
+      expect(registry.ingest(request('tu-2'), pane)?.toolUseId).toBe('tu-2');
+      expect(registry.ingest(request(), pane)?.toolUseId).toBe('tu-1');
+      expect(registry.ingest(request(), pane)?.toolUseId).toMatch(/^unknown-/);
     });
 
     it('does not hand a later request the id of a tool that never finished', () => {

@@ -9,6 +9,7 @@ import { Badge } from './ui/badge';
 import { ChevronLeft, ArrowUp } from 'lucide-react';
 import { PermissionRequest } from './PermissionRequest';
 import { GoToTerminalButton } from './GoToTerminalButton';
+import { ModeLabel } from './ModeLabel';
 import { sessionStatus, statusLabel } from '../lib/sessions';
 
 export function SessionDetail(): React.JSX.Element | null {
@@ -111,7 +112,8 @@ export function SessionDetail(): React.JSX.Element | null {
               {session.workspaceName ?? 'Unknown'}
             </span>
           </div>
-          <span className="text-xs text-neutral-500 ml-auto shrink-0">{label}</span>
+          <ModeLabel mode={session.permissionMode} />
+          <span className="text-xs text-neutral-500 shrink-0">{label}</span>
           <GoToTerminalButton sessionId={session.sessionId} />
         </div>
 

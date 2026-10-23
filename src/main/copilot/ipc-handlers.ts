@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { IPC_CHANNELS } from '../../shared/constants';
+import type { PlanApprovalMode } from '../../shared/claude-sessions';
 import { createLogger } from '../logger';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
@@ -11,6 +12,9 @@ import * as hookInstaller from '../claude-sessions/hook-installer';
 import { transcriptPathFor } from '../claude-sessions/transcript-path';
 
 const log = createLogger('copilot:ipc');
+
+/** The modes a plan card may approve a plan into. */
+const PLAN_APPROVAL_MODES: readonly PlanApprovalMode[] = ['auto', 'acceptEdits', 'default'];
 const execFileAsync = promisify(execFile);
 
 /** Asynchronous, so a slow `claude` start does not freeze the main process. */
@@ -42,20 +46,29 @@ export function registerCopilotIpcHandlers(
     // Typed as the renderer may send it, so the checks below mean something.
     (
       _event,
-      args: { toolUseId: string; decision: string; reason?: string; suggestion?: number }
+      args: {
+        toolUseId: string;
+        decision: string;
+        reason?: string;
+        suggestion?: number;
+        mode?: string;
+      }
     ) => {
       log.info('permission response', {
         toolUseId: args.toolUseId,
         decision: args.decision,
-        suggestion: args.suggestion
+        suggestion: args.suggestion,
+        mode: args.mode
       });
       if (args.decision !== 'allow' && args.decision !== 'deny') return false;
       const suggestion = Number.isInteger(args.suggestion) ? args.suggestion : undefined;
+      const mode = PLAN_APPROVAL_MODES.find((m) => m === args.mode);
       return claudeSessions.respondToPermission(
         args.toolUseId,
         args.decision,
         args.reason,
-        suggestion
+        suggestion,
+        mode
       );
     }
   );

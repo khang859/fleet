@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { formatPermissionSummary, suggestionLabel } from '../format-permission';
+import {
+  PLAN_APPROVAL_CHOICES,
+  formatPermissionSummary,
+  isPlanApproval,
+  modeName,
+  suggestionLabel
+} from '../format-permission';
 import type { CopilotToolInfo } from '../../../../../shared/types';
 
 function tool(toolName: string, toolInput: Record<string, unknown>): CopilotToolInfo {
@@ -99,6 +105,50 @@ describe('formatPermissionSummary', () => {
   it('has no description when the tool gives none', () => {
     expect(formatPermissionSummary(tool('Read', { file_path: 'a.ts' })).description).toBeNull();
   });
+
+  it('summarizes a plan by its text, not the bare tool name', () => {
+    const plan = '1. Create `hello.txt`\n2. Verify it\n';
+    const result = formatPermissionSummary(
+      tool('ExitPlanMode', { plan, planFilePath: '/Users/me/.claude/plans/moon.md' })
+    );
+    expect(result.matched).toBe(true);
+    expect(result.label).toBe(`plan: ${plan}`);
+    expect(result.detail).toBe(plan);
+  });
+});
+
+describe('isPlanApproval', () => {
+  it('is true for an ExitPlanMode ask that carries its plan', () => {
+    expect(isPlanApproval(tool('ExitPlanMode', { plan: '1. Do it', planFilePath: '/p.md' }))).toBe(
+      true
+    );
+  });
+
+  it('is false for other tools and for a plan ask with no plan text', () => {
+    expect(isPlanApproval(tool('Bash', { plan: 'x' }))).toBe(false);
+    expect(isPlanApproval(tool('ExitPlanMode', {}))).toBe(false);
+  });
+});
+
+describe('PLAN_APPROVAL_CHOICES', () => {
+  it('offers auto, accept edits and manual, in the order of the terminal dialog', () => {
+    expect(PLAN_APPROVAL_CHOICES).toEqual([
+      { mode: 'auto', label: 'Allow, and use auto mode' },
+      { mode: 'acceptEdits', label: 'Allow, and accept edits' },
+      { mode: 'default', label: 'Allow, and approve edits manually' }
+    ]);
+  });
+});
+
+describe('modeName', () => {
+  it('names each mode as the terminal status line does', () => {
+    expect(modeName('default')).toBe('manual mode');
+    expect(modeName('acceptEdits')).toBe('accept edits');
+    expect(modeName('plan')).toBe('plan mode');
+    expect(modeName('auto')).toBe('auto mode');
+    expect(modeName('dontAsk')).toBe("don't ask");
+    expect(modeName('bypassPermissions')).toBe('bypass permissions');
+  });
 });
 
 describe('suggestionLabel', () => {
@@ -139,6 +189,9 @@ describe('suggestionLabel', () => {
     );
     expect(suggestionLabel({ type: 'setMode', mode: 'plan', destination: 'localSettings' })).toBe(
       'Allow, and switch to plan mode in this project'
+    );
+    expect(suggestionLabel({ type: 'setMode', mode: 'default', destination: 'session' })).toBe(
+      'Allow, and switch to manual mode this session'
     );
   });
 });

@@ -1,9 +1,17 @@
+import { useState } from 'react';
 import type React from 'react';
 import { useCopilotStore, type PermissionStatus } from '../store/copilot-store';
-import { formatPermissionSummary, suggestionLabel } from '../lib/format-permission';
+import {
+  PLAN_APPROVAL_CHOICES,
+  formatPermissionSummary,
+  isPlanApproval,
+  suggestionLabel
+} from '../lib/format-permission';
 import type { CopilotPendingPermission } from '../../../../shared/types';
+import type { PlanApprovalMode } from '../../../../shared/claude-sessions';
 import { Button } from './ui/button';
 import { GoToTerminalButton } from './GoToTerminalButton';
+import { PlanMarkdown } from './PlanMarkdown';
 import { cn } from '../lib/utils';
 
 type PermissionRequestProps = {
@@ -12,6 +20,10 @@ type PermissionRequestProps = {
   /** The session list's short form: the command is cut to two lines. */
   compact?: boolean;
 };
+
+type AnswerOptions = { reason?: string; suggestion?: number; mode?: PlanApprovalMode };
+
+type Respond = (decision: 'allow' | 'deny', options?: AnswerOptions) => void;
 
 function Key({ children }: { children: string }): React.JSX.Element {
   return (
@@ -51,33 +63,30 @@ function PermissionDetail({
   );
 }
 
-/**
- * Allow / Deny, and Allow with each change Claude Code suggests, or where to
- * answer instead once Fleet can no longer answer.
- */
+/** Shown in place of the buttons once Fleet can no longer answer. */
+function AnswerInTerminal({ sessionId }: { sessionId: string }): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-2" role="alert">
+      <span className="text-xs text-red-400">
+        Fleet can no longer answer this one. Answer it in the terminal.
+      </span>
+      <GoToTerminalButton sessionId={sessionId} />
+    </div>
+  );
+}
+
+/** Allow / Deny, and Allow with each change Claude Code suggests. */
 function PermissionActions({
-  sessionId,
   status,
   isTop,
   suggestions,
   respond
 }: {
-  sessionId: string;
   status: PermissionStatus | undefined;
   isTop: boolean;
   suggestions: CopilotPendingPermission['suggestions'];
-  respond: (decision: 'allow' | 'deny', suggestion?: number) => void;
+  respond: Respond;
 }): React.JSX.Element {
-  if (status === 'failed') {
-    return (
-      <div className="flex items-center justify-between gap-2" role="alert">
-        <span className="text-xs text-red-400">
-          Fleet can no longer answer this one. Answer it in the terminal.
-        </span>
-        <GoToTerminalButton sessionId={sessionId} />
-      </div>
-    );
-  }
   return (
     <div className="flex flex-col items-start gap-1">
       <div className="flex gap-1">
@@ -109,12 +118,68 @@ function PermissionActions({
             size="sm"
             className="max-w-full justify-start text-left [overflow-wrap:anywhere]"
             disabled={status === 'sending'}
-            onClick={() => respond('allow', i)}
+            onClick={() => respond('allow', { suggestion: i })}
           >
             {label}
           </Button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * A plan's answers, as the terminal's plan dialog offers them: start on it in
+ * one of three modes, or deny it with feedback, which Claude reads as "keep planning".
+ */
+function PlanActions({
+  status,
+  isTop,
+  respond
+}: {
+  status: PermissionStatus | undefined;
+  isTop: boolean;
+  respond: Respond;
+}): React.JSX.Element {
+  const [feedback, setFeedback] = useState('');
+  const sending = status === 'sending';
+  const reason = feedback.trim();
+  const deny = (): void => respond('deny', reason ? { reason } : undefined);
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex flex-wrap gap-1">
+        {PLAN_APPROVAL_CHOICES.map(({ mode, label }) => (
+          <Button
+            key={mode}
+            variant="success"
+            size="sm"
+            disabled={sending}
+            onClick={() => respond('allow', { mode })}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      <textarea
+        aria-label="Tell Claude what to change"
+        placeholder="Tell Claude what to change"
+        rows={2}
+        value={feedback}
+        disabled={sending}
+        onChange={(e) => setFeedback(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && reason) {
+            e.preventDefault();
+            deny();
+          }
+        }}
+        className="mt-1 w-full resize-none rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-200 placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-50"
+      />
+      <Button variant="destructive" size="sm" disabled={sending} onClick={deny}>
+        {reason ? 'Send feedback' : 'Deny'}
+        {isTop && !reason && <Key>N</Key>}
+      </Button>
     </div>
   );
 }
@@ -130,25 +195,38 @@ export function PermissionRequest({
   const respondPermission = useCopilotStore((s) => s.respondPermission);
 
   const { tool } = permission;
+  const plan = isPlanApproval(tool) ? String(tool.toolInput.plan) : null;
   const { description } = formatPermissionSummary(tool);
-  const respond = (decision: 'allow' | 'deny', suggestion?: number): void => {
-    void respondPermission(permission.toolUseId, decision, undefined, suggestion);
+  const respond: Respond = (decision, options = {}) => {
+    const { reason, suggestion, mode } = options;
+    void respondPermission(permission.toolUseId, decision, reason, suggestion, mode);
   };
 
   return (
     <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-baseline gap-1.5 min-w-0">
-        <span className="text-xs font-medium text-amber-400 shrink-0">{tool.toolName}</span>
+        <span className="text-xs font-medium text-amber-400 shrink-0">
+          {plan === null ? tool.toolName : 'Plan'}
+        </span>
         {description && <span className="text-xs text-neutral-400 truncate">{description}</span>}
       </div>
-      <PermissionDetail tool={tool} compact={compact} />
-      <PermissionActions
-        sessionId={sessionId}
-        status={status}
-        isTop={isTop}
-        suggestions={permission.suggestions}
-        respond={respond}
-      />
+      {plan === null ? (
+        <PermissionDetail tool={tool} compact={compact} />
+      ) : (
+        <PlanMarkdown plan={plan} compact={compact} />
+      )}
+      {status === 'failed' ? (
+        <AnswerInTerminal sessionId={sessionId} />
+      ) : plan === null ? (
+        <PermissionActions
+          status={status}
+          isTop={isTop}
+          suggestions={permission.suggestions}
+          respond={respond}
+        />
+      ) : (
+        <PlanActions status={status} isTop={isTop} respond={respond} />
+      )}
     </div>
   );
 }

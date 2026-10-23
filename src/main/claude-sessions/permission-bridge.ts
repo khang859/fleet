@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { PermissionSuggestion } from '../../shared/claude-sessions';
 import { NOT_ANSWERED, POLL_HOLD_MS, reply, type BridgeRoute } from './bridge-server';
-import { HOOK_PROTOCOL, lenient, nonEmpty, type HookEvent } from './hook-events';
+import { HOOK_PROTOCOL, lenient, nonEmpty, permissionMode, type HookEvent } from './hook-events';
 import type { HeldRequest, PermissionAnswer } from './permission-broker';
 import { toolCallKey } from './registry';
 
@@ -18,7 +18,10 @@ export const REASK_GRACE_MS = 5_000;
 /** The most an ask's body may hold. Generous, since it carries a tool's whole input, such as a file to write. */
 const MAX_ASK_CHARS = 32 * 1024 * 1024;
 
-/** One session's one tool call, as both the mod and the Go hook tell of it. */
+/**
+ * One session's one tool call, as both the mod and the Go hook tell of it.
+ * By tool and input, not by id: the Go hook's copy of a request has none.
+ */
 function callOf(event: HookEvent): string {
   return `${event.sessionId}\n${toolCallKey(event.tool ?? '', event.toolInput)}`;
 }
@@ -52,16 +55,23 @@ const Suggestion = z.discriminatedUnion('type', [
   })
 ]) satisfies z.ZodType<PermissionSuggestion>;
 
-/** What the mod sends: the `PermissionRequest` hook's input, with its pane and an id of its own. */
+/**
+ * What the mod sends: the `PermissionRequest` hook's input, with its pane, an
+ * id of its own, and the call's id, which the mod takes from `tool.check`.
+ * `tool_input` is kept whole: for `ExitPlanMode` it is `{ plan, planFilePath }`,
+ * which the plan card shows.
+ */
 const WireAsk = z.object({
   request_id: nonEmpty,
   session_id: nonEmpty,
+  tool_use_id: lenient(nonEmpty),
   pane_id: nonEmpty,
   cwd: z.string(),
   transcript_path: lenient(nonEmpty),
   tool_name: nonEmpty,
   tool_input: lenient(z.record(z.string(), z.unknown())),
-  permission_suggestions: lenient(z.array(z.unknown()))
+  permission_suggestions: lenient(z.array(z.unknown())),
+  permission_mode: permissionMode
 });
 
 /** A permission request the mod asks about, as a hook event, or null when it is not one. */
@@ -89,9 +99,11 @@ export function parsePermissionAsk(text: string): { requestId: string; event: Ho
       status: 'waiting_for_approval',
       tool: w.tool_name,
       toolInput: w.tool_input,
+      toolUseId: w.tool_use_id,
       paneId: w.pane_id,
       transcriptPath: w.transcript_path,
       ...(suggestions.length > 0 && { permissionSuggestions: suggestions }),
+      permissionMode: w.permission_mode,
       protocol: HOOK_PROTOCOL
     }
   };

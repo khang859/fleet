@@ -71,6 +71,32 @@ describe('parsePermissionAsk', () => {
     });
   });
 
+  it('keeps a plan whole, and the session mode the mod sends', () => {
+    const plan = {
+      ...permission,
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permission_suggestions: undefined,
+      permission_mode: 'plan'
+    };
+    expect(parsePermissionAsk(JSON.stringify(plan))?.event).toMatchObject({
+      tool: 'ExitPlanMode',
+      toolInput: { plan: '1. Create hello.txt', planFilePath: '/plans/p.md' },
+      permissionMode: 'plan'
+    });
+    const unknown = parsePermissionAsk(JSON.stringify({ ...plan, permission_mode: 'yolo' }));
+    expect(unknown?.event.tool).toBe('ExitPlanMode');
+    expect(unknown?.event.permissionMode).toBeUndefined();
+  });
+
+  it('takes the call id the mod sends, and reads a request without one', () => {
+    const named = parsePermissionAsk(JSON.stringify({ ...permission, tool_use_id: 'toolu_1' }));
+    expect(named?.event.toolUseId).toBe('toolu_1');
+    expect(parsePermissionAsk(JSON.stringify(permission))?.event.toolUseId).toBeUndefined();
+    const blank = parsePermissionAsk(JSON.stringify({ ...permission, tool_use_id: '' }));
+    expect(blank?.event.toolUseId).toBeUndefined();
+  });
+
   it('refuses a request without its id or pane', () => {
     expect(parsePermissionAsk(JSON.stringify({ ...permission, request_id: '' }))).toBeNull();
     expect(parsePermissionAsk(JSON.stringify({ ...permission, pane_id: undefined }))).toBeNull();
