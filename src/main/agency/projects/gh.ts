@@ -35,3 +35,10 @@ export function ghJson(out: Captured): unknown {
     return null;
   }
 }
+
+/** Who the GitHub CLI is signed in as, or null. */
+export async function ghLogin(gh: GhRun, cwd: string): Promise<string | null> {
+  const out = await gh(['api', 'user', '--jq', '.login'], cwd);
+  const login = out?.code === 0 ? out.stdout.trim() : '';
+  return /^[\w-]+$/.test(login) ? login : null;
+}

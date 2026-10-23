@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClientFileProposeArgs, JobDeliverArgs } from '../../../shared/agency-tools';
+import { JobDeliverArgs } from '../../../shared/agency-tools';
 import { AgencyService } from '../index';
 import { exportJob } from '../jobs/job-export';
 import { factsGit, REPO } from './fixture';
@@ -34,7 +34,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const { openJob, approve } = planHelpers(() => service, {
+const { openJob, startPlan } = planHelpers(() => service, {
   playbook: 'feature',
   summary: 'Add a dark theme behind a toggle in Settings.',
   steps: [
@@ -55,7 +55,7 @@ const { openJob, approve } = planHelpers(() => service, {
 async function closedJob(): Promise<number> {
   const { job, tools } = openJob();
   tick(5);
-  await approve(tools);
+  await startPlan(tools);
   tick(1);
   await tools.askClient({
     question: 'Which toggle?',
@@ -66,13 +66,13 @@ async function closedJob(): Promise<number> {
   const asked = service.snapshot(REPO.repoId).questions.at(-1)!;
   tick(2);
   service.answer({ id: asked.id, option: 0, text: 'and keep it small' });
-  await tools.clientFilePropose(
-    ClientFileProposeArgs.parse({
-      reason: 'You said so.',
-      add: [{ text: 'Use pnpm.' }],
-      topic: 'package-manager'
-    })
-  );
+  // Left open, so delivering the job withdraws it.
+  await tools.askClient({
+    question: 'Which package manager?',
+    context: 'You said so.',
+    options: [{ label: 'npm' }, { label: 'pnpm' }],
+    recommended: 1
+  });
   for (const step of ['builder-1', 'writer-1']) {
     tick(10);
     await tools.jobUpdate!({ step, status: 'running' });

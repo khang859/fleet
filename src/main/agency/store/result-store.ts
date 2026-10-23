@@ -10,6 +10,7 @@ import {
 } from '../../../shared/agency-jobs';
 import type { DeliverableKind } from '../../../shared/agency-plan';
 import { parseJsonAs } from '../../../shared/parse-json';
+import { waitingFor } from '../../../shared/pr-review';
 
 const PrStateSchema = z.object({
   number: z.number(),
@@ -85,20 +86,15 @@ type MergeRunRow = {
   note: string;
   since: number | null;
   rerun_at: number | null;
-  started_by: string;
 };
 
-/** Who started a merge: the client's Merge, or Fleet under Ship it. */
-export type MergeStarter = 'client' | 'trust';
-
 /**
- * A job's merge run as the queue reads it: when the last merge was, when it
- * asked for checks again, and who started it.
+ * A job's merge run as the queue reads it: when the last merge was, and when
+ * it asked for checks again.
  */
 export type MergeRunRecord = AgencyMergeRun & {
   since: number | null;
   rerunAt: number | null;
-  startedBy: MergeStarter;
 };
 
 /**
@@ -182,6 +178,14 @@ export class ResultStore {
       .map(toResult);
   }
 
+  /** Whether an open PR the job delivered still waits on a required check or a review bot. */
+  prsWaiting(jobId: number): boolean {
+    return this.forJob(jobId).some(
+      (r) =>
+        r.body.kind === 'pr' && r.body.pr.state === 'open' && waitingFor(r.body.pr.review) !== ''
+    );
+  }
+
   /** The job's PR results not refreshed within `maxAgeMs`; only the open ones with `openOnly`. */
   stalePrs(jobId: number, maxAgeMs: number, openOnly = false): number[] {
     return this.db
@@ -235,7 +239,7 @@ export class MergeStore {
   ) {}
 
   /** Start, or start again, a job's merge with its PR results in `order`. */
-  begin(jobId: number, order: number[], startedBy: MergeStarter = 'client'): void {
+  begin(jobId: number, order: number[]): void {
     this.db.transaction(() => {
       const place = this.db.prepare(
         `UPDATE results SET merge_position = ?,
@@ -246,12 +250,12 @@ export class MergeStore {
       const at = this.now();
       this.db
         .prepare(
-          `INSERT INTO merge_runs (job_id, status, note, since, rerun_at, started_at, updated_at, started_by)
-           VALUES (?, 'running', '', NULL, NULL, ?, ?, ?)
+          `INSERT INTO merge_runs (job_id, status, note, since, rerun_at, started_at, updated_at)
+           VALUES (?, 'running', '', NULL, NULL, ?, ?)
            ON CONFLICT(job_id) DO UPDATE SET status = 'running', note = '', rerun_at = NULL,
-             updated_at = excluded.updated_at, started_by = excluded.started_by`
+             updated_at = excluded.updated_at`
         )
-        .run(jobId, at, at, startedBy);
+        .run(jobId, at, at);
     })();
   }
 
@@ -300,8 +304,7 @@ export class MergeStore {
           status: row.status,
           note: row.note,
           since: row.since,
-          rerunAt: row.rerun_at,
-          startedBy: row.started_by === 'trust' ? 'trust' : 'client'
+          rerunAt: row.rerun_at
         }
       : null;
   }

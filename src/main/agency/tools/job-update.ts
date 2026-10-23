@@ -1,7 +1,7 @@
 import type { AgencyToolOutput, JobUpdateArgs } from '../../../shared/agency-tools';
 import type { JobsService } from '../jobs';
 
-/** Move a step of the approved plan, or note its progress. */
+/** Move a step of the plan in force, or note its progress. */
 export function jobUpdate(
   jobs: Pick<JobsService, 'updateStep'>,
   jobId: number,

@@ -1,16 +1,11 @@
 import type { AgencyJob, AgencyQuestion, AgencySnapshot } from '../../../../shared/agency';
-import type {
-  AgencyCrewMember,
-  AgencyJobDetail,
-  AgencyPlanVersion
-} from '../../../../shared/agency-jobs';
+import type { AgencyCrewMember, AgencyJobDetail } from '../../../../shared/agency-jobs';
 import type { AgencyPermission } from '../../../../shared/agency-permissions';
-import type { SettingsCard } from '../../../../shared/agency-settings';
 
 type Base = {
-  /** Stable across reloads: `perm:7`, `plan:12`, `q:35`, `settings:4`, `delivered:24`, `crew:9`. */
+  /** Stable across reloads: `perm:7`, `q:35`, `delivered:24`, `crew:9`. */
   key: string;
-  /** The job it belongs to; null for a lobby question or settings card. */
+  /** The job it belongs to; null for a lobby question. */
   jobId: number | null;
   /** When it came to the client. */
   since: number;
@@ -20,39 +15,32 @@ type Base = {
 
 /**
  * One thing that waits on the client. `loading` stands in, from the
- * snapshot's hint alone, for a plan, permission or crew member whose job
- * detail has not arrived, so the count does not jump when it does.
+ * snapshot's hint alone, for a permission or crew member whose job detail
+ * has not arrived, so the count does not jump when it does.
  */
 export type WaitingItem = Base &
   (
     | { kind: 'permission'; permission: AgencyPermission; detail: AgencyJobDetail }
-    | { kind: 'plan'; version: AgencyPlanVersion; detail: AgencyJobDetail }
     | { kind: 'question'; question: AgencyQuestion }
-    | { kind: 'settings'; card: SettingsCard }
     | { kind: 'delivered'; job: AgencyJob; detail: AgencyJobDetail | undefined }
     | { kind: 'crew'; member: AgencyCrewMember }
-    | { kind: 'loading'; job: AgencyJob; what: 'plan' | 'permission' | 'crew' }
+    | { kind: 'loading'; job: AgencyJob; what: 'permission' | 'crew' }
   );
 
 export type WaitingKind = WaitingItem['kind'];
 
 const LOADING_KIND: Record<Extract<WaitingItem, { kind: 'loading' }>['what'], string> = {
-  plan: 'PLAN',
   permission: 'PERMISSION',
   crew: 'NEEDS YOU'
 };
 
-/** An item's kind as the queue and the reader name it, such as `PLAN v2`. */
+/** An item's kind as the queue and the reader name it, such as `QUESTION`. */
 export function kindLabel(item: WaitingItem): string {
   switch (item.kind) {
     case 'permission':
       return 'PERMISSION';
-    case 'plan':
-      return `${item.version.kind === 'change' ? 'PLAN CHANGE' : 'PLAN'} v${item.version.version}`;
     case 'question':
       return 'QUESTION';
-    case 'settings':
-      return 'SETTINGS';
     case 'delivered':
       return 'DELIVERED';
     case 'crew':
@@ -62,19 +50,14 @@ export function kindLabel(item: WaitingItem): string {
   }
 }
 
-/** Whether a job's waiting items need its detail: plans, permissions and crew are only there. */
+/** Whether a job's waiting items need its detail: permissions and crew are only there. */
 export function needsDetail(job: AgencyJob): boolean {
-  return (
-    job.pendingPlan !== null ||
-    job.permissionsWaiting.length > 0 ||
-    job.crewNeedingYou > 0 ||
-    job.state === 'delivered'
-  );
+  return job.permissionsWaiting.length > 0 || job.crewNeedingYou > 0 || job.state === 'delivered';
 }
 
 /**
  * Everything that waits on the client, in the order a job sheet shows it:
- * delivered, permissions, the plan, questions, settings, crew. `scope` is one
+ * delivered, permissions, questions, crew. `scope` is one
  * job, the lobby (null), or the whole project (undefined: every open job and
  * the lobby). Items the client decided from the Bridge and Fleet still holds
  * are left out: the queue shows them as their own line.
@@ -121,7 +104,7 @@ function jobItems(
   detail: AgencyJobDetail | undefined
 ): WaitingItem[] {
   const items: WaitingItem[] = [];
-  if (job.state === 'delivered') {
+  if (job.state === 'delivered' && !job.prsWaiting) {
     items.push({
       key: `delivered:${job.id}`,
       jobId: job.id,
@@ -135,17 +118,15 @@ function jobItems(
   const loading = loadingItems(job);
   return [
     ...items,
-    ...(detail === undefined
-      ? [...loading.permissions, ...loading.plan]
-      : detailItems(job, detail)),
+    ...(detail === undefined ? loading.permissions : permissionItems(job, detail)),
     ...lobbyItems(snapshot, job.id),
     ...(detail === undefined ? loading.crew : crewItems(job, detail))
   ];
 }
 
-/** The permissions and plan a loaded detail shows waiting on the client. */
-function detailItems(job: AgencyJob, detail: AgencyJobDetail): WaitingItem[] {
-  const items: WaitingItem[] = detail.permissions
+/** The permissions a loaded detail shows waiting on the client. */
+function permissionItems(job: AgencyJob, detail: AgencyJobDetail): WaitingItem[] {
+  return detail.permissions
     .filter((p) => p.state === 'client' || p.state === 'in_pane')
     .map((permission) => ({
       key: `perm:${permission.id}`,
@@ -156,19 +137,6 @@ function detailItems(job: AgencyJob, detail: AgencyJobDetail): WaitingItem[] {
       permission,
       detail
     }));
-  const version = detail.versions.find((v) => v.status === 'proposed');
-  if (version !== undefined) {
-    items.push({
-      key: `plan:${version.id}`,
-      jobId: job.id,
-      since: version.proposedAt,
-      expiresAt: null,
-      kind: 'plan',
-      version,
-      detail
-    });
-  }
-  return items;
 }
 
 function crewItems(job: AgencyJob, detail: AgencyJobDetail): WaitingItem[] {
@@ -185,10 +153,10 @@ function crewItems(job: AgencyJob, detail: AgencyJobDetail): WaitingItem[] {
 }
 
 /** One row per thing the snapshot says waits, until the job's detail arrives. */
-function loadingItems(job: AgencyJob): Record<'permissions' | 'plan' | 'crew', WaitingItem[]> {
+function loadingItems(job: AgencyJob): Record<'permissions' | 'crew', WaitingItem[]> {
   const row = (
     key: string,
-    what: 'plan' | 'permission' | 'crew'
+    what: 'permission' | 'crew'
   ): Extract<WaitingItem, { kind: 'loading' }> => ({
     key,
     jobId: job.id,
@@ -200,16 +168,15 @@ function loadingItems(job: AgencyJob): Record<'permissions' | 'plan' | 'crew', W
   });
   return {
     permissions: job.permissionsWaiting.map((id) => row(`perm:${id}`, 'permission')),
-    plan: job.pendingPlan === null ? [] : [row(`plan:${job.pendingPlan.id}`, 'plan')],
     crew: Array.from({ length: job.crewNeedingYou }, (_, i) =>
       row(`crew:job${job.id}-${i}`, 'crew')
     )
   };
 }
 
-/** Open questions and settings cards with a change still to decide, of one job or the lobby. */
+/** Open questions of one job or the lobby. */
 function lobbyItems(snapshot: AgencySnapshot, jobId: number | null): WaitingItem[] {
-  const questions = snapshot.questions
+  return snapshot.questions
     .filter((q) => q.status === 'open' && q.jobId === jobId)
     .map(
       (question): WaitingItem => ({
@@ -221,17 +188,4 @@ function lobbyItems(snapshot: AgencySnapshot, jobId: number | null): WaitingItem
         question
       })
     );
-  const settings = snapshot.settingsCards
-    .filter((c) => c.jobId === jobId && c.changes.some((x) => x.status === 'pending'))
-    .map(
-      (card): WaitingItem => ({
-        key: `settings:${card.id}`,
-        jobId,
-        since: card.at,
-        expiresAt: null,
-        kind: 'settings',
-        card
-      })
-    );
-  return [...questions, ...settings];
 }

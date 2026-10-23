@@ -2,6 +2,7 @@ import { sameText } from '../../../shared/agency-client-file';
 import type { RuleCandidates } from '../../../shared/agency-projects';
 import {
   READ_MAX_LINES,
+  type ExtractedLine,
   type ReadProposal,
   type ReadTag
 } from '../../../shared/agency-understanding';
@@ -57,28 +58,28 @@ export function readRequest(input: {
 
 /**
  * The proposals the client sees: from a source that was read, not what a
- * saved line already says nor said twice, at most `READ_MAX_LINES`. A clash
- * stays only when it names a rule of the project word for word.
+ * saved line already says nor said twice, at most `READ_MAX_LINES`. A line
+ * that goes against a rule of the project, word for word, is dropped: the
+ * crew read that file anyway, so the rule wins.
  */
 export function keepProposals(
-  proposals: ReadProposal[],
+  proposals: ExtractedLine[],
   input: { read: ReadonlySet<ReadTag>; saved: string[]; rules: RuleCandidates[] }
 ): ReadProposal[] {
   const out: ReadProposal[] = [];
-  for (const p of proposals) {
+  for (const { clash, ...p } of proposals) {
     if (!input.read.has(p.source)) continue;
     if ([...input.saved, ...out.map((o) => o.text)].some((s) => sameText(s, p.text))) continue;
-    const rule =
-      p.clash === null
-        ? undefined
-        : input.rules
-            .find((c) => c.source === p.clash?.source)
-            ?.rules.find((r) => sameText(r, p.clash?.rule ?? ''));
-    out.push({
-      ...p,
-      clash: p.clash === null || rule === undefined ? null : { source: p.clash.source, rule }
-    });
+    if (clash !== null && breaksRule(clash, input.rules)) continue;
+    out.push(p);
     if (out.length >= READ_MAX_LINES) break;
   }
   return out;
+}
+
+/** Whether the rule a line clashes with is one of the project's, word for word. */
+function breaksRule(clash: NonNullable<ExtractedLine['clash']>, rules: RuleCandidates[]): boolean {
+  return rules.some(
+    (c) => c.source === clash.source && c.rules.some((r) => sameText(r, clash.rule))
+  );
 }

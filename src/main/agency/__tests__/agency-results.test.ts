@@ -25,6 +25,8 @@ const PR_URL = 'https://github.com/khang859/fleet/pull/654';
 
 /** GitHub as the test sets it: the recorded PR, open, at whatever head and state. */
 const github = { head: 'a'.repeat(40), state: 'OPEN', additions: 10, calls: 0 };
+/** Every git write the service made, such as a push. */
+let writes: string[][];
 const gh: GhRun = async (args) => {
   if (args[0] !== 'pr') return Promise.resolve({ code: 0, stdout: '' });
   github.calls += 1;
@@ -43,6 +45,7 @@ beforeEach(() => {
   home = join(dir, 'home');
   mkdirSync(root);
   Object.assign(github, { head: 'a'.repeat(40), state: 'OPEN', additions: 10, calls: 0 });
+  writes = [];
   service = new AgencyService({
     dbPath: join(dir, 'agency.db'),
     emit: () => undefined,
@@ -50,6 +53,10 @@ beforeEach(() => {
     now: () => clock.now,
     git: factsGit({ remote: 'git@github.com:khang859/fleet.git' }),
     gh,
+    gitWrite: async (args) => {
+      writes.push(args);
+      return Promise.resolve('');
+    },
     agencyHome: home
   });
   service.ensureLobby({ ...REPO, root });
@@ -75,7 +82,7 @@ const PLAN: PlanInput = {
   budget: { usd: 10 }
 };
 
-const { openJob, approve } = planHelpers(() => service, PLAN);
+const { openJob, startPlan } = planHelpers(() => service, PLAN);
 
 const deliver = async (
   tools: AgentAgencyCapability,
@@ -84,7 +91,7 @@ const deliver = async (
 
 async function runningJob(): Promise<{ jobId: number; tools: AgentAgencyCapability }> {
   const { job, tools } = openJob();
-  await approve(tools);
+  await startPlan(tools);
   return { jobId: job.id, tools };
 }
 
@@ -170,6 +177,23 @@ describe('job_deliver', () => {
     expect(pr).toMatchObject({ kind: 'pr', label: 'Branch and PR', title: recorded.title });
   });
 
+  it('pushes a crew branch for a pr, so crew never push, and records the PR', async () => {
+    const { jobId, tools } = await runningJob();
+
+    const out = await deliver(tools, {
+      step: 'builder-1',
+      kind: 'pr',
+      branch: 'feat/dark-mode',
+      title: 'Dark mode',
+      draft: true
+    });
+
+    expect(out.text).toContain('is up for the client as a card');
+    expect(writes).toEqual([['push', '--quiet', '-u', 'origin', 'feat/dark-mode:feat/dark-mode']]);
+    const [pr] = service.jobs.detail(jobId)!.results.map((r) => r.body);
+    expect(pr).toMatchObject({ kind: 'pr', pr: { url: PR_URL } });
+  });
+
   it('takes copy, links and local branches', async () => {
     const { jobId, tools } = await runningJob();
     await deliver(tools, {
@@ -221,6 +245,9 @@ describe('job_deliver', () => {
 
   it('asks for what each kind is handed back as', () => {
     expect(JobDeliverArgs.safeParse({ step: 'b', kind: 'pr' }).success).toBe(false);
+    const fromBranch = { step: 'b', kind: 'pr', branch: 'admiral/j1/b-1' };
+    expect(JobDeliverArgs.safeParse(fromBranch).success).toBe(false);
+    expect(JobDeliverArgs.safeParse({ ...fromBranch, title: 'x' }).success).toBe(true);
     expect(JobDeliverArgs.safeParse({ step: 'b', kind: 'doc', paths: ['/a'] }).success).toBe(false);
     expect(
       JobDeliverArgs.safeParse({ step: 'b', kind: 'link', title: 'x', url: 'file:///etc' }).success
@@ -260,6 +287,46 @@ describe('PR result cards', () => {
 
     const summary = service.jobs.detail(jobId)!.log.findLast((l) => l.kind === 'close_summary');
     expect(summary?.text).toBe('Nothing to clean up. PR #654 was closed without merging.');
+  });
+});
+
+describe('a delivered job with a PR', () => {
+  async function delivered(): Promise<number> {
+    const { jobId, tools } = await runningJob();
+    for (const step of ['builder-1', 'writer-1']) {
+      await tools.jobUpdate!({ step, status: 'running' });
+      await tools.jobUpdate!({ step, status: 'done' });
+    }
+    const notes = file(root, 'notes.md');
+    await deliver(tools, { step: 'writer-1', kind: 'doc', title: 'Notes', paths: [notes] });
+    await deliver(tools, { step: 'builder-1', kind: 'pr', url: PR_URL });
+    expect(service.store.getJob(jobId)?.state).toBe('delivered');
+    return jobId;
+  }
+
+  it('closes once the client merges its PR on GitHub', async () => {
+    const jobId = await delivered();
+    clock.now += 60_000;
+    await service.prs.refreshPrs(jobId);
+    expect(service.store.getJob(jobId)?.state).toBe('delivered');
+
+    github.state = 'MERGED';
+    clock.now += 60_000;
+    await service.prs.refreshPrs(jobId);
+    expect(service.store.getJob(jobId)?.state).not.toBe('delivered');
+    expect(service.jobs.detail(jobId)!.log.map((l) => l.text)).toContain(
+      'Every PR merged: closed on its own'
+    );
+    const bridge = service.store.pullWakeups({ repoId: REPO.repoId, jobId: null }).text ?? '';
+    expect(bridge).toContain('j1: every PR is merged, and Fleet closed it');
+  });
+
+  it('stays when its PR is closed without merging', async () => {
+    const jobId = await delivered();
+    github.state = 'CLOSED';
+    clock.now += 60_000;
+    await service.prs.refreshPrs(jobId);
+    expect(service.store.getJob(jobId)?.state).toBe('delivered');
   });
 });
 

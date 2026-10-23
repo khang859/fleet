@@ -50,25 +50,23 @@ function result(kind: AgencyResult['kind'], listed = true): AgencyResult {
 }
 
 describe('deliveryAction', () => {
-  it('merges a job of only PRs under Ship it, and tells the Bridge under any other level', () => {
-    expect(deliveryAction([result('pr'), result('pr')], 'ship')).toBe('merge');
-    expect(deliveryAction([result('pr')], 'pr')).toBe('tell');
-    expect(deliveryAction([result('pr')], 'ask')).toBe('tell');
+  it('leaves a job of PRs for the client to merge', () => {
+    expect(deliveryAction([result('pr'), result('pr')])).toBe('tell');
   });
 
   it('closes a job that handed back only findings', () => {
     for (const kind of ['doc', 'review', 'report', 'copy', 'link'] as const) {
-      expect(deliveryAction([result(kind)], 'ask')).toBe('close');
+      expect(deliveryAction([result(kind)])).toBe('close');
     }
-    expect(deliveryAction([result('report'), result('copy', false)], 'ship')).toBe('close');
+    expect(deliveryAction([result('report'), result('copy', false)])).toBe('close');
   });
 
   it('leaves a job with anything else, or nothing, for the client', () => {
     for (const kind of ['branch', 'preview', 'image', 'file'] as const) {
-      expect(deliveryAction([result('report'), result(kind)], 'ask')).toBe('tell');
+      expect(deliveryAction([result('report'), result(kind)])).toBe('tell');
     }
-    expect(deliveryAction([result('report'), result('pr', false)], 'ask')).toBe('tell');
-    expect(deliveryAction([], 'ship')).toBe('tell');
-    expect(deliveryAction([result('report', false)], 'ask')).toBe('tell');
+    expect(deliveryAction([result('report'), result('pr', false)])).toBe('tell');
+    expect(deliveryAction([])).toBe('tell');
+    expect(deliveryAction([result('report', false)])).toBe('tell');
   });
 });

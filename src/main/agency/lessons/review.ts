@@ -24,9 +24,9 @@ export const LESSON_MAX_TOKENS = 16_000;
 export const LESSON_SYSTEM_PROMPT = `You review one finished coding job for the Admiral, which plans jobs and hires AI coding agents, its crew, to do the steps. Each crew member follows the instructions in its role file.
 You get the job's record and the role files its crew ran with. Propose at most one change to one role, so the next job with that role goes better, or none.
 - No change is the default. Most jobs teach nothing new about a role.
-- One event is a guess. Propose a change only when the record shows the same problem more than once, or the client said it in a plan note, a turned-down plan, an answer or a review.
+- One event is a guess. Propose a change only when the record shows the same problem more than once, or the client said it in a plan change, an answer or a review.
 - A lesson is about how the role works on any job, not about this job's code. A fact about one repository is not a role lesson.
-- Do not repeat what the role says already, and do not propose a lesson the client turned down.
+- Do not repeat what the role says already, and do not propose a lesson the client undid.
 - Keep the role short. Prefer to replace a sentence that is wrong or incomplete over adding one, and add at most a few sentences.
 For the change give:
 - "role": the name of a role in the roles section.
@@ -42,7 +42,7 @@ Answer {"lesson": null, "why": "..."} when the record teaches nothing about a ro
 /** A role the job's crew ran with: its text then, and its text now when that changed. */
 export type RanRole = { name: string; ran: string; now: string | null };
 
-/** The request's text: the roles, the lessons turned down, and the job's record. */
+/** The request's text: the roles, the lessons undone, and the job's record. */
 export function lessonRequest(input: {
   roles: RanRole[];
   declined: string[];
@@ -57,7 +57,7 @@ export function lessonRequest(input: {
     input.declined.length === 0 ? '(none)' : input.declined.map((t) => `- ${t}`).join('\n');
   return [
     `Roles the crew ran with:\n\n${roles.join('\n\n')}`,
-    `Lessons the client turned down on this project:\n${declined}`,
+    `Lessons the client undid on this project:\n${declined}`,
     `The job's record:\n<<<record>>>\n${cut(input.record, LESSON_RECORD_MAX_CHARS)}\n<<<end>>>`
   ].join('\n\n');
 }
@@ -68,8 +68,8 @@ export type CheckedLesson = { role: CrewRole; instructions: string };
 /**
  * Whether Fleet keeps `lesson`: it names a role the job ran that the crew has
  * now, its `replace` is that role's text once, it grows the role by at most
- * `LESSON_GROWTH_MAX_CHARS` within the role limit, and the client did not turn
- * it down. A refusal is a sentence the model gets back on its retry.
+ * `LESSON_GROWTH_MAX_CHARS` within the role limit, and the client did not undo
+ * it before. A refusal is a sentence the model gets back on its retry.
  */
 export function checkLesson(
   lesson: LessonAnswer,
@@ -84,7 +84,7 @@ export function checkLesson(
   const role = input.roles.find((r) => r.name === lesson.role);
   if (role === undefined) return { ok: false, reason: `the ${lesson.role} role is gone.` };
   if (input.declined(lessonTopic(lesson.role, lesson.cue))) {
-    return { ok: false, reason: 'the client turned this lesson down before.' };
+    return { ok: false, reason: 'the client undid this lesson before.' };
   }
   const instructions = applyLesson(role.prompt, lesson);
   if (instructions === null) {

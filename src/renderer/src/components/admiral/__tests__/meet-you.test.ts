@@ -20,11 +20,11 @@ describe('MeetYou', () => {
         setupDoneAt: 1,
         starterDoneAt: null,
         meetDue: true,
-        meetLeft: ['prs', 'delivery', 'tests', 'budget', 'checks']
+        meetLeft: ['prs', 'delivery', 'tests', 'budget']
       })
     );
     expect(html).toContain('How should crew open pull requests?');
-    expect(html).toContain('1 of 5');
+    expect(html).toContain('1 of 4');
     expect(html).toContain('As drafts · My pick');
     expect(html).toContain('Finish later');
     expect(html).toContain('A few quick questions');

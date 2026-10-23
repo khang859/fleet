@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  applyLesson,
-  lessonOptions,
-  lessonPick,
-  lessonTopic,
-  parseLesson,
-  type CrewLesson
-} from '../agency-lessons';
+import { applyLesson, parseLesson, undoLesson } from '../agency-lessons';
 
 const ROLE = 'You are a Builder.\n\nRun the checks before you finish.\nKeep the change small.';
 
@@ -27,6 +20,25 @@ describe('applyLesson', () => {
     expect(applyLesson(ROLE, { replace: 'Run the tests', with: 'x' })).toBeNull();
     expect(applyLesson(ROLE, { replace: 'the', with: 'x' })).toBeNull();
     expect(applyLesson(ROLE, { replace: '', with: 'x' })).toBeNull();
+  });
+});
+
+describe('undoLesson', () => {
+  it('puts the replaced text back', () => {
+    const edit = { replace: 'Run the checks', with: 'Run lint and the checks' };
+    const applied = applyLesson(ROLE, edit);
+    expect(applied).not.toBeNull();
+    expect(undoLesson(applied ?? '', edit)).toBe(ROLE);
+  });
+
+  it('takes out an added paragraph', () => {
+    const edit = { replace: null, with: 'Open PRs as drafts.' };
+    expect(undoLesson(applyLesson(ROLE, edit) ?? '', edit)).toBe(ROLE);
+  });
+
+  it('refuses once the written text is gone', () => {
+    expect(undoLesson(ROLE, { replace: 'Run the checks', with: 'Run lint first' })).toBeNull();
+    expect(undoLesson(ROLE, { replace: null, with: 'Open PRs as drafts.' })).toBeNull();
   });
 });
 
@@ -60,41 +72,5 @@ describe('parseLesson', () => {
 
   it('refuses an answer that is not JSON', () => {
     expect(parseLesson('No lesson here.').ok).toBe(false);
-  });
-});
-
-describe('lesson options', () => {
-  const lesson = (source: CrewLesson['source']): CrewLesson => ({
-    jobId: 1,
-    role: 'builder',
-    source,
-    cue: 'c',
-    lesson: 'l',
-    evidence: 'e',
-    replace: null,
-    with: 'w'
-  });
-
-  it('offers a project role Change it or Not now', () => {
-    expect(lessonOptions('project').map((o) => o.label)).toEqual(['Change it', 'Not now']);
-    expect(lessonPick(lesson('project'), 0)).toBe('own');
-    expect(lessonPick(lesson('project'), 1)).toBe('decline');
-  });
-
-  it('offers a bundled or user role a copy for the project or every project', () => {
-    expect(lessonOptions('bundled').map((o) => o.label)).toEqual([
-      'This project',
-      'All projects',
-      'Not now'
-    ]);
-    expect(lessonPick(lesson('user'), 1)).toBe('user');
-    expect(lessonPick(lesson('bundled'), 3)).toBeNull();
-    expect(lessonPick(lesson('bundled'), undefined)).toBeNull();
-  });
-
-  it('names a topic by role and cue, whatever the spacing or case', () => {
-    expect(lessonTopic('builder', ' When  the Project lints ')).toBe(
-      lessonTopic('builder', 'when the project lints')
-    );
   });
 });

@@ -4,7 +4,8 @@ import { join, relative } from 'node:path';
 
 /**
  * The agency writes to git in two places only: `workspaces/` adds crew
- * worktrees and `cleanup/` removes them. Everything else reads. This scans
+ * worktrees and pushes their branches, and `cleanup/` removes them.
+ * Everything else reads. This scans
  * the source for git write verbs in argument lists, so a new write site has
  * to be added here on purpose.
  */

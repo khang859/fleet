@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { ArrowUp, CircleAlert } from 'lucide-react';
 import type { AgencyQuestion } from '../../../../shared/agency';
-import {
-  ADMIRAL_QUESTION_KINDS,
-  questionDisplayId,
-  REMEMBER_OPTION
-} from '../../../../shared/agency';
-import { CLIENT_LINE_MAX_CHARS } from '../../../../shared/agency-tools';
-import { openClientFileSettings } from '../../store/settings-nav-store';
+import { ADMIRAL_QUESTION_KINDS, questionDisplayId } from '../../../../shared/agency';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
-import { ProposalLines } from './ClientFileViews';
-import { LessonChange } from './LessonChange';
 import { PRIMARY } from './JobClose';
 import { Kbd, ReaderFrame, ReaderSection } from './ReaderFrame';
 import { keyProps } from './queue-keys';
@@ -29,17 +21,12 @@ export type QuestionAnswer = { option?: number; text?: string };
  * answered - the Admiral is told it came late - and one that is settled says
  * how. The model-unreachable card is the one that is not the Admiral's: it is
  * Fleet saying the model cannot be reached, and its buttons retry or go to
- * Settings. A client file card shows the lines it would change; while the
- * file has a change from outside Fleet, it cannot be approved until the
- * client keeps or reviews that change. A Remember this? card is a client file
- * card with one new line, which the client saves for this project or all of
- * them, in their own words if they type some, or keeps to this job.
+ * Settings.
  */
 export function QuestionCard({
   question,
   onAnswer,
   onOpenSettings,
-  clientFileChanged = false,
   head,
   layout = 'card'
 }: {
@@ -47,14 +34,11 @@ export function QuestionCard({
   /** Resolves false when main would not take the answer. */
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
-  /** The project's client file has a change from outside Fleet the client has not kept. */
-  clientFileChanged?: boolean;
   /** A first row, as the Bridge queue names the job and kind. */
   head?: React.ReactNode;
   /** `reader`: in full in the Bridge's main column, with Answer in a footer. */
   layout?: 'card' | 'reader';
 }): React.JSX.Element | null {
-  const outsideChange = question.proposal !== null && clientFileChanged;
   if (question.status === 'hidden') return null;
   if (layout === 'reader') {
     return (
@@ -62,7 +46,6 @@ export function QuestionCard({
         question={question}
         onAnswer={onAnswer}
         onOpenSettings={onOpenSettings}
-        clientFileChanged={clientFileChanged}
         head={head}
       />
     );
@@ -79,7 +62,6 @@ export function QuestionCard({
   }
   const settled = question.answeredAt !== null;
   const withdrawn = question.status === 'withdrawn' && !settled;
-  const line = rememberLine(question);
 
   return (
     <section
@@ -107,94 +89,24 @@ export function QuestionCard({
           {question.context}
         </AgentMarkdown>
       )}
-      {question.proposal !== null && line === null && (
-        <ProposalLines proposal={question.proposal} />
-      )}
-      {question.lesson !== null && <LessonChange lesson={question.lesson} />}
       {settled ? (
-        <>
-          {line !== null && <RememberLine line={line} replaced={rewrote(question)} />}
-          <Settled question={question} />
-        </>
+        <Settled question={question} />
       ) : (
-        <OpenAnswer
-          question={question}
-          line={line}
-          onAnswer={onAnswer}
-          withdrawn={withdrawn}
-          outsideChange={outsideChange}
-        />
+        <>
+          {withdrawn && <Withdrawn question={question} />}
+          <Options question={question} onAnswer={onAnswer} quiet={withdrawn} />
+        </>
       )}
     </section>
   );
 }
 
-/** The one line a Remember this? card offers to save, or null on any other card. */
-function rememberLine(question: AgencyQuestion): string | null {
-  if ((question.proposal?.topic ?? null) === null) return null;
-  return question.proposal?.add[0]?.text ?? '';
-}
-
-/** The client saved a Remember this? line in words of their own. */
-function rewrote(question: AgencyQuestion): boolean {
-  return (question.answerText ?? '') !== '' && question.answerOption !== REMEMBER_OPTION.decline;
-}
-
-/** What an unanswered card offers: Remember this? choices or the usual options. */
-function OpenAnswer({
-  question,
-  line,
-  onAnswer,
-  withdrawn,
-  outsideChange
-}: {
-  question: AgencyQuestion;
-  line: string | null;
-  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
-  withdrawn: boolean;
-  outsideChange: boolean;
-}): React.JSX.Element {
+/** A withdrawn question can still be answered, and the Admiral hears it came late. */
+function Withdrawn({ question }: { question: AgencyQuestion }): React.JSX.Element {
   return (
-    <>
-      {withdrawn && (
-        <p className="text-xs text-fleet-text-subtle">
-          Withdrawn{question.withdrawnReason ? `: ${question.withdrawnReason}` : ''}. You can still
-          answer, and the Admiral will know it came late.
-        </p>
-      )}
-      {outsideChange && <OutsideChange repoId={question.repoId} />}
-      {line === null ? (
-        <Options
-          question={question}
-          onAnswer={onAnswer}
-          quiet={withdrawn}
-          blockFirst={outsideChange}
-        />
-      ) : (
-        <RememberOptions
-          question={question}
-          line={line}
-          onAnswer={onAnswer}
-          quiet={withdrawn}
-          blockProject={outsideChange}
-        />
-      )}
-    </>
-  );
-}
-
-function OutsideChange({ repoId }: { repoId: string }): React.JSX.Element {
-  return (
-    <p className="text-xs text-amber-700 dark:text-amber-400/90">
-      The client file changed outside Fleet.{' '}
-      <button
-        type="button"
-        onClick={() => openClientFileSettings(repoId)}
-        className="underline underline-offset-2 hover:text-fleet-text focus-ring"
-      >
-        Review it
-      </button>{' '}
-      before you approve this.
+    <p className="text-xs text-fleet-text-subtle">
+      Withdrawn{question.withdrawnReason ? `: ${question.withdrawnReason}` : ''}. You can still
+      answer, and the Admiral will know it came late.
     </p>
   );
 }
@@ -202,15 +114,12 @@ function OutsideChange({ repoId }: { repoId: string }): React.JSX.Element {
 function Options({
   question,
   onAnswer,
-  quiet,
-  blockFirst = false
+  quiet
 }: {
   question: AgencyQuestion;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   /** A withdrawn question: still answerable, without the Admiral's pick lit up. */
   quiet: boolean;
-  /** The first option cannot be picked right now. */
-  blockFirst?: boolean;
 }): React.JSX.Element {
   const [text, setText] = useState('');
   const { busy, refused, answer } = useAnswer(onAnswer, () => setText(''));
@@ -221,36 +130,34 @@ function Options({
       <OptionButtons
         question={question}
         quiet={quiet}
-        disabled={(i) => busy || (blockFirst && i === 0)}
+        disabled={() => busy}
         onPick={(i) => void answer({ option: i })}
       />
-      {takesText(question) && (
-        <form
-          className="flex h-7 items-center gap-1 rounded-md border border-fleet-border bg-fleet-surface pr-0.5 pl-2 focus-within:border-fleet-border-strong"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (typed !== '') void answer({ text: typed });
-          }}
+      <form
+        className="flex h-7 items-center gap-1 rounded-md border border-fleet-border bg-fleet-surface pr-0.5 pl-2 focus-within:border-fleet-border-strong"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (typed !== '') void answer({ text: typed });
+        }}
+      >
+        <input
+          value={text}
+          disabled={busy}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Or answer in your own words"
+          aria-label={`Your own answer to ${questionDisplayId(question.id)}`}
+          {...keyProps('reply')}
+          className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
+        />
+        <button
+          type="submit"
+          disabled={busy || typed === ''}
+          aria-label="Send answer"
+          className="flex size-6 shrink-0 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text disabled:opacity-30 focus-ring"
         >
-          <input
-            value={text}
-            disabled={busy}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Or answer in your own words"
-            aria-label={`Your own answer to ${questionDisplayId(question.id)}`}
-            {...keyProps('reply')}
-            className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
-          />
-          <button
-            type="submit"
-            disabled={busy || typed === ''}
-            aria-label="Send answer"
-            className="flex size-6 shrink-0 items-center justify-center rounded text-fleet-text-muted transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text disabled:opacity-30 focus-ring"
-          >
-            <ArrowUp size={13} />
-          </button>
-        </form>
-      )}
+          <ArrowUp size={13} />
+        </button>
+      </form>
       {refused && <Refused />}
     </div>
   );
@@ -315,75 +222,6 @@ function Refused(): React.JSX.Element {
     <p role="status" className="text-[11px] text-amber-700 dark:text-amber-400/90">
       That answer did not go through. The question may have been answered already.
     </p>
-  );
-}
-
-/** A crew lesson card is answered by its options only: typed words have no one to read them. */
-const takesText = (question: AgencyQuestion): boolean => question.kind !== 'crew_lesson';
-
-/** The line a Remember this? card would save, struck out once the client's own words replace it. */
-function RememberLine({ line, replaced }: { line: string; replaced: boolean }): React.JSX.Element {
-  return (
-    <p
-      className={`rounded border border-fleet-border bg-fleet-surface px-2 py-1.5 text-xs leading-snug ${
-        replaced ? 'text-fleet-text-subtle line-through decoration-1' : 'text-fleet-text'
-      }`}
-    >
-      {line}
-    </p>
-  );
-}
-
-/**
- * Where a Remember this? line goes: This project, All projects or Just this
- * job. Words the client types replace the line, which then shows struck out.
- */
-function RememberOptions({
-  question,
-  line,
-  onAnswer,
-  quiet,
-  blockProject
-}: {
-  question: AgencyQuestion;
-  line: string;
-  onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
-  quiet: boolean;
-  /** The project's file has a change from outside Fleet, so This project waits. */
-  blockProject: boolean;
-}): React.JSX.Element {
-  const [text, setText] = useState('');
-  const { busy, refused, answer } = useAnswer(onAnswer, () => setText(''));
-  const typed = text.trim();
-  const saves = (i: number): boolean => i !== REMEMBER_OPTION.decline;
-
-  return (
-    <div className="flex flex-col gap-2 pt-0.5">
-      <RememberLine line={line} replaced={typed !== ''} />
-      <label className="flex h-7 items-center gap-2 rounded-md border border-fleet-border bg-fleet-surface px-2 focus-within:border-fleet-border-strong">
-        <span className="shrink-0 text-xs text-fleet-text-subtle">Or put it your way:</span>
-        <input
-          value={text}
-          disabled={busy}
-          onChange={(e) => setText(e.target.value)}
-          maxLength={CLIENT_LINE_MAX_CHARS}
-          aria-label={`Your own words for ${questionDisplayId(question.id)}`}
-          className="min-w-0 flex-1 bg-transparent text-xs text-fleet-text outline-none placeholder:text-fleet-text-subtle"
-        />
-      </label>
-      <OptionButtons
-        question={question}
-        quiet={quiet}
-        disabled={(i) => busy || (blockProject && i === REMEMBER_OPTION.project)}
-        onPick={(i) =>
-          void answer(saves(i) && typed !== '' ? { option: i, text: typed } : { option: i })
-        }
-      />
-      <p className="text-[11px] text-fleet-text-subtle">
-        Asked once per kind of change. Ignore it and nothing is saved.
-      </p>
-      {refused && <Refused />}
-    </div>
   );
 }
 
@@ -470,45 +308,27 @@ function ModelUnreachableCard({
 
 /**
  * A question in the reader: an open question in full, any other kind (the
- * model down, Remember this?, an answered one) as its card at full width.
+ * model down, an answered one) as its card at full width.
  */
 function ReaderLayout({
   question,
   onAnswer,
   onOpenSettings,
-  clientFileChanged,
   head
 }: {
   question: AgencyQuestion;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   onOpenSettings: () => void;
-  clientFileChanged: boolean;
   head: React.ReactNode;
 }): React.JSX.Element {
-  const plain =
-    question.kind !== 'model_unreachable' &&
-    question.answeredAt === null &&
-    rememberLine(question) === null;
-  if (!plain) {
+  if (question.kind === 'model_unreachable' || question.answeredAt !== null) {
     return (
       <ReaderFrame head={head}>
-        <QuestionCard
-          question={question}
-          onAnswer={onAnswer}
-          onOpenSettings={onOpenSettings}
-          clientFileChanged={clientFileChanged}
-        />
+        <QuestionCard question={question} onAnswer={onAnswer} onOpenSettings={onOpenSettings} />
       </ReaderFrame>
     );
   }
-  return (
-    <QuestionReader
-      question={question}
-      onAnswer={onAnswer}
-      head={head}
-      outsideChange={question.proposal !== null && clientFileChanged}
-    />
-  );
+  return <QuestionReader question={question} onAnswer={onAnswer} head={head} />;
 }
 
 /**
@@ -519,21 +339,18 @@ function ReaderLayout({
 function QuestionReader({
   question,
   onAnswer,
-  head,
-  outsideChange
+  head
 }: {
   question: AgencyQuestion;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   head: React.ReactNode;
-  outsideChange: boolean;
 }): React.JSX.Element {
   const withdrawn = question.status === 'withdrawn';
   const [pick, setPick] = useState<number | null>(withdrawn ? null : question.recommended);
   const [text, setText] = useState('');
   const { busy, refused, answer } = useAnswer(onAnswer, () => setText(''));
   const typed = text.trim();
-  const blocked = (option: number): boolean => outsideChange && option === 0;
-  const ready = (pick !== null && !blocked(pick)) || typed !== '';
+  const ready = pick !== null || typed !== '';
   const id = questionDisplayId(question.id);
 
   return (
@@ -548,7 +365,7 @@ function QuestionReader({
             disabled={busy || !ready}
             onClick={() =>
               void answer({
-                ...(pick === null || blocked(pick) ? {} : { option: pick }),
+                ...(pick === null ? {} : { option: pick }),
                 ...(typed === '' ? {} : { text: typed })
               })
             }
@@ -564,67 +381,43 @@ function QuestionReader({
         <h2 className="flex-1 text-base font-semibold text-fleet-text">{question.question}</h2>
         <span className="shrink-0 font-mono text-xs text-fleet-text-subtle">{id}</span>
       </div>
-      {withdrawn && (
-        <p className="text-xs text-fleet-text-subtle">
-          Withdrawn{question.withdrawnReason ? `: ${question.withdrawnReason}` : ''}. You can still
-          answer, and the Admiral will know it came late.
-        </p>
-      )}
-      {outsideChange && <OutsideChange repoId={question.repoId} />}
+      {withdrawn && <Withdrawn question={question} />}
       <ReaderWhy question={question} />
       <ReaderSection label="Options">
-        <OptionList
-          question={question}
-          pick={pick}
-          disabled={(i) => busy || blocked(i)}
-          onPick={setPick}
+        <OptionList question={question} pick={pick} disabled={() => busy} onPick={setPick} />
+      </ReaderSection>
+      <ReaderSection label="In your own words">
+        <textarea
+          value={text}
+          disabled={busy}
+          rows={3}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add to the option, or answer in your own words"
+          aria-label={`Your own answer to ${id}`}
+          {...keyProps('reply')}
+          className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
         />
       </ReaderSection>
-      {takesText(question) && (
-        <ReaderSection label="In your own words">
-          <textarea
-            value={text}
-            disabled={busy}
-            rows={3}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Add to the option, or answer in your own words"
-            aria-label={`Your own answer to ${id}`}
-            {...keyProps('reply')}
-            className="resize-none rounded-md border border-fleet-border bg-fleet-surface px-2.5 py-2 text-[13px] text-fleet-text outline-none placeholder:text-fleet-text-subtle focus:border-fleet-border-strong"
-          />
-        </ReaderSection>
-      )}
     </ReaderFrame>
   );
 }
 
-/** Why a question is asked, and what it would change: the part of the reader the client only reads. */
-function ReaderWhy({ question }: { question: AgencyQuestion }): React.JSX.Element {
+/** Why a question is asked: the part of the reader the client only reads. */
+function ReaderWhy({ question }: { question: AgencyQuestion }): React.JSX.Element | null {
+  if (question.context === '') return null;
   return (
-    <>
-      {question.context !== '' && (
-        <ReaderSection
-          label={
-            ADMIRAL_QUESTION_KINDS.includes(question.kind)
-              ? 'Why the Admiral asks'
-              : 'Why Fleet asks'
-          }
-        >
-          <AgentMarkdown
-            streaming={false}
-            className="text-[13px] leading-relaxed text-fleet-text-secondary [&_code]:text-xs"
-          >
-            {question.context}
-          </AgentMarkdown>
-        </ReaderSection>
-      )}
-      {question.proposal !== null && <ProposalLines proposal={question.proposal} />}
-      {question.lesson !== null && (
-        <ReaderSection label="The change">
-          <LessonChange lesson={question.lesson} />
-        </ReaderSection>
-      )}
-    </>
+    <ReaderSection
+      label={
+        ADMIRAL_QUESTION_KINDS.includes(question.kind) ? 'Why the Admiral asks' : 'Why Fleet asks'
+      }
+    >
+      <AgentMarkdown
+        streaming={false}
+        className="text-[13px] leading-relaxed text-fleet-text-secondary [&_code]:text-xs"
+      >
+        {question.context}
+      </AgentMarkdown>
+    </ReaderSection>
   );
 }
 

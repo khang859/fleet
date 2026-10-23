@@ -164,4 +164,17 @@ describe('answering', () => {
     expect(status(answered.id)).toBe('answered');
     expect(status(elsewhere.id)).toBe('open');
   });
+
+  it('withdraws every open question of a job, whatever its step', () => {
+    const a = ask({ step: 's2' });
+    const b = ask();
+    const answered = ask();
+    store.answerQuestion({ id: answered.id, option: 0 });
+
+    expect(store.withdrawForJob({ jobId: job.id, reason: 'the job delivered' })).toEqual([
+      a.id,
+      b.id
+    ]);
+    expect(status(answered.id)).toBe('answered');
+  });
 });

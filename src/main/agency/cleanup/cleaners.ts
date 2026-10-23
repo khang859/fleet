@@ -25,7 +25,8 @@ const CLEANED: CleanerResult = { status: 'cleaned' };
 /**
  * A worktree goes only when it holds nothing to lose. One that is not there
  * was never made (a crash between recording and making it) or was removed by
- * hand, and needs nothing more.
+ * hand, and needs nothing more. A branch the job delivered as its result
+ * stays, so the worktree on it can go.
  */
 async function removeWorktree(
   deps: CleanerDeps,
@@ -33,12 +34,20 @@ async function removeWorktree(
   ignoreSubmodules: boolean
 ): Promise<CleanerResult> {
   if (r.path === null || !existsSync(r.path)) return CLEANED;
+  const branch = deliveredBranch(deps, r) ? null : r.branch;
   const verdict = removalVerdict(
-    await inspectWorktree(r.path, r.branch, deps.git, { ignoreSubmodules })
+    await inspectWorktree(r.path, branch, deps.git, { ignoreSubmodules })
   );
   if (!verdict.remove) return { status: 'kept', reason: verdict.reason };
-  await deps.worktrees.removeClean(r.path, r.branch);
+  await deps.worktrees.removeClean(r.path, branch);
   return CLEANED;
+}
+
+/** Whether the worktree's branch is a local branch the job delivered. */
+function deliveredBranch(deps: CleanerDeps, r: ResourceRecord): boolean {
+  return deps.store.results
+    .forJob(r.jobId)
+    .some((result) => result.body.kind === 'branch' && result.body.branch === r.branch);
 }
 
 /** The other resources of the job workspace a resource belongs to. */

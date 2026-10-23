@@ -21,9 +21,7 @@ import {
   type ProjectFolder,
   type RuleCandidates,
   type ImportDiff,
-  type ProjectTrust,
-  type SetupScan,
-  TRUST_LEVELS
+  type SetupScan
 } from '../../shared/agency-projects';
 import {
   READ_EVIDENCE_MAX,
@@ -31,11 +29,11 @@ import {
   READ_MAX_LINES,
   READ_SOURCE_IDS,
   READ_TAGS,
-  RULE_FILES,
   type ReadResult,
   type ReadSource
 } from '../../shared/agency-understanding';
 import { YOU_LAYER } from '../../shared/agency-client-file';
+import type { AppliedCrewLesson, CrewLessonUndo } from '../../shared/agency-lessons';
 import { MEET_QUESTION_IDS, MEET_TEXT_MAX } from '../../shared/agency-meet';
 import {
   CREW_RUNTIMES,
@@ -55,7 +53,7 @@ import {
   PERMISSION_REASON_MAX_CHARS,
   type PermissionAnswerResult
 } from '../../shared/agency-permissions';
-import { PLAN_MAX_STEPS, PlanSchema } from '../../shared/agency-plan';
+import { PlanSchema } from '../../shared/agency-plan';
 import type { AdmiralSettingMark, SettingsUndoOutcome } from '../../shared/agency-settings';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type { AgencyService } from './index';
@@ -71,6 +69,7 @@ const RepoId = z.string().regex(/^[0-9a-f]{16}$/);
 const Layer = z.union([z.literal(YOU_LAYER), RepoId]);
 const PaneId = z.string().min(1);
 const JobId = z.number().int().positive();
+const LessonId = z.number().int().positive();
 const CrewId = z.number().int().positive();
 const Ids = z.array(z.number().int().positive());
 
@@ -122,35 +121,13 @@ const ClientLineArgs = z.object({
 const RuntimeTestArgs = z.object({ repoId: RepoId, runtime: z.enum(CREW_RUNTIMES) });
 const ResultOpenArgs = z.object({ resultId: JobId, file: z.number().int().min(0).max(100) });
 const StepKey = z.string().max(80);
-/** The plan decisions the Bridge may hold for undo: every one but an edit. */
-const PlanDecisionArgs = z.discriminatedUnion('action', [
-  z.object({
-    planVersionId: JobId,
-    action: z.literal('approve'),
-    baseChoice: z.record(StepKey, z.enum(['default', 'head'])).optional(),
-    swaps: z.record(StepKey, z.enum(['continue', 'restart'])).optional(),
-    acceptCost: z.boolean().optional()
-  }),
-  z.object({
-    planVersionId: JobId,
-    action: z.literal('reject'),
-    note: z.string().trim().min(1).max(4_000)
-  }),
-  z.object({
-    planVersionId: JobId,
-    action: z.literal('revise'),
-    note: z.string().trim().min(1).max(4_000),
-    steps: z.array(StepKey).max(PLAN_MAX_STEPS)
-  })
-]);
-const PlanActionArgs = z.discriminatedUnion('action', [
-  ...PlanDecisionArgs.options,
-  z.object({ planVersionId: JobId, action: z.literal('edit'), plan: PlanSchema })
-]);
-const HoldArgs = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('plan'), action: PlanDecisionArgs }),
-  z.object({ kind: z.literal('answer'), answer: AnswerArgs })
-]);
+/** The client's own version of the plan a job runs. */
+const PlanActionArgs = z.object({
+  planVersionId: JobId,
+  action: z.literal('edit'),
+  plan: PlanSchema
+});
+const HoldArgs = z.object({ kind: z.literal('answer'), answer: AnswerArgs });
 const StepSwapArgs = z.object({
   jobId: JobId,
   stepId: StepKey,
@@ -187,14 +164,6 @@ const MeetAnswerArgs = z.object({
   ])
 });
 
-const ProjectTrustArgs = z.object({
-  repoId: RepoId,
-  trust: z.object({
-    level: z.enum(TRUST_LEVELS),
-    autoStartUsd: z.number().positive().max(100_000).nullable()
-  })
-});
-
 const MeetFinishArgs = z.object({
   repo: RepoRef,
   rules: z
@@ -215,10 +184,7 @@ const ReadKeepArgs = z.object({
         text: z.string().min(1).max(READ_LINE_MAX),
         layer: z.enum(['you', 'project']),
         source: z.enum(READ_TAGS),
-        evidence: z.string().max(READ_EVIDENCE_MAX),
-        clash: z
-          .object({ source: z.enum(RULE_FILES), rule: z.string().min(1).max(1_000) })
-          .nullable()
+        evidence: z.string().max(READ_EVIDENCE_MAX)
       })
     )
     .max(READ_MAX_LINES)
@@ -267,10 +233,8 @@ export function registerAgencyIpc(service: AgencyService): void {
     (_e, repoId: unknown): AgencySnapshot => service.snapshot(RepoId.parse(repoId))
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.AGENCY_ANSWER,
-    async (_e, req: unknown): Promise<AgencyQuestion | null> =>
-      service.answerClient(AnswerArgs.parse(req))
+  ipcMain.handle(IPC_CHANNELS.AGENCY_ANSWER, (_e, req: unknown): AgencyQuestion | null =>
+    service.answer(AnswerArgs.parse(req))
   );
 
   ipcMain.handle(
@@ -403,6 +367,13 @@ export function registerAgencyIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_CLIENT_FILE_LINE,
     (_e, args: unknown): ClientLineResult => service.changeClientLine(ClientLineArgs.parse(args))
   );
+  ipcMain.handle(IPC_CHANNELS.AGENCY_CREW_LESSONS, (_e, repoId: unknown): AppliedCrewLesson[] =>
+    service.lessons.list(RepoId.parse(repoId))
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.AGENCY_CREW_LESSON_UNDO,
+    async (_e, id: unknown): Promise<CrewLessonUndo> => service.lessons.undo(LessonId.parse(id))
+  );
 
   // Resolves with the saved path, or null when the job cannot be exported or the client cancelled.
   ipcMain.handle(
@@ -430,17 +401,8 @@ export function registerAgencyIpc(service: AgencyService): void {
   registerSettingsIpc(service);
 }
 
-const SettingsDecideArgs = z.object({ changeId: JobId, approved: z.boolean() });
-
 /** The client's side of the Admiral's settings cards, and "Changed by the Admiral" in Settings. */
 function registerSettingsIpc(service: AgencyService): void {
-  ipcMain.handle(
-    IPC_CHANNELS.AGENCY_SETTINGS_DECIDE,
-    async (_e, args: unknown): Promise<boolean> => {
-      const { changeId, approved } = SettingsDecideArgs.parse(args);
-      return service.settings.decide(changeId, approved);
-    }
-  );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_SETTINGS_UNDO,
     async (_e, changeId: unknown): Promise<SettingsUndoOutcome> =>
@@ -503,13 +465,6 @@ function registerProjectsIpc(service: AgencyService): void {
     IPC_CHANNELS.AGENCY_RULE_CANDIDATES,
     async (_e, repo: unknown): Promise<RuleCandidates[]> =>
       projects.ruleCandidates(RepoRef.parse(repo))
-  );
-  ipcMain.handle(
-    IPC_CHANNELS.AGENCY_PROJECT_TRUST,
-    (_e, repoId: unknown): ProjectTrust => projects.trust(RepoId.parse(repoId))
-  );
-  ipcMain.handle(IPC_CHANNELS.AGENCY_PROJECT_TRUST_SET, (_e, args: unknown): void =>
-    projects.setTrust(ProjectTrustArgs.parse(args))
   );
   ipcMain.handle(
     IPC_CHANNELS.AGENCY_MEET_ANSWER,

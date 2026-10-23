@@ -144,8 +144,8 @@ export function AgencyAdmiralSection(): React.JSX.Element | null {
             />
           </SettingRow>
           <p className="text-xs text-fleet-text-subtle mt-1">
-            Real dollars a job may spend unless you approve a plan with another budget: the
-            Admiral&apos;s model, eva, and Claude Code paid through an API key.
+            A guide for what a job spends in real dollars: the Admiral&apos;s model, eva, and Claude
+            Code paid through an API key. Only the monthly cap stops work.
           </p>
           <AdmiralChangeNote marks={marks} settingKey="agency.admiral.defaultBudgetUsd" />
         </div>

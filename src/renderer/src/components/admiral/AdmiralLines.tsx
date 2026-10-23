@@ -114,9 +114,6 @@ export function AskClientRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
   const question = useAgencyStore((s) =>
     admiral === null || id === null ? null : findQuestion(s.snapshots[admiral.repoId], id)
   );
-  const clientFileChanged = useAgencyStore(
-    (s) => admiral !== null && s.snapshots[admiral.repoId]?.clientFileChanged === true
-  );
   if (question === null || question.status === 'hidden' || call.error !== null) {
     return <AgentToolRow call={call} />;
   }
@@ -128,7 +125,6 @@ export function AskClientRow({ call }: { call: AgentToolCall }): React.JSX.Eleme
           (await useAgencyStore.getState().answer({ id: question.id, ...answer })) !== null
         }
         onOpenSettings={() => openSettings('agencyAdmiral')}
-        clientFileChanged={clientFileChanged}
       />
     </div>
   );

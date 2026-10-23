@@ -1,0 +1,244 @@
+# ripwire quality acks v1 — written by --quality-ack; a finding stays suppressed until it worsens past its acked magnitude
+# format: ack <kind> <16-hex-key> <ackNow> [cid=<16-hex-content-id>] [by=<scope that acked it>] <reason to end of line> — one per line, kept SORTED by (kind,key) on every write (merge-friendly)
+ack dead-code:new-symbol 8c5832e538d1e99f 0 cid=2f400b9f63ac3412 False positives, checked by grep: CrewLessons, LessonList, LessonRow and Withdrawn are used only in JSX, and LessonStore is built in agency-store.ts.
+ack dead-code:new-symbol d9edcdc0351c8cbf 0 cid=22dc71353642286b False positives, checked by grep: CrewLessons, LessonList, LessonRow and Withdrawn are used only in JSX, and LessonStore is built in agency-store.ts.
+ack dead-code:new-symbol dc640f66d3e22195 0 cid=1b29dd8f6f3fe723 False positives, checked by grep: CrewLessons, LessonList, LessonRow and Withdrawn are used only in JSX, and LessonStore is built in agency-store.ts.
+ack dead-code:new-symbol e0933667187bf56f 0 cid=c3673f8ebe238c24 False positives, checked by grep: CrewLessons, LessonList, LessonRow and Withdrawn are used only in JSX, and LessonStore is built in agency-store.ts.
+ack dead-code:new-symbol f53ec66c6a433a56 0 cid=a4132972813ed4fd False positives, checked by grep: CrewLessons, LessonList, LessonRow and Withdrawn are used only in JSX, and LessonStore is built in agency-store.ts.
+ack dead-code:preexisting a90cfacb8ce32171 0 cid=652e059c210cecd7 False positive: job-plan.ts passes diffLine to .map, so it is in use.
+ack duplication 18e70889e4a04ed0 75 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 1c62bfddb7bbf26f 50 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 49d4a011c806c06c 81 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 4b0ef579e63bbe1f 45 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 549f28c8bd3d41b6 49 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 5baf4037126ae592 25 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 76749f303c5d7890 76 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 779f89379f945edd 52 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 817cb04df7507832 19 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 95961fbf14fd15af 39 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication 9dcd57285771c843 33 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication b390e5acb5eac9af 106 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication b4592b8cf8626ccb 45 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication b906d4fbc92fb1ba 33 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication c35f4e3bb12d8af1 33 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication cbe10818fb62b5e4 45 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication d06d513792611b96 49 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication d1884765c6a2bc06 30 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication d7cd6ec97483f194 82 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication df46d1a289cb97a4 55 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication f4daee593e96626f 66 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack duplication fb092114187116b4 106 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 18e70889e4a04ed0 79 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 4b0ef579e63bbe1f 6 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 549f28c8bd3d41b6 63 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 5baf4037126ae592 8 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 76749f303c5d7890 79 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper 9dcd57285771c843 4 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper cbe10818fb62b5e4 126 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper d06d513792611b96 14 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack new-clone-of-reused-helper d7cd6ec97483f194 3 Short look-alike bodies: one-line SQL get, list and update statements per store, and filter-map item builders that each make a different item kind. Each store owns its SQL; a shared helper would be a wrong abstraction.
+ack short-horizon-churn 02215b5c417f4636 7 cid=02deb70e4c4838f6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0519f91bcf285f56 5 cid=d005e60c09d3b14f Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0597a7c00d669f27 4 cid=e6408650128b923a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 05e96e7ab66de4ac 11 cid=d4f2aaa113dcad28 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0aa9aceaf0e52ace 13 cid=3d19396c76eb54fb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0c6e6bf0be398f97 2 cid=a18a499fa10811b6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0d643c3fea31d778 6 cid=a4aad4280b8dc4c2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 0f7c7b727326a135 2 cid=353df7773052ea6b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 122c1bdbbb3c64aa 7 cid=2c1d0ee6d52d11b7 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 129b6e06acb36bf9 5 cid=22b9961bdd98e6b4 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 15ba0dae92948e81 3 cid=00b9da243115c48c Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 1a3f4cc2a66ed31d 2 cid=1122fd6ec57b780c Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 1bc0f74a1c41fe4b 17 cid=dfe0dcfe6d219a76 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 1f8bcdee2e999e99 7 cid=f7280d02d5a5f08a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 20063bf2044d5599 2 cid=1a4b5c0c02bcc4f4 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 20fa6dc832c0897b 10 cid=1fee0e0e0056d2f2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2374097d3cd50309 13 cid=f398c527f050f2ee Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2534cfa67629aa5c 10 cid=e55f9455b6feb31b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 26465efeed6927c6 7 cid=fb04bf9ea8e52fce Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2b8751838968ee42 4 cid=c6090bfd18847905 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2bef577563f3bbd1 13 cid=94858630e22764a9 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2cfdbe1218758ac2 2 cid=b38c2127c4e3dbd0 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2e8ab0ae59392c29 2 cid=d19caaf62447e533 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 2eae471e7cb4f742 2 cid=926cd8a8ad913536 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 308e3e34d6f28a6e 10 cid=a8b7053a517a1646 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 30a112f752a9e1e9 18 cid=1241098e1d999063 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3337fa940b577022 2 cid=e88e12c54c6800d1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 34aad051896893b3 11 cid=c55f204494ccdc37 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 36b0900f7d7a2ab0 9 cid=50610f1f97187c8a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 37bb6186d84b328e 2 cid=cbad895c4f4623fa Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3889f71a7c4b077a 2 cid=bd959ca67179e1b9 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 39d5775399d7382e 2 cid=7d750d61b6ea32d6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3ae27183b38e7448 8 cid=3d5f9d465fe69266 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3b6afd950a5284a5 7 cid=9a2050c8a71664a5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3bf2927dac5f8338 3 cid=df8a994ab3eb5183 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3cd2023528739edb 2 cid=3ef1d61540694c04 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3e3e4b247a9a2317 3 cid=97014425dd9c578d Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3e4beef56f085bdc 13 cid=5bfa4018f15a8f57 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 3ffb3bf3a06054f6 7 cid=47567dd5d968c004 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 41a6372e14bdab9c 6 cid=8333a77815a68acc Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 41ece6a14a1ae778 11 cid=03bec1b1c225c7ef Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4565e1c8a62689aa 3 cid=a65bbe153b9afd30 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 46e1fbaff9025f83 13 cid=de4b5738c5249977 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 473c1094f15b48c1 3 cid=28f250a253582c51 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 47bc24adb5705b23 7 cid=41ecf7b50549bc52 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 49d4a2d3cf139392 2 cid=1333be99821d1d3b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4a15b7cbcbcc40db 13 cid=dbd77be4f2d46911 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4ddbd3eca5c8a58d 8 cid=be4fe0599de0a8b8 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4e1f54c038184f69 7 cid=f9b6a392d63a3ef1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4ed9020bb07e33e1 13 cid=2514c88e2ff79ffb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 4f850f798723aed8 5 cid=93b40153b6cb1886 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 50bec73ce3d3140d 6 cid=17a8d93c6c6e70b3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 559d1fca63eccc5c 4 cid=fc40eb2172d27d13 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 55e1d0047c2e58a3 8 cid=45883d63f931553c Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 569d224942439817 2 cid=0d82073f67f07257 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 5bf2c05d985b2f78 2 cid=042644d29199c79e Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 5c673d06d93f15e7 2 cid=49e5cd89086bef92 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 5e4a7ad063a1fd97 6 cid=4ffb7db6db9852c0 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 5e95ffa0a7ff3157 11 cid=320359e94e2b9b8b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 5f7abd5b664d1bc5 2 cid=1c68a91b7d5c3171 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 60ee1c891ef2258c 7 cid=a833fc5150b21d16 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 617839588392c495 7 cid=206728eec30b6323 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 651afdf27ad0b777 7 cid=b015ad9372b64307 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6777a89741e52469 3 cid=8e651a89b7fa4f83 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 67bc2f2f5a7f4d0f 3 cid=b5b00c18eab29d05 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 67e7e13517e5c062 2 cid=fbdde511595bc901 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 69ade7e2addb340c 17 cid=f95051a92e46123a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6a1ff7dd6291aee9 2 cid=78f1886743e6ab3c Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6a3fc0469f2ec55f 18 cid=24d912fabd9d15f9 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6a5de6265b4a6311 2 cid=5d2c11f3d06607e1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6c7165922e7251f5 7 cid=7fa4a393e3066c30 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6c84558a89a993e9 2 cid=02d08e23cd6ada3d Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 6e92fe99d0fb795e 6 cid=69fec895d6166415 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 70809efd4aae32ab 2 cid=a363a10edbabced2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 70c4142972696ab1 3 cid=14c6e15073912cab Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 72cd3693e19d3abb 18 cid=345b86ffb79ca603 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 749f31fb2dc33e14 4 cid=fc5cdc50d96786e2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 756cdb53435fd4f9 5 cid=bdc4bd60bdafb7ae Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 7813bdc268af6545 13 cid=4c37a9e149489834 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 795915651a3a932b 8 cid=086b3e3d539dd612 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 79d69cbfc0c03bfc 3 cid=7231fbedaab94dc6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 7b9a47297ea5fc57 7 cid=22539efb6689c1ad Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 7c7309ae0ae5a991 7 cid=9360a721bcf62047 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 801f5d68dd39b214 3 cid=dba6e9ee86aec1b1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8310e8c955088e1d 17 cid=c7abbbdb478315fc Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 847f78f1df2fde2d 18 cid=88433e19f38e3a8a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 850f096521c9d39b 3 cid=f78b035d15987457 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 85ccaf5c7e2ac61d 2 cid=295f2789d208a313 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 88eae37103ea5cf6 2 cid=baa8a608f13c22ef Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 89cad0732f6cec4d 2 cid=93600f25d5fc3914 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8bd08237970a5cd0 6 cid=ca590089fb7aaf71 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8c695b31a0689184 2 cid=4f13f3dab0f446f4 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8de68eb4c89a153d 7 cid=eb860ffe47b4bda1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8e9901f99320d340 11 cid=2c9d915dbccaac24 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8ef82ee581f06419 8 cid=c3e81fccf7aafe24 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8f39a80a892925cd 2 cid=a0676f8d5f649dd3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 8ff49a0583638dbb 3 cid=e7677b89c0d2c4c6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 90599bd2c8f00b24 11 cid=3abc752b3c0714de Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 905fceca456bfd6d 17 cid=3e44cfd42a4dd8b8 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 91587834b2d903c1 2 cid=cc287aede8db6c41 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 918663e7a8eabe5a 2 cid=fb5ffa885b04edc5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 93ccbcb0e8ce6c6b 10 cid=38568f5ecc8b64cf Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 942db6bc49fc4db4 6 cid=aed107dc52a18348 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 96f1130ffa549faa 7 cid=315d813aa0111b86 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 992f709131c33922 3 cid=d2096b9d899adc60 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9a129d7546739bb5 2 cid=c5789754f640304e Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9a3c74bd4932de82 5 cid=149fe5601f931f61 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9b5cd64f0f345fb9 18 cid=224550adbb786208 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9bc2d14ba8fb6f1a 6 cid=45c51a0a6ade4aff Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9bc6bc4ce69908aa 3 cid=83b25712add38157 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9c339575014cca19 5 cid=836a76843dbe28b1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9c72aff83dc0d843 3 cid=5e0765da9db8e280 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9df35d31302781c7 2 cid=5994cfd74a0e6501 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn 9e1541985d25492d 2 cid=d18ad60d4dd6d713 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a0a45bf8f3d45ede 5 cid=aaa1b25d378b2c96 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a12a3d4711d9f469 8 cid=45275f5f8f3da6e8 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a3fea1aba3362b4b 2 cid=f866b865e5916416 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a5c06001481a61c8 2 cid=5853ac1711863180 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a5dd7fda4d11358e 6 cid=8f831ea9283e2f7a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a69b114fee0586e2 3 cid=8a040a495984f0c5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a7c0618db3bfe02d 13 cid=b653a80d11ea7795 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a85ead1cac37d3e9 8 cid=164eba9d6454e939 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn a978e8ed25ff0b70 3 cid=2889416b539a7087 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ab2414273dca24a9 3 cid=a0a071f9ebe7ffe6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ad287e0e2331a673 2 cid=72915a81de4cbb06 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn aeaa5a59f93871ac 7 cid=5671a06fe4b75182 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b05aa8b1ba43d0a4 3 cid=0e7ff148182ba7b3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b3323a2cd8ef3b69 2 cid=72c718d9e69e8b71 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b472b69136d828ee 3 cid=8b9ae409dfa68f16 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b4b6fad1643922d5 3 cid=57a25825829a97cf Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b63251b7e60bab8d 7 cid=ba6bd3e1114316fb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b67033ae6fdd49c9 10 cid=bcb8cab23ffd69f1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b7bfb2a999ffbca5 5 cid=cb72aba95c845695 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b880b26cca702021 2 cid=8e496bc4052d4a05 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b8ea6d4861c34ba5 3 cid=6c6fb9e6692abcab Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b90200b3ab18bbc9 3 cid=40bef6d7a1194af3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn b9725ce6a43700be 2 cid=0b627076ce35d2f3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn badf0ffba4ea6d54 7 cid=1e9cd464badb14f6 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn bb6c770c2477a43c 2 cid=22f8e78a60fe3ba2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn bb9adc4da31f810f 2 cid=2c75313e8d8e44aa Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn bd5fe9ba8411bcb1 3 cid=1f184538b39977fd Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn beffab836bbd0094 8 cid=7866c5c39d7e389f Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c1a309743b4abcbe 18 cid=51deaf37de40138e Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c1d51031e34249a0 17 cid=08482e71a003ae13 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c40616256c06838a 2 cid=8de65de0813507d3 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c554d7266aed90c0 7 cid=a95d0429b41b9293 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c5973101e1b9aebd 8 cid=25635bb80155d545 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c605bfcc216dc51c 10 cid=e9d9aa2e24377125 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c634247b14a5ba0a 2 cid=b803ed7d1cf014ab Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c64e0ef1128daf44 17 cid=fa339eeceac9d3dd Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c7966c825f299500 7 cid=0ff67db672b22cdb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c7fa33e528c2beb4 11 cid=468f36641aeaa3e5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c833b4aa99c35166 7 cid=57b47b622c3552e5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn c8982e177ffad23b 2 cid=4a3b204fabbd7e03 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn cd8be063ee2e3489 2 cid=0aedf3a1cb3480cb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ce0d676eec951863 17 cid=c206545f827e5581 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ce9b425404be1c9c 3 cid=737ffbc291c5bd46 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn cee5e6d49b1ba55b 7 cid=f76900f66b7caeb7 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn cefea5b14f479af1 3 cid=2c58e55a34d70127 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d0a70c9e2ee8f570 17 cid=263128647ef580e5 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d2b95b87b657f720 2 cid=f7f8adafc6545596 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d2d0de35fea58137 3 cid=eff454f89f70e435 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d4e7f9fbee37736c 7 cid=7af18199cc24b9c7 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d6457656c89993c6 3 cid=db4aba8097a77865 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d696a9d008265cd1 6 cid=b868a9758e584878 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d71592457ad7084d 13 cid=59d9f1c3766798d2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn d93c4343a413ed67 5 cid=ff457184b4f3e55b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn dbd5d918074f55f8 8 cid=c5b2be355390d763 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn dc7979f95bfb10ca 6 cid=72c0ec8722c395ff Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn dd26e5eb16cfe0a5 3 cid=83c99fd6b4663214 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn dd8ae41465262bdd 8 cid=0b3fafe8a96ea159 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn de87c6350e9fff80 7 cid=9757683c62972af1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn df23c5be117b5794 11 cid=ad15dfe464c96377 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e08dcc978f0ff263 2 cid=992ca09ac8ffd735 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e12111c686e9648d 7 cid=a41059f404c104a1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e14cbde989fc52ea 2 cid=0a8dcc4d14d6768b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e172fa9f3c580a6d 3 cid=b52b6b32237ef35f Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e19face2896f6417 3 cid=6df7d4810fb27548 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e2ac0d137bd0c55d 3 cid=7dc3d02383be208f Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e3fd07fe5b9cef86 3 cid=aa0c328ccf0c7839 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e441bfb825d3b0ef 17 cid=751128b3dd2fd82d Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn e4e695d4a497235c 3 cid=78bd0a34561024fa Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ea2390903bca3ed0 2 cid=abccb3268639ef59 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn eaea379a0ae582e4 3 cid=6ffba7aabcf194cb Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn eb1271d6100cce62 2 cid=1839654e24ab6eee Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ec966f2b90f5b7e4 3 cid=3d2769ea22478b1a Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn ec9797e4ef6d077a 18 cid=3eb20a3eb12dc926 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn efefb0d0718e717f 10 cid=8618a34365b8f58e Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn effeef48156da811 8 cid=59aee6c25001823b Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f077f60dc30c4e82 3 cid=69d2b6e886e27642 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f173a9cc9932943a 13 cid=6a70514d992006e1 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f5c2bf7375d974a4 5 cid=3249908bb24ec3f2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f690c7bc8b1f85e9 2 cid=41cb8867f060bfaf Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f771939b33ef321d 3 cid=d6c0d093fb20fccd Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn f83697532d1880fb 2 cid=48d42119e0de6773 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fb03149f60ef9b77 6 cid=d7e061e5b57a65b2 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fba13cc315819570 18 cid=2ec306d5fdd0bb01 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fba93be2dabcf568 2 cid=2f4250b47b8592bc Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fe417b8afe215f7a 6 cid=d15c87379302db6e Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fea3b646856ac658 2 cid=f202831b33a78593 Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack short-horizon-churn fef78dace6fd3c06 2 cid=03bec1b1c225c7ef Churn from this feature's own recent commits (admiral dev-team work). Preexisting by construction; no code change clears it.
+ack verbosity 36b0900f7d7a2ab0 427 cid=50610f1f97187c8a Data, not logic: the Admiral prompt text and the append-only migration list grow with each feature.
+ack verbosity 8e9901f99320d340 103 cid=2c9d915dbccaac24 Data, not logic: the Admiral prompt text and the append-only migration list grow with each feature.
+ack verbosity ab2414273dca24a9 246 cid=a0a071f9ebe7ffe6 Growth is the new PR features: Fleet pushes the crew branch and opens the PR, and reads the client's own PR comments. Each new method is short.
+ack verbosity ad287e0e2331a673 129 cid=72915a81de4cbb06 Growth is the new PR features: Fleet pushes the crew branch and opens the PR, and reads the client's own PR comments. Each new method is short.

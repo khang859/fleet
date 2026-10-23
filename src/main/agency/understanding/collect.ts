@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { jobDisplayId } from '../../../shared/agency';
 import { planStepList } from '../../../shared/agency-plan';
 import { RULE_FILES, type ReadTag } from '../../../shared/agency-understanding';
-import { ghJson, type GhRun } from '../projects/gh';
+import { ghJson, ghLogin, type GhRun } from '../projects/gh';
 import { openRepoReader, repoFacts } from '../projects/repo-reader';
 import type { GitRun } from '../repo-identity';
 import type { AgencyStore } from '../store/agency-store';
@@ -121,13 +121,6 @@ const ReviewSearch = z.object({
     })
   })
 });
-
-/** Who the GitHub CLI is signed in as, or null. */
-async function ghLogin(gh: GhRun, cwd: string): Promise<string | null> {
-  const out = await gh(['api', 'user', '--jq', '.login'], cwd);
-  const login = out?.code === 0 ? out.stdout.trim() : '';
-  return /^[\w-]+$/.test(login) ? login : null;
-}
 
 /** The client's newest review comments on the project's GitHub repository, summaries included. */
 export async function readReviews(

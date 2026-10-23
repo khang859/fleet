@@ -200,6 +200,11 @@ function handbackNote(step: PlanStep, folder: string | undefined): string | null
   if (step.deliverables.length === 0) return null;
   const listed = step.deliverables.map((d) => `${d.label} (${d.kind})`).join(', ');
   const lines = [`This step hands back: ${listed}.`];
+  if (step.deliverables.some((d) => d.kind === 'pr')) {
+    lines.push(
+      'Commit your work on your branch and finish: Fleet pushes it and opens the PR after the step. Never push or open a PR yourself.'
+    );
+  }
   if (step.deliverables.some((d) => isFileResultKind(d.kind))) {
     if (folder !== undefined) lines.push(`Write each file it hands back in ${folder}.`);
     lines.push('Pass each file to `fleet agency done` with `--deliver <path>`.');
@@ -760,22 +765,6 @@ export class CrewService {
       );
     }
     return job;
-  }
-
-  /**
-   * Press Esc in the job's crew panes that are in a turn, as its spend passed
-   * 120% of a budget. Not an Admiral act, so no hold refuses it.
-   */
-  interruptJob(jobId: number, why: string): void {
-    const panes = this.deps.panes;
-    const job = this.store.getJob(jobId);
-    if (panes === null || !job) return;
-    for (const crew of this.store.crew.live(jobId)) {
-      const session = crew.sessionId === null ? undefined : panes.session(crew.sessionId);
-      if (crew.paneId === null || !inATurn(session)) continue;
-      panes.write(crew.paneId, '\x1b');
-      this.record(job, crew.stepId, `Interrupted ${crew.label}: ${why}`, { crewId: crew.id });
-    }
   }
 
   private limitKey(jobId: number): string {

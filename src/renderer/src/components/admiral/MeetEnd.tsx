@@ -57,7 +57,12 @@ export function MeetEnd({
 
   return (
     <div className="flex flex-col gap-3">
-      <AdmiralSays>That is all my questions. Two last things before your first job.</AdmiralSays>
+      <AdmiralSays>
+        That is all my questions.{' '}
+        {rules.length === 0
+          ? 'One last thing before your first job.'
+          : 'A few last things before your first job.'}
+      </AdmiralSays>
       {rules.map((c) => (
         <RulesCard
           key={c.source}

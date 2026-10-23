@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import type { PreferenceStore } from '../store/preference-store';
 import { storeFixture } from './fixture';
 
 let prefs: PreferenceStore;
+let dbPath: string;
 let cleanup: () => void;
 
 beforeEach(() => {
   const fixture = storeFixture();
   prefs = fixture.store.preferences;
+  dbPath = fixture.dbPath;
   cleanup = fixture.cleanup;
 });
 afterEach(() => cleanup());
@@ -60,12 +63,6 @@ describe('PreferenceStore', () => {
     expect(prefs.topicDeclined('p2', 'e2e tests')).toBe(false);
   });
 
-  it('starts every project at Ask me, and keeps the level the client picks', () => {
-    expect(prefs.trust('p1')).toEqual({ level: 'ask', autoStartUsd: null });
-    prefs.setTrust('p1', { level: 'pr', autoStartUsd: 10 });
-    prefs.setTrust('p1', { level: 'ship', autoStartUsd: null });
-    expect(prefs.trust('p1')).toEqual({ level: 'ship', autoStartUsd: null });
-  });
   it('keeps Meet you progress per layer, so a later run resumes', () => {
     expect(prefs.meetSeen('you')).toBeNull();
     prefs.markMeetSeen('you', []);
@@ -74,5 +71,14 @@ describe('PreferenceStore', () => {
     prefs.markMeetSeen('you', ['report', 'never']);
     expect(prefs.meetSeen('you')).toEqual(['report', 'never']);
     expect(prefs.meetSeen('repo-a')).toBeNull();
+  });
+
+  it('drops a Meet you question no longer asked, and keeps the rest', () => {
+    const db = new Database(dbPath);
+    db.prepare(
+      "INSERT INTO meet_progress (layer, seen_json, updated_at) VALUES ('repo-a', ?, 1)"
+    ).run(JSON.stringify(['prs', 'checks', 'budget']));
+    db.close();
+    expect(prefs.meetSeen('repo-a')).toEqual(['prs', 'budget']);
   });
 });

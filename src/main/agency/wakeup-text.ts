@@ -1,11 +1,5 @@
 import { fence } from '../../shared/fleet-tools';
-import {
-  optionLines,
-  questionDisplayId,
-  REMEMBER_OPTION,
-  type AgencyQuestion,
-  type ClientFileProposal
-} from '../../shared/agency';
+import { optionLines, questionDisplayId, type AgencyQuestion } from '../../shared/agency';
 
 /**
  * What woke the Admiral, one entry per claimed wakeup.
@@ -45,7 +39,6 @@ function answerBody(item: Extract<WakeupItem, { kind: 'answer' }>): string {
   const id = questionDisplayId(q.id);
   const quoted = [`${id}: ${q.question}`];
   if (q.context !== '') quoted.push(`Context: ${q.context}`);
-  if (q.proposal !== null) quoted.push(...proposalLines(q.proposal));
   quoted.push(...optionLines(q, 'your pick'));
 
   const lines = [fence(id, quoted.join('\n')), ...clientAnswerLines(q)];
@@ -71,48 +64,12 @@ function clientAnswerLines(q: AgencyQuestion): string[] {
   if (option && q.answerOption !== null) {
     lines.push(`The client's answer to ${id}: ${q.answerOption + 1}. ${option.label}`);
   }
-  const remembered =
-    q.proposal?.topic != null &&
-    (q.answerOption === REMEMBER_OPTION.project || q.answerOption === REMEMBER_OPTION.all);
   if (q.answerText !== null && q.answerText !== '') {
     lines.push(
-      remembered
-        ? `The client rewrote the line, and Fleet saved their words: ${q.answerText}`
-        : option
-          ? `The client added: ${q.answerText}`
-          : `The client's answer to ${id}: ${q.answerText}`
+      option ? `The client added: ${q.answerText}` : `The client's answer to ${id}: ${q.answerText}`
     );
   }
-  if (q.proposal !== null) lines.push(proposalOutcome(q.proposal, q.answerOption));
   return lines;
-}
-
-/** What Fleet did with a client file card, by the option the client picked. */
-function proposalOutcome(proposal: ClientFileProposal, option: number | null): string {
-  if (proposal.topic === null) {
-    return option === 0
-      ? 'Fleet wrote it to the client file; it is in your note from now on.'
-      : 'Nothing was written to the client file.';
-  }
-  if (option === REMEMBER_OPTION.project) {
-    return 'Fleet saved it for this project; it is in your note from now on.';
-  }
-  if (option === REMEMBER_OPTION.all) {
-    return 'Fleet saved it for every project, as a You line; it is in your note from now on.';
-  }
-  return option === REMEMBER_OPTION.decline
-    ? `Nothing was saved. The client does not want to be asked about "${proposal.topic}" again on this project, and Fleet refuses another card on it.`
-    : 'Nothing was saved.';
-}
-
-/** A client file proposal as lines, for the model. */
-export function proposalLines(proposal: ClientFileProposal): string[] {
-  return [
-    ...proposal.add.map((a) =>
-      a.replaces === null ? `Add: ${a.text}` : `Replace: ${a.replaces} -> ${a.text}`
-    ),
-    ...proposal.remove.map((r) => `Remove: ${r}`)
-  ];
 }
 
 function itemBody(item: WakeupItem): string | null {

@@ -24,7 +24,7 @@ export function createAgencyCapability(
     | 'findings'
     | 'jobs'
     | 'results'
-    | 'proposeClientFile'
+    | 'learnClientLines'
     | 'settings'
     | 'crew'
     | 'permissions'

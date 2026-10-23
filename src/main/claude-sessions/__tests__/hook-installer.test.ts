@@ -270,4 +270,13 @@ describe('crew job hooks', () => {
     writeFileSync(join(configDir, 'hooks', BINARY), '#!/bin/sh\necho older\n');
     expect(hookBinaryCurrent(configDir)).toBe(false);
   });
+
+  it('takes the installed hook as current in a dev build, which hands off to its own', () => {
+    expect(hookBinaryCurrent(configDir, true)).toBe(false);
+    install(configDir);
+    writeFileSync(join(configDir, 'hooks', BINARY), '#!/bin/sh\necho release build\n');
+    expect(hookBinaryCurrent(configDir, true)).toBe(true);
+    writeFileSync(settingsPath, '{}');
+    expect(hookBinaryCurrent(configDir, true)).toBe(false);
+  });
 });

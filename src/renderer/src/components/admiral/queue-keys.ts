@@ -2,15 +2,7 @@ import type { Reading } from '../../store/bridge-store';
 import { inTextField } from './use-bridge-queue';
 
 /** What a key does in the Bridge queue and reader. */
-export type QueueKey =
-  | 'next'
-  | 'previous'
-  | 'read'
-  | 'close'
-  | 'approve'
-  | 'deny'
-  | 'change'
-  | 'reply';
+export type QueueKey = 'next' | 'previous' | 'read' | 'close' | 'approve' | 'deny' | 'reply';
 
 const KEYS = new Map<string, QueueKey>([
   ['j', 'next'],
@@ -19,7 +11,6 @@ const KEYS = new Map<string, QueueKey>([
   ['Escape', 'close'],
   ['a', 'approve'],
   ['d', 'deny'],
-  ['c', 'change'],
   ['r', 'reply']
 ]);
 
@@ -31,7 +22,6 @@ export const KEY_NAME: Record<QueueKey, string> = {
   close: 'Escape',
   approve: 'A',
   deny: 'D',
-  change: 'C',
   reply: 'R'
 };
 
@@ -65,7 +55,7 @@ export function keyProps(key: QueueKey): { 'data-key': QueueKey; 'aria-keyshortc
 
 /**
  * The Bridge's keys, on its root: they act only with focus in the queue
- * (`data-queue-scope="queue"`) or the reader (`"reader"`). A, D, C and R
+ * (`data-queue-scope="queue"`) or the reader (`"reader"`). A, D and R
  * press the item's own button for the key, so a disabled one stays disabled;
  * R focuses a text box instead where that is the item's way to reply.
  */
@@ -127,7 +117,6 @@ function queueItemKey(
       return true;
     case 'approve':
     case 'deny':
-    case 'change':
     case 'reply':
       return item !== null && pressIn(root, item, key);
   }

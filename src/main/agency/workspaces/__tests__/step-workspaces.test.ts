@@ -5,7 +5,7 @@ import type { AgencyRepoRef } from '../../../../shared/agency';
 import type { PlanInput } from '../../../../shared/agency-plan';
 import type { ProjectSetup } from '../../../../shared/agency-projects';
 import { JobDeliverArgs } from '../../../../shared/agency-tools';
-import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
+import { startedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { AgencyService } from '../../index';
 import { fakeGh, git, initRepo, shopUmbrella, tempDir } from '../../projects/__tests__/git-fixture';
 import { runSetup } from '../setup-run';
@@ -93,7 +93,7 @@ async function saveSetup(
 describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
   it('merges what side-by-side steps committed, and lets later steps read or build on it', async () => {
     const repo = await soloRepo();
-    const { jobId } = await approvedJobIn(service, repo, [
+    const { jobId } = await startedJobIn(service, repo, [
       step('a', { scope: 'x' }),
       step('b', { scope: 'y' }),
       step('join', { after: ['a', 'b'], workspace: { integrate: ['a', 'b'] } }),
@@ -128,7 +128,7 @@ describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
 
   it('stops at a conflict, names the files, and leaves the worktree clean', async () => {
     const repo = await soloRepo();
-    const { jobId } = await approvedJobIn(service, repo, [
+    const { jobId } = await startedJobIn(service, repo, [
       step('a', { scope: 'x' }),
       step('b', { scope: 'y' }),
       step('join', { after: ['a', 'b'], workspace: { integrate: ['a', 'b'] } })
@@ -149,7 +149,7 @@ describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
   it('hands back the branch of the member the work is in, since every member gets its name', async () => {
     const root = shopUmbrella(home.dir);
     const ref = await service.projects.chooseWorkspace({ path: root, leftOut: [] });
-    const { jobId, tools } = await approvedJobIn(service, ref, step('fix'));
+    const { jobId, tools } = await startedJobIn(service, ref, step('fix'));
     const ws = await service.workspaces.open(jobId, 'fix');
     commit(ws.root, 'README.md', '# Shop!\n');
     const branch = 'admiral/j1/fix-1';
@@ -169,7 +169,7 @@ describe('step workspaces', { timeout: GIT_TIMEOUT_MS }, () => {
 
   it('refuses to read the worktree of a step nobody worked yet', async () => {
     const repo = await soloRepo();
-    const { jobId } = await approvedJobIn(service, repo, [
+    const { jobId } = await startedJobIn(service, repo, [
       step('build'),
       step('review', { after: ['build'], workspace: { of: 'build' }, deliverables: ['review'] })
     ]);
@@ -186,7 +186,7 @@ describe('setup in a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
       ...s,
       members: s.members.map((m) => ({ ...m, setupCommand: 'pwd > setup-ran.txt' }))
     }));
-    const { jobId } = await approvedJobIn(service, repo, step('build'));
+    const { jobId } = await startedJobIn(service, repo, step('build'));
     const ws = await service.workspaces.open(jobId, 'build');
     expect(readFileSync(join(ws.root, 'setup-ran.txt'), 'utf8').trim()).toBe(ws.root);
 
@@ -212,7 +212,7 @@ describe('setup in a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
       members: s.members.map((m) => ({ ...m, setupCommand: `echo ${m.name} >> ${order}` })),
       setupCommand: `echo workspace >> ${order}`
     }));
-    const { jobId } = await approvedJobIn(service, ref, [
+    const { jobId } = await startedJobIn(service, ref, [
       step('api', { changes: ['api'], reads: ['core'], scope: 'api' }),
       step('web', { changes: ['web'] })
     ]);
@@ -236,8 +236,8 @@ describe('ports of a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
         setupCommand: 'echo "$API_PORT $PORT $FLEET_PORTS $COMPOSE_PROJECT_NAME" > ports.txt'
       }))
     }));
-    const one = await approvedJobIn(service, repo, step('build'));
-    const two = await approvedJobIn(service, repo, step('build'));
+    const one = await startedJobIn(service, repo, step('build'));
+    const two = await startedJobIn(service, repo, step('build'));
     const [a, b] = await Promise.all([
       service.workspaces.open(one.jobId, 'build'),
       service.workspaces.open(two.jobId, 'build')
@@ -285,7 +285,7 @@ describe('env files of a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
       ...s,
       members: s.members.map((m) => ({ ...m, envFiles: ['.env'], setupCommand: 'cp .env seen' }))
     }));
-    const { jobId } = await approvedJobIn(service, repo, step('build'));
+    const { jobId } = await startedJobIn(service, repo, step('build'));
     const ws = await service.workspaces.open(jobId, 'build');
 
     const copy = join(ws.root, '.env');
@@ -303,7 +303,7 @@ describe('env files of a new workspace', { timeout: GIT_TIMEOUT_MS }, () => {
       ...s,
       members: s.members.map((m) => ({ ...m, envFiles: ['.env.test'] }))
     }));
-    const { jobId } = await approvedJobIn(service, repo, step('build'));
+    const { jobId } = await startedJobIn(service, repo, step('build'));
     await expect(service.workspaces.open(jobId, 'build')).rejects.toThrow(
       '.env.test is not ignored by git, so crew could commit it.'
     );

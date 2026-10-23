@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
-import { approvedJobIn, repoAt } from '../../__tests__/plan-helpers';
+import { startedJobIn, repoAt } from '../../__tests__/plan-helpers';
 import { AgencyService } from '../../index';
 import { fakeGh, initRepo, tempDir } from '../../projects/__tests__/git-fixture';
 import { listening, ServerWatch } from '../server-watch';
@@ -51,7 +51,7 @@ async function repo(): Promise<AgencyRepoRef> {
 
 describe('ServerWatch', () => {
   it('lists the ports of a working member’s block that take connections, and changes only when one comes or goes', async () => {
-    const { jobId } = await approvedJobIn(service, await repo(), {
+    const { jobId } = await startedJobIn(service, await repo(), {
       id: 'qa',
       role: 'qa',
       title: 'QA',

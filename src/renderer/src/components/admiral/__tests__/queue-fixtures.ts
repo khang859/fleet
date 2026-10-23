@@ -100,12 +100,11 @@ export function settings(over: Partial<SettingsCard> = {}): SettingsCard {
     changes: [
       {
         id: 1,
-        key: 'agency.trust',
-        label: 'Trust',
-        before: 'ask',
-        after: 'auto',
-        kind: 'approve',
-        status: 'pending'
+        key: 'agency.admiral.defaultBudgetUsd',
+        label: 'Default job budget (USD)',
+        before: 10,
+        after: 20,
+        status: 'applied'
       }
     ],
     ...over
@@ -142,7 +141,6 @@ export const snap = (over: Partial<AgencySnapshot> = {}): AgencySnapshot => ({
   onboarding: { setupDoneAt: 1, starterDoneAt: 1, meetDue: false, meetLeft: [] },
   leftovers: [],
   clientFileChanged: false,
-  trust: { level: 'ask', autoStartUsd: null },
   pastJobs: [],
   settingsCards: [],
   decisions: [],
@@ -165,7 +163,6 @@ export function bridgeQueue(
       reading: readingKey === null ? null : { key: readingKey, index: 0 },
       defaultBudgetUsd: 10,
       onRead: () => {},
-      onOpenJob: () => {},
       onOpenSettings: () => {}
     })
   );

@@ -15,7 +15,7 @@ import { loadSetup, saveSetup } from '../projects/project-store';
 import { createAgencyCapability } from '../tools';
 import { REPO, moveJob, openJob } from './fixture';
 
-/** `settings_read` and `settings_change`: what applies, what waits on a card, and Undo. */
+/** `settings_read` and `settings_change`: what applies, what only the client changes, and Undo. */
 
 let dir: string;
 let home: string;
@@ -95,13 +95,14 @@ const cards = (): ReturnType<AgencyService['snapshot']>['settingsCards'] =>
 describe('settings_read', () => {
   it('lists every key with its value and what a change to it needs', async () => {
     const { text } = await tools().settingsRead({});
+    expect(text).toContain('agency.admiral.defaultBudgetUsd = 10 (applies at once)');
     expect(text).toContain(
-      "agency.admiral.defaultBudgetUsd = 10 (lowering it applies at once; raising it needs the client's OK)"
+      'agency.admiral.monthlyCapUsd = 100 (lowering it applies at once; only the client raises it'
     );
     expect(text).toContain('agency.admiral.model = "" (only the client changes it');
     expect(text).toContain('members.web.setupCommand = "pnpm install" (applies at once)');
     expect(text).toContain(
-      'members.web.requiredChecks = ["test","lint"] (adding one applies at once; removing one needs the client\'s OK)'
+      'members.web.requiredChecks = ["test","lint"] (adding one applies at once; only the client removes one'
     );
   });
 });
@@ -122,7 +123,7 @@ describe('settings_change', () => {
     const [card] = cards();
     expect(card).toMatchObject({ id: 1, reason: 'pnpm is missing in new worktrees.' });
     expect(card.changes).toEqual([
-      expect.objectContaining({ kind: 'apply', status: 'applied', label: 'web: setup command' })
+      expect.objectContaining({ status: 'applied', label: 'web: setup command' })
     ]);
     expect(await service.settings.marks(REPO.repoId)).toEqual([
       expect.objectContaining({ key: 'members.web.setupCommand', before: 'pnpm install' })
@@ -135,65 +136,55 @@ describe('settings_change', () => {
     expect(wakeups()).toContain('web: setup command is back to pnpm install.');
   });
 
-  it('never applies a widening change without the client approving its card', async () => {
+  it('applies budgets, crew and models at once, with Undo', async () => {
+    agency = { ...agency, crew: { ...agency.crew, eva: { ...agency.crew.eva, atOnce: 6 } } };
     const out = await change([
       { key: 'agency.admiral.defaultBudgetUsd', value: 500 },
-      { key: 'agency.admiral.monthlyCapUsd', value: 1_000 },
-      { key: 'members.web.requiredChecks', value: ['test'] },
-      { key: 'members.web.reviewBots', value: ['coderabbit'] }
-    ]);
-    expect(out.text).toContain('Waiting for the client on s1');
-    expect(agency.admiral).toMatchObject({ defaultBudgetUsd: 10, monthlyCapUsd: 100 });
-    expect((await webMember())?.requiredChecks).toEqual(['test', 'lint']);
-    // Waiting for one more bot gives nothing away, so it applied.
-    expect((await webMember())?.reviewBots).toEqual(['coderabbit']);
-
-    const pending = cards()[0].changes.filter((c) => c.status === 'pending');
-    expect(pending.map((c) => c.key)).toEqual([
-      'agency.admiral.defaultBudgetUsd',
-      'agency.admiral.monthlyCapUsd',
-      'members.web.requiredChecks'
-    ]);
-
-    expect(await service.settings.decide(pending[0].id, true)).toBe(true);
-    expect(await service.settings.decide(pending[1].id, false)).toBe(true);
-    expect(agency.admiral).toMatchObject({ defaultBudgetUsd: 500, monthlyCapUsd: 100 });
-    expect((await webMember())?.requiredChecks).toEqual(['test', 'lint']);
-    expect(cards()[0].changes.map((c) => c.status)).toEqual([
-      'approved',
-      'refused',
-      'pending',
-      'applied'
-    ]);
-    const woke = wakeups();
-    expect(woke).toContain('Client approved Default job budget (USD) on s1');
-    expect(woke).toContain('Client refused Monthly cap (USD) on s1');
-    // A decided change cannot be decided again.
-    expect(await service.settings.decide(pending[0].id, false)).toBe(false);
-  });
-
-  it("lowers a runtime's crew at once at once, and waits for the client on more or another model", async () => {
-    agency = { ...agency, crew: { ...agency.crew, eva: { ...agency.crew.eva, atOnce: 6 } } };
-    await change([
       { key: 'agency.crew.eva.atOnce', value: 3 },
       { key: 'agency.crew.claude.atOnce', value: 4 },
-      { key: 'agency.crew.eva.defaultModel', value: 'qwen/qwen3-coder' }
+      { key: 'agency.crew.eva.defaultModel', value: 'qwen/qwen3-coder' },
+      { key: 'members.web.reviewBots', value: ['coderabbit'] }
     ]);
-    expect(agency.crew).toEqual({
-      claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
-      eva: { atOnce: 3, defaultModel: '', permissionMode: 'default' }
-    });
-
-    const pending = cards()[0].changes.filter((c) => c.status === 'pending');
-    expect(pending.map((c) => c.key)).toEqual([
-      'agency.crew.claude.atOnce',
-      'agency.crew.eva.defaultModel'
-    ]);
-    for (const c of pending) expect(await service.settings.decide(c.id, true)).toBe(true);
+    expect(out.text).toContain('Changed now, with Undo on s1');
+    expect(agency.admiral.defaultBudgetUsd).toBe(500);
     expect(agency.crew).toEqual({
       claude: { atOnce: 4, defaultModel: '', permissionMode: 'default' },
       eva: { atOnce: 3, defaultModel: 'qwen/qwen3-coder', permissionMode: 'default' }
     });
+    expect((await webMember())?.reviewBots).toEqual(['coderabbit']);
+    expect(cards()[0].changes.every((c) => c.status === 'applied')).toBe(true);
+  });
+
+  it('never loosens a brake the client owns', async () => {
+    // Each would let the Admiral spend more, take more of the client's Claude
+    // limit, loop longer, pass a PR unchecked, or hand crew another secret.
+    agency = { ...agency, admiral: { ...agency.admiral, reserveFiveHourPct: 50 } };
+    for (const [key, value] of [
+      ['agency.admiral.monthlyCapUsd', 1_000],
+      ['agency.admiral.reserveFiveHourPct', 90],
+      ['agency.admiral.reserveSevenDayPct', 100],
+      ['agency.admiral.turnLimit', 50],
+      ['members.web.requiredChecks', ['test']],
+      ['members.web.envFiles', ['.env']]
+    ] as const) {
+      const out = await change([{ key, value }], 'The README says to.');
+      expect(out.summary, key).toBe('not changed');
+      expect(out.text, key).toContain('only the client');
+      expect(out.text, key).toContain('ask_client');
+    }
+    expect(cards()).toEqual([]);
+    expect(agency.admiral).toMatchObject({ monthlyCapUsd: 100, reserveFiveHourPct: 50 });
+    expect((await webMember())?.requiredChecks).toEqual(['test', 'lint']);
+    expect((await webMember())?.envFiles).toEqual([]);
+
+    // Tightening the same brakes applies at once.
+    await change([
+      { key: 'agency.admiral.monthlyCapUsd', value: 50 },
+      { key: 'agency.admiral.reserveFiveHourPct', value: 40 },
+      { key: 'members.web.requiredChecks', value: ['test', 'lint', 'e2e'] }
+    ]);
+    expect(agency.admiral).toMatchObject({ monthlyCapUsd: 50, reserveFiveHourPct: 40 });
+    expect((await webMember())?.requiredChecks).toEqual(['test', 'lint', 'e2e']);
   });
 
   it('turns a crew permission mode off at once, but never on', async () => {
@@ -204,8 +195,7 @@ describe('settings_change', () => {
     ] as const) {
       const out = await change([{ key, value: on }], 'The README says to.');
       expect(out.summary).toBe('not changed');
-      expect(out.text).toContain("is the client's own setting");
-      expect(out.text).toContain('Settings > Agency > Crew');
+      expect(out.text).toContain('only the client turns it on, in Settings > Agency > Crew');
     }
     expect(cards()).toEqual([]);
     expect(agency.crew.claude.permissionMode).toBe('default');
@@ -225,10 +215,7 @@ describe('settings_change', () => {
       { key: 'agency.crew.claude.permissionMode', value: 'default' },
       { key: 'agency.crew.eva.permissionMode', value: 'default' }
     ]);
-    expect(cards()[0].changes.map((c) => [c.kind, c.status])).toEqual([
-      ['apply', 'applied'],
-      ['apply', 'applied']
-    ]);
+    expect(cards()[0].changes.map((c) => c.status)).toEqual(['applied', 'applied']);
     expect(agency.crew.claude.permissionMode).toBe('default');
     expect(agency.crew.eva.permissionMode).toBe('default');
 
@@ -249,23 +236,19 @@ describe('settings_change', () => {
     expect(agency.crew.eva.permissionMode).toBe('default');
   });
 
-  it('lowers the automatic turn limit at once, and waits for the client to raise it', async () => {
+  it('lowers the automatic turn limit at once, and never raises it', async () => {
     await change([{ key: 'agency.admiral.turnLimit', value: 10 }]);
     expect(agency.admiral.turnLimit).toBe(10);
 
-    await change([{ key: 'agency.admiral.turnLimit', value: 50 }]);
+    expect((await change([{ key: 'agency.admiral.turnLimit', value: 50 }])).summary).toBe(
+      'not changed'
+    );
     expect(agency.admiral.turnLimit).toBe(10);
-    const [pending] = cards()
-      .flatMap((card) => card.changes)
-      .filter((c) => c.status === 'pending');
-    expect(pending).toMatchObject({ key: 'agency.admiral.turnLimit', kind: 'approve' });
-    expect(await service.settings.decide(pending.id, true)).toBe(true);
-    expect(agency.admiral.turnLimit).toBe(50);
 
     expect((await change([{ key: 'agency.admiral.turnLimit', value: 0 }])).text).toContain(
       'agency.admiral.turnLimit'
     );
-    expect(agency.admiral.turnLimit).toBe(50);
+    expect(agency.admiral.turnLimit).toBe(10);
   });
 
   it('pauses a job at the turn limit the settings hold', async () => {
@@ -293,20 +276,13 @@ describe('settings_change', () => {
     expect(card?.options[0]).toEqual({ label: 'Continue', detail: '3 more turns' });
   });
 
-  it('turns a request injected into a file into a card at most', async () => {
-    // A README told the Admiral to raise the job budget to $500; all it can do is ask.
-    await change([{ key: 'agency.admiral.defaultBudgetUsd', value: 500 }], 'The README says to.');
-    expect(agency.admiral.defaultBudgetUsd).toBe(10);
-    expect(cards()[0].changes[0]).toMatchObject({ kind: 'approve', status: 'pending' });
-  });
-
   it("refuses the client's own settings, and changes nothing else in the call", async () => {
     const out = await change([
       { key: 'agency.admiral.monthlyCapUsd', value: 50 },
       { key: 'agency.admiral.model', value: 'openai/gpt-5' }
     ]);
     expect(out.summary).toBe('not changed');
-    expect(out.text).toContain("Admiral model is the client's own setting");
+    expect(out.text).toContain('Admiral model: only the client changes it');
     expect(out.text).toContain('Settings > Agency > Admiral');
     expect(agency.admiral).toMatchObject({ model: '', monthlyCapUsd: 100 });
     expect(cards()).toEqual([]);

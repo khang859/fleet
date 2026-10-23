@@ -12,7 +12,6 @@ let cleanup: () => void;
 let settings: AgencySettings['admiral'];
 /** Sessions in a turn now. */
 let working: Set<string>;
-let interrupted: number[];
 let admitted: number;
 let spend: SpendService;
 
@@ -22,7 +21,6 @@ beforeEach(() => {
   ({ store, clock, cleanup } = storeFixture());
   settings = { ...DEFAULT_AGENCY_SETTINGS.admiral };
   working = new Set();
-  interrupted = [];
   admitted = 0;
   spend = new SpendService({
     store,
@@ -30,7 +28,6 @@ beforeEach(() => {
     changed: () => {},
     now: () => clock.now,
     working: (sessionId) => working.has(sessionId),
-    interruptCrew: (jobId) => void interrupted.push(jobId),
     admitQueued: () => void (admitted += 1)
   });
 });
@@ -195,12 +192,9 @@ describe('the reserve', () => {
   });
 });
 
-describe('budget levels', () => {
-  it('tells the Admiral once at 80%, holds the job at 100% and interrupts it past 120%', () => {
+describe('the job budget', () => {
+  it('notes 80% to the Admiral once, as a guide, and never holds the job past it', () => {
     const a = job({ usd: 1 });
-    const hardStops: number[] = [];
-    spend.onHardStop((id) => void hardStops.push(id));
-
     spend.admiralTurn(a, 0.85);
     spend.admiralTurn(a, 0.01);
     const warnings = store['db']
@@ -208,42 +202,28 @@ describe('budget levels', () => {
       .all(a) as Array<{ payload_json: string }>;
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.payload_json).toContain('$0.85 of its $1.00 budget');
+    expect(warnings[0]?.payload_json).toContain('guide only');
+
+    spend.admiralTurn(a, 0.44);
+    expect(spent(a).usd).toBeCloseTo(1.3);
     expect(store.getJob(a)?.holds).toEqual([]);
-
-    spend.admiralTurn(a, 0.2);
-    expect(store.getJob(a)?.holds).toEqual(['budget']);
-    expect(cards(a)).toHaveLength(1);
-    expect(cards(a)[0]?.options.map((o) => o.label)).toEqual(['Raise to $2.00', 'Stop the job']);
-    expect(interrupted).toEqual([]);
-
-    spend.admiralTurn(a, 0.2);
-    expect(interrupted).toEqual([a]);
-    expect(hardStops).toEqual([a]);
-    expect(cards(a)).toHaveLength(1);
-    spend.admiralTurn(a, 0.2);
-    expect(interrupted).toEqual([a]);
+    expect(cards(a)).toHaveLength(0);
+    expect(spend.gate(store.getJob(a)!, { runtime: 'eva', crewId: null }).ok).toBe(true);
   });
 
-  it('refuses crew work over a budget, and work the reservations under way leave no room for', () => {
-    const a = job({ usd: 0.2 });
-    const first = spend.gate(store.getJob(a)!, { runtime: 'eva', crewId: null });
-    expect(first.ok).toBe(true);
-    expect(spend.gate(store.getJob(a)!, { runtime: 'eva', crewId: null })).toMatchObject({
-      ok: false,
-      reason: 'busy'
-    });
-    expect(store.getJob(a)?.holds).toEqual([]);
-    if (first.ok) spend.cancel(first.reservationId);
-    spend.admiralTurn(a, 0.2);
-    expect(spend.gate(store.getJob(a)!, { runtime: 'eva', crewId: null })).toMatchObject({
-      ok: false,
-      reason: 'budget'
-    });
-    expect(store.getJob(a)?.holds).toEqual(['budget']);
-  });
-
-  it('claims only the client answers for an Admiral over its budget', () => {
+  it('frees a job an old budget card held', () => {
     const a = job({ usd: 1 });
+    spend.admiralTurn(a, 1.5);
+    store.addHold(a, 'budget', 'J1 reached its $1.00 budget');
+    spend.tick();
+    expect(store.getJob(a)?.holds).toEqual([]);
+  });
+});
+
+describe('the monthly cap', () => {
+  it('claims only the client answers for an Admiral at the cap', () => {
+    settings = { ...settings, monthlyCapUsd: 1 };
+    const a = job({ usd: 5 });
     spend.admiralTurn(a, 1);
     store.enqueueWakeup({ repoId: REPO.repoId, jobId: a, kind: 'event', payload: { line: 'x' } });
     const answer = store.enqueueWakeup({
@@ -258,18 +238,6 @@ describe('budget levels', () => {
     expect(pulled.ids).toEqual([answer]);
   });
 
-  it('frees a held job once its budget has room again', () => {
-    const a = job({ usd: 1 });
-    spend.admiralTurn(a, 1);
-    expect(store.getJob(a)?.holds).toEqual(['budget']);
-    store.setApprovedVersion(a, 2, { usd: 2 });
-    spend.recheck(a);
-    expect(store.getJob(a)?.holds).toEqual([]);
-    expect(cards(a)).toHaveLength(0);
-  });
-});
-
-describe('the monthly cap', () => {
   it('lets only one of two jobs take the last of the cap, and holds the other behind a card', () => {
     settings = { ...settings, monthlyCapUsd: 1 };
     const a = job({ usd: 5 });

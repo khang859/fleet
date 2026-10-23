@@ -5,8 +5,8 @@ import { followReading, useBridgeStore } from '../bridge-store';
 /** Decisions from the Bridge: held for undo, and kept with main's reason when refused. */
 
 const REPO = '0123456789abcdef';
-const APPROVE: HoldRequest = { kind: 'plan', action: { planVersionId: 7, action: 'approve' } };
-const DECISION = { key: 'plan:7', jobId: 2, label: 'Approve plan v1' };
+const APPROVE: HoldRequest = { kind: 'answer', answer: { id: 7, option: 0 } };
+const DECISION = { key: 'q:7', jobId: 2, label: 'Answer q7' };
 
 function answering(result: HoldResult | Error): ReturnType<typeof vi.fn> {
   const hold = vi.fn(async () =>
@@ -33,10 +33,10 @@ describe('the bridge store', () => {
   });
 
   it("keeps main's reason by the item's key, one per item, until dismissed or decided again", async () => {
-    answering({ outcome: 'refused', reason: 'Plan v1 was replaced by v2.' });
+    answering({ outcome: 'refused', reason: 'q7 was answered already.' });
     await useBridgeStore.getState().hold(REPO, DECISION, APPROVE);
     await useBridgeStore.getState().hold(REPO, DECISION, APPROVE);
-    expect(refused()).toEqual([{ ...DECISION, reason: 'Plan v1 was replaced by v2.' }]);
+    expect(refused()).toEqual([{ ...DECISION, reason: 'q7 was answered already.' }]);
 
     answering(new Error('Fleet closed'));
     await useBridgeStore
@@ -44,11 +44,11 @@ describe('the bridge store', () => {
       .hold(REPO, { key: 'q:3', jobId: null, label: 'Answer q3' }, APPROVE);
     expect(refused()).toEqual([
       { key: 'q:3', jobId: null, label: 'Answer q3', reason: 'Error: Fleet closed' },
-      { ...DECISION, reason: 'Plan v1 was replaced by v2.' }
+      { ...DECISION, reason: 'q7 was answered already.' }
     ]);
 
     useBridgeStore.getState().dismiss(REPO, 'q:3');
-    expect(refused()).toEqual([{ ...DECISION, reason: 'Plan v1 was replaced by v2.' }]);
+    expect(refused()).toEqual([{ ...DECISION, reason: 'q7 was answered already.' }]);
 
     const pending = useBridgeStore.getState().hold(REPO, DECISION, APPROVE);
     expect(refused()).toEqual([]);
@@ -57,25 +57,25 @@ describe('the bridge store', () => {
 });
 
 describe('the reader on a changing queue', () => {
-  const keys = ['perm:5', 'plan:7', 'q:35'];
+  const keys = ['perm:5', 'delivered:7', 'q:35'];
 
   it('stays on its item, wherever the item moves', () => {
-    const reading = { key: 'plan:7', index: 1 };
+    const reading = { key: 'delivered:7', index: 1 };
     expect(followReading(keys, reading)).toBe(reading);
-    expect(followReading(['q:35', 'perm:5', 'plan:7'], reading)).toEqual({
-      key: 'plan:7',
+    expect(followReading(['q:35', 'perm:5', 'delivered:7'], reading)).toEqual({
+      key: 'delivered:7',
       index: 2
     });
   });
 
   it('moves to the item that took its place once its item is resolved', () => {
-    expect(followReading(['perm:5', 'q:35'], { key: 'plan:7', index: 1 })).toEqual({
+    expect(followReading(['perm:5', 'q:35'], { key: 'delivered:7', index: 1 })).toEqual({
       key: 'q:35',
       index: 1
     });
     // The last item gone: the one before it is now last.
-    expect(followReading(['perm:5', 'plan:7'], { key: 'q:35', index: 2 })).toEqual({
-      key: 'plan:7',
+    expect(followReading(['perm:5', 'delivered:7'], { key: 'q:35', index: 2 })).toEqual({
+      key: 'delivered:7',
       index: 1
     });
   });

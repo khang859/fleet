@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   DEFAULT_AGENCY_SETTINGS,
-  REMEMBER_OPTION,
   TERMINAL_JOB_STATES,
   jobDisplayId,
   questionDisplayId,
@@ -17,7 +16,6 @@ import {
   type AgencyQuestion,
   type AgencyRepoRef,
   type AgencySnapshot,
-  type BudgetRaise,
   type ClientFileProposal,
   type CrewPermissionMode,
   type RepoResolution,
@@ -25,12 +23,7 @@ import {
   type WakeupRelease
 } from '../../shared/agency';
 import { clientEntries, sameText, YOU_LAYER } from '../../shared/agency-client-file';
-import { CLIENT_LINE_MAX_CHARS } from '../../shared/agency-tools';
-import type {
-  AutoStartRule,
-  ClientLineChange,
-  ClientLineResult
-} from '../../shared/agency-projects';
+import type { ClientLineChange, ClientLineResult } from '../../shared/agency-projects';
 import { createLogger } from '../logger';
 import type {
   HoldRequest,
@@ -44,7 +37,6 @@ import type {
 import { WorktreeService } from '../worktree-service';
 import { AdmiralRegistry } from './admiral-registry';
 import { HeldDecisions } from './held-decisions';
-import { canDecide } from './plans/plan-rules';
 import { defaultCleaners, type WorktreeRemover } from './cleanup/cleaners';
 import { CleanupRunner, type ResourceCleaner } from './cleanup/cleanup-runner';
 import {
@@ -120,7 +112,7 @@ import { AgencyStore, type AgencyTouched, type AskQuestionInput } from './store/
 import { SpendService } from './spend/spend-service';
 import { Understanding, type AdmiralCompletion } from './understanding';
 import { CrewLessons } from './lessons';
-import { pctText, usdText } from '../../shared/agency-spend';
+import { usdText } from '../../shared/agency-spend';
 
 const PASSING_RUNTIME = { path: null, version: null, checks: [] };
 
@@ -136,24 +128,6 @@ const paneControl = (panes: CrewPaneHost): CrewControl => ({
 const MERGE_CLOSED = 'The job closed before the merge finished.';
 /** How many of a crew pane's last lines the client's permission reader shows. */
 const CREW_TAIL_LINES = 12;
-
-/** The client file an answer to a `client_file` card writes, or null when it writes none. */
-function answerLayer(
-  repoId: string,
-  proposal: ClientFileProposal,
-  option: number | undefined
-): string | null {
-  if (proposal.topic === null) {
-    if (option !== 0) return null;
-    return proposal.layer === 'you' ? YOU_LAYER : repoId;
-  }
-  if (option === REMEMBER_OPTION.project) return repoId;
-  return option === REMEMBER_OPTION.all ? YOU_LAYER : null;
-}
-
-/** A line the client typed on a Remember this? card, on one line and within a line's length. */
-const clientWords = (text: string | undefined): string =>
-  (text ?? '').replace(/\s+/g, ' ').trim().slice(0, CLIENT_LINE_MAX_CHARS);
 
 const log = createLogger('agency');
 
@@ -310,7 +284,6 @@ export class AgencyService {
       changed: (touched) => this.changed(touched),
       now: () => deps.now?.() ?? Date.now(),
       working: (sessionId) => inATurn(panes?.session(sessionId)),
-      interruptCrew: (jobId, why) => this.crew.interruptJob(jobId, why),
       admitQueued: () => this.jobs.admitQueued()
     });
     this.understanding = new Understanding({
@@ -332,7 +305,6 @@ export class AgencyService {
       complete: deps.admiralCompletion ?? null,
       record: async (jobId) => (await this.exportJob(jobId))?.text ?? null,
       catalog: async (repoId) => this.crewCatalog(repoId),
-      userCrew: deps.crewDirs?.user ?? null,
       projectCrew: (repoId) => projectCrewDir(repoId, deps.agencyHome ?? agencyHome()),
       changed: (repoId) => this.changed([{ repoId, jobId: null }])
     });
@@ -360,7 +332,6 @@ export class AgencyService {
         ...this.clientFiles.noteLines(YOU_LAYER),
         ...this.clientFiles.noteLines(repoId)
       ],
-      autoStart: (repoId) => this.autoStartRule(repoId),
       delivered: (jobId) => {
         this.delivered(jobId).catch((err: unknown) => {
           log.error('Could not follow up a delivered job', { jobId, err: String(err) });
@@ -384,12 +355,14 @@ export class AgencyService {
       gh: deps.gh ?? nativeGh,
       home: () => deps.agencyHome ?? agencyHome(),
       now: () => deps.now?.() ?? Date.now(),
-      changed: (touched) => this.changed(touched)
+      changed: (touched) => this.changed(touched),
+      allMerged: (jobId) => this.closeMerged(jobId)
     });
     this.results = new ResultsService({
       store: this.store,
       gh: deps.gh ?? nativeGh,
       git: deps.git ?? readOnlyGit,
+      gitWrite: deps.gitWrite,
       home: () => deps.agencyHome ?? agencyHome(),
       cards: this.prs,
       changed: (touched) => this.changed(touched),
@@ -418,8 +391,7 @@ export class AgencyService {
           home: () => deps.agencyHome ?? agencyHome(),
           git: deps.gitWrite
         }),
-      changed: (touched) => this.changed(touched),
-      shipped: (jobId) => this.shipped(jobId)
+      changed: (touched) => this.changed(touched)
     });
     this.crew = new CrewService({
       store: this.store,
@@ -446,7 +418,7 @@ export class AgencyService {
       now: () => deps.now?.() ?? Date.now()
     });
     this.held = new HeldDecisions({
-      run: async (request) => this.carryOut(request),
+      run: async (request) => Promise.resolve(this.carryOut(request)),
       changed: (touched) => this.changed(touched),
       now: () => deps.now?.() ?? Date.now()
     });
@@ -536,9 +508,9 @@ export class AgencyService {
   }
 
   /**
-   * A plan or question decision from the Bridge: held for `HOLD_MS`, then
-   * carried out as the card's own click is, unless undone. Settles with how
-   * it ended. Refused at once when the item no longer waits on the client.
+   * A question answer from the Bridge: held for `HOLD_MS`, then carried out
+   * as the card's own click is, unless undone. Settles with how it ended.
+   * Refused at once when the question is no longer open.
    */
   async hold(request: HoldRequest): Promise<HoldResult> {
     const target = this.holdTarget(request);
@@ -561,52 +533,25 @@ export class AgencyService {
     await this.held.runAll();
   }
 
-  /** The repository, job and line of a held decision, or why it cannot be held. */
+  /** The repository, job and line of a held answer, or why it cannot be held. */
   private holdTarget(
     request: HoldRequest
   ):
     | { ok: true; repoId: string; decision: { jobId: number | null; key: string; label: string } }
     | { ok: false; reason: string } {
-    if (request.kind === 'answer') {
-      const q = this.store.getQuestion(request.answer.id);
-      if (q?.status !== 'open') {
-        return { ok: false, reason: `${questionDisplayId(request.answer.id)} is not open.` };
-      }
-      return {
-        ok: true,
-        repoId: q.repoId,
-        decision: { jobId: q.jobId, key: `q:${q.id}`, label: `Answered ${questionDisplayId(q.id)}` }
-      };
+    const q = this.store.getQuestion(request.answer.id);
+    if (q?.status !== 'open') {
+      return { ok: false, reason: `${questionDisplayId(request.answer.id)} is not open.` };
     }
-    const { action } = request;
-    const version = this.store.plans.version(action.planVersionId);
-    const verdict = canDecide(
-      version,
-      version === null ? null : this.store.plans.newest(version.jobId)
-    );
-    if (!verdict.ok) return verdict;
-    const job = version === null ? null : this.store.getJob(version.jobId);
-    if (!job || version === null) return { ok: false, reason: 'There is no such plan version.' };
-    const verb = { approve: 'Approved', reject: 'Rejected', revise: 'Asked for a change to' }[
-      action.action
-    ];
     return {
       ok: true,
-      repoId: job.repoId,
-      decision: {
-        jobId: job.id,
-        key: `plan:${version.id}`,
-        label: `${verb} plan v${version.version}`
-      }
+      repoId: q.repoId,
+      decision: { jobId: q.jobId, key: `q:${q.id}`, label: `Answered ${questionDisplayId(q.id)}` }
     };
   }
 
-  /** A held decision's time came: carry it out as the card's own click would. */
-  private async carryOut(request: HoldRequest): Promise<HoldResult> {
-    if (request.kind === 'plan') {
-      const result = await this.jobs.decide(request.action);
-      return result.ok ? { outcome: 'done' } : { outcome: 'refused', reason: result.reason };
-    }
+  /** A held answer's time came: carry it out as the card's own click would. */
+  private carryOut(request: HoldRequest): HoldResult {
     return this.answer(request.answer) === null
       ? { outcome: 'refused', reason: `${questionDisplayId(request.answer.id)} is not open.` }
       : { outcome: 'done' };
@@ -629,18 +574,7 @@ export class AgencyService {
     };
   }
 
-  /**
-   * The client answers a card. A crew lesson card writes its role first,
-   * which reads and writes files; every other card is answered at once.
-   */
-  async answerClient(req: AgencyAnswerRequest): Promise<AgencyQuestion | null> {
-    const q = this.store.getQuestion(req.id);
-    if (q !== null && !(await this.lessons.apply(q, req))) return null;
-    return this.answer(req);
-  }
-
   answer(req: AgencyAnswerRequest): AgencyQuestion | null {
-    if (!this.applyClientFile(req)) return null;
     const outcome = this.store.answerQuestion(req);
     if (!outcome) return null;
     const { kind, jobId } = outcome.question;
@@ -655,8 +589,8 @@ export class AgencyService {
   }
 
   /**
-   * The client's pick on a raise-or-stop card: raise the job's budget, or the
-   * monthly cap, and let it go on if that leaves room; or cancel the job.
+   * The client's pick on a raise-or-stop card: raise the monthly cap, which
+   * frees every job it held; or cancel the job.
    */
   private answerBudget(q: AgencyQuestion, option: number | undefined): void {
     const job = q.jobId === null ? null : this.store.getJob(q.jobId);
@@ -666,18 +600,14 @@ export class AgencyService {
       return;
     }
     if (option !== 0 || q.raise === null) return;
-    const line =
-      q.raise.target === 'cap' ? this.raiseCap(job, q.raise.to) : this.raiseJob(job, q.raise);
-    if (line === null) return;
     this.store.enqueueWakeup({
       repoId: job.repoId,
       jobId: job.id,
       kind: 'client_action',
-      payload: { line }
+      payload: { line: this.raiseCap(job, q.raise.to) }
     });
-    // A raised cap frees every job it held; each of their Admirals hears of it.
-    if (q.raise.target === 'cap') this.spend.recheck();
-    else this.spend.recheck(job.id, false);
+    // Each Admiral the cap held hears of it.
+    this.spend.recheck();
   }
 
   private raiseCap(job: AgencyJob, to: number): string {
@@ -687,57 +617,17 @@ export class AgencyService {
     return `The client raised the monthly cap to ${usdText(to)}`;
   }
 
-  /** The job's budget raised as a plan version the client approved; null when it has no plan. */
-  private raiseJob(job: AgencyJob, { target, to }: BudgetRaise): string | null {
-    const budget = { ...(this.store.plans.approved(job.id)?.plan.budget ?? { usd: to }) };
-    if (target === 'usd') budget.usd = to;
-    else budget.weekPct = to;
-    const version = this.jobs.raiseBudget(job.id, budget);
-    if (version === null) return null;
-    return target === 'usd'
-      ? `The client raised the budget to ${usdText(to)} (plan v${version})`
-      : `The client raised the share of the weekly Claude limit to ${pctText(to)} (plan v${version})`;
-  }
-
   /**
-   * Answering a `client_file` card writes its lines first, so they are on disk
-   * before the wakeup that reports them runs. On a Remember this? card, This
-   * project and All projects save the line, in the client's words when they
-   * typed some, and Just this job declines the topic for the project. Refused
-   * while the file has a change from outside Fleet the client has not kept:
-   * writing would keep it without the client seeing it.
+   * Write a client file change in `scope`'s name at once, tagged with the job
+   * it was learned on. Each line it replaces or removes has to be in the file
+   * now. Refused while the file has a change from outside Fleet the client
+   * has not kept: writing would keep it without the client seeing it.
    */
-  private applyClientFile(req: AgencyAnswerRequest): boolean {
-    const q = this.store.getQuestion(req.id);
-    if (q?.kind !== 'client_file' || q.status !== 'open' || q.proposal === null) return true;
-    const { proposal } = q;
-    if (proposal.topic !== null && req.option === REMEMBER_OPTION.decline) {
-      this.store.preferences.declineTopic(q.repoId, proposal.topic);
-      return true;
-    }
-    const layer = answerLayer(q.repoId, proposal, req.option);
-    if (layer === null) return true;
-    if (this.clientFiles.changedOutside(layer)) return false;
-    const typed = proposal.topic === null ? '' : clientWords(req.text);
-    this.clientFiles.apply(layer, {
-      name: layer === YOU_LAYER ? 'You' : (this.store.repo(q.repoId)?.name ?? q.repoId),
-      source: q.jobId === null ? 'the Bridge' : `job ${jobDisplayId(q.jobId)}`,
-      proposal: typed === '' ? proposal : { ...proposal, add: [{ text: typed, replaces: null }] }
-    });
-    return true;
-  }
-
-  /**
-   * Put a client file change up as a card in `scope`'s name. Each line it
-   * replaces or removes has to be in the file now, so the card shows what
-   * really goes.
-   */
-  proposeClientFile(
+  learnClientLines(
     scope: AdmiralThreadScope,
-    input: { reason: string; proposal: ClientFileProposal }
-  ): { ok: true; question: AgencyQuestion } | { ok: false; reason: string } {
-    const { topic } = input.proposal;
-    const layer = input.proposal.layer === 'you' ? YOU_LAYER : scope.repoId;
+    proposal: ClientFileProposal
+  ): { ok: true } | { ok: false; reason: string } {
+    const layer = proposal.layer === 'you' ? YOU_LAYER : scope.repoId;
     if (this.clientFiles.changedOutside(layer)) {
       return {
         ok: false,
@@ -745,14 +635,10 @@ export class AgencyService {
           'the client file changed outside Fleet. Ask the client to look at it in Settings > Agency > Admiral first.'
       };
     }
-    if (topic !== null) {
-      const refused = this.topicRefusal(scope.repoId, topic);
-      if (refused !== null) return { ok: false, reason: refused };
-    }
     const entries = clientEntries(this.clientFiles.read(layer));
     const named = [
-      ...input.proposal.add.flatMap((a) => (a.replaces === null ? [] : [a.replaces])),
-      ...input.proposal.remove
+      ...proposal.add.flatMap((a) => (a.replaces === null ? [] : [a.replaces])),
+      ...proposal.remove
     ];
     const missing = named.find((line) => !entries.some((e) => sameText(e, line)));
     if (missing !== undefined) {
@@ -761,43 +647,13 @@ export class AgencyService {
         reason: `"${missing}" is not a line in the client file. Give the line word for word, as your note shows it, without its id and its "(from ...)" tag.`
       };
     }
-    const question = this.store.askQuestion({
-      ...scope,
-      kind: 'client_file',
-      ...(topic === null
-        ? {
-            question: 'Change the client file?',
-            options: [{ label: 'Change it' }, { label: 'Not now' }],
-            recommended: 0
-          }
-        : {
-            question: 'Remember this?',
-            options: [
-              { label: 'This project' },
-              { label: 'All projects' },
-              { label: scope.jobId === null ? 'Just this time' : 'Just this job' }
-            ],
-            recommended: input.proposal.layer === 'you' ? 1 : 0
-          }),
-      context: input.reason,
-      proposal: input.proposal
+    this.clientFiles.apply(layer, {
+      name: layer === YOU_LAYER ? 'You' : (this.store.repo(scope.repoId)?.name ?? scope.repoId),
+      source: scope.jobId === null ? 'the Bridge' : `job ${jobDisplayId(scope.jobId)}`,
+      proposal
     });
-    if (scope.jobId !== null) this.jobs.refreshClientHold(scope.jobId);
-    this.changed([scope]);
-    return { ok: true, question };
-  }
-
-  /** Why a Remember this? card on `topic` may not go up now, or null when it may. */
-  private topicRefusal(repoId: string, topic: string): string | null {
-    if (this.store.preferences.topicDeclined(repoId, topic)) {
-      return `the client said Just this job to "${topic}" before. Do not ask about it again on this project.`;
-    }
-    const open = this.store
-      .listQuestions(repoId, { statuses: ['open'] })
-      .find((q) => q.kind === 'client_file' && q.proposal?.topic === topic);
-    return open === undefined
-      ? null
-      : `${questionDisplayId(open.id)} asks about "${topic}" already. Wait for the client's answer.`;
+    this.layerChanged(layer);
+    return { ok: true };
   }
 
   /** The client saved the client file in Settings: hand edits win. */
@@ -930,43 +786,22 @@ export class AgencyService {
     return { ok: true };
   }
 
-  /** When the project lets Fleet start a plan on its own, and how big a plan may be. */
-  private autoStartRule(repoId: string): AutoStartRule | null {
-    const trust = this.store.preferences.trust(repoId);
-    if (trust.level === 'ask') return null;
-    const admiral = this.agencySettings.get().admiral;
-    return {
-      level: trust.level,
-      usd: trust.autoStartUsd ?? admiral.defaultBudgetUsd,
-      weekPct: admiral.defaultBudgetWeekPct
-    };
-  }
-
   /** What a job found: its crew reports and every result, with their text. */
   async findings(jobId: number): Promise<Findings | null> {
     return collectFindings(this.store, this.deps.agencyHome ?? agencyHome(), jobId);
   }
 
   /**
-   * A job delivered everything. Under Ship it, a job that delivered only PRs
-   * merges them as if the client pressed Merge, and `shipped` reports it.
-   * Otherwise the Bridge hears what it found, and a job that only found things
-   * closes, since there is nothing left on it for the client to accept.
+   * A job delivered everything. The Bridge hears what it found, and a job
+   * that only found things closes, since there is nothing left on it for the
+   * client to accept. Close before reading the files: its record and results
+   * outlive the close.
    */
   private async delivered(jobId: number): Promise<void> {
     const job = this.store.getJob(jobId);
     if (!job) return;
-    const trust = this.store.preferences.trust(job.repoId).level;
-    if (deliveryAction(this.store.results.forJob(jobId), trust) === 'merge') {
-      const started = await this.merges.start(jobId, 'trust');
-      if (started.ok) return;
-      log.warn('Ship it could not start the merge', { jobId, ...started });
-    }
-    // The merge was awaited: decide on the job as it is now, and close before
-    // reading the files. Its record and results outlive the close.
-    if (this.store.getJob(jobId)?.state !== 'delivered') return;
     const closed =
-      deliveryAction(this.store.results.forJob(jobId), trust) === 'close' && this.closeFound(jobId);
+      deliveryAction(this.store.results.forJob(jobId)) === 'close' && this.closeFound(jobId);
     const findings = await this.findings(jobId);
     if (findings === null) return;
     const id = jobDisplayId(jobId);
@@ -997,34 +832,22 @@ export class AgencyService {
     return true;
   }
 
-  /**
-   * A merge Fleet started under Ship it merged every PR: the job is accepted
-   * and closes, and the Admiral reports to the client on the Bridge.
-   */
-  private shipped(jobId: number): void {
+  /** The client merged every PR of a delivered job on GitHub: the job is done. */
+  private closeMerged(jobId: number): void {
     const job = this.store.getJob(jobId);
-    if (!job) return;
-    const prs = this.store.results
-      .forJob(jobId)
-      .flatMap((r) => (r.body.kind === 'pr' ? [`#${r.body.pr.number} ${r.body.pr.url}`] : []));
-    this.store.plans.log({
-      jobId,
-      kind: 'decision',
-      text: 'Ship it: merged and closed on its own'
-    });
     const closed = this.closeJob({ jobId, action: 'accept' });
-    if (!closed.ok) {
-      log.warn('Ship it could not close the job', { jobId, reason: closed.reason });
+    if (!job || !closed.ok) {
+      log.warn('A job with every PR merged could not close', { jobId });
       return;
     }
-    const id = jobDisplayId(jobId);
+    this.store.plans.log({ jobId, kind: 'decision', text: 'Every PR merged: closed on its own' });
     this.store.enqueueWakeup({
       repoId: job.repoId,
       jobId: null,
       kind: 'event',
       payload: {
-        line: `${id} shipped on its own`,
-        body: `The project is at Ship it, so Fleet merged every PR of ${id} once its checks passed, and closed the job: ${prs.join(', ')}. Give the client a short report of what shipped, with the PR links.`
+        line: `${jobDisplayId(jobId)}: every PR is merged, and Fleet closed it`,
+        body: 'The client merged the PRs on GitHub. Nothing is left to tell them.'
       }
     });
     this.changed([{ repoId: job.repoId, jobId: null }]);
@@ -1360,8 +1183,7 @@ export class AgencyService {
   preferencesForNote(repoId: string): PreferencesNote {
     return {
       you: this.clientFiles.forNote(YOU_LAYER),
-      project: this.clientFiles.forNote(repoId),
-      autoStart: this.autoStartRule(repoId)
+      project: this.clientFiles.forNote(repoId)
     };
   }
 

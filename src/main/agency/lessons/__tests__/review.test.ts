@@ -60,9 +60,9 @@ describe('checkLesson', () => {
     expect(!out.ok && out.reason).toContain('Replace text rather than add it');
   });
 
-  it('refuses a lesson the client turned down', () => {
+  it('refuses a lesson the client undid', () => {
     const out = checkLesson(LESSON, checks([lessonTopic('builder', 'when the project lints')]));
-    expect(!out.ok && out.reason).toContain('turned this lesson down');
+    expect(!out.ok && out.reason).toContain('undid this lesson');
   });
 });
 

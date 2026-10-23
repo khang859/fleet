@@ -310,26 +310,11 @@ export type JobControlResult = { ok: true } | { ok: false; reason: string };
 
 export type LeftoverAction = { resourceId: number; action: 'retry' | 'dismiss' };
 
-export type PlanAction =
-  | {
-      planVersionId: number;
-      action: 'approve';
-      /** Per member: start from the default branch tip (the default) or the current HEAD. */
-      baseChoice?: Record<string, 'default' | 'head'>;
-      /** Per swapped running step: keep its work, or start over on a new branch. */
-      swaps?: Record<string, SwapChoice>;
-      /** The client accepts the steps whose cost Fleet cannot measure. */
-      acceptCost?: boolean;
-    }
-  | { planVersionId: number; action: 'reject'; note: string }
-  /** The client asks for a different plan in words, about the steps they name, if any. */
-  | { planVersionId: number; action: 'revise'; note: string; steps: string[] }
-  | { planVersionId: number; action: 'edit'; plan: PlanInput };
+/** The client's own version of the plan a job runs, which starts at once. */
+export type PlanAction = { planVersionId: number; action: 'edit'; plan: PlanInput };
 
-/** A plan or question decision from the Bridge, which Fleet holds a few seconds before it carries it out. */
-export type HoldRequest =
-  | { kind: 'plan'; action: Exclude<PlanAction, { action: 'edit' }> }
-  | { kind: 'answer'; answer: AgencyAnswerRequest };
+/** A question answered from the Bridge, which Fleet holds a few seconds before it carries it out. */
+export type HoldRequest = { kind: 'answer'; answer: AgencyAnswerRequest };
 
 /** How a held decision ended: carried out, refused by the check it runs through, or undone. */
 export type HoldResult =
