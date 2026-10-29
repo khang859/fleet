@@ -167,13 +167,7 @@ async function approvedJob(steps = [step('front')]): Promise<number> {
   });
   const plan = PlanSchema.parse({ playbook: 'feature', summary: 's', steps, budget: { usd: 5 } });
   const out = await toolsOf(job.id).jobPlan!(plan);
-  const id = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
-  const decided = await service.jobs.decide({
-    planVersionId: id,
-    action: 'approve',
-    acceptCost: true
-  });
-  if (!decided.ok) throw new Error(decided.reason);
+  if (!out.summary.startsWith('started')) throw new Error(out.text);
   return job.id;
 }
 
@@ -209,6 +203,9 @@ describe('stepBrief', () => {
     );
     expect(stepBrief(step({ deliverables: ['link'] }), 'Find it.')).toBe(
       'Find it.\n\nThis step hands back: Link (link).'
+    );
+    expect(stepBrief(step({ deliverables: ['pr'] }), 'Build it.')).toBe(
+      'Build it.\n\nThis step hands back: Branch and PR (pr). Commit your work on your branch and finish: Fleet pushes it and opens the PR after the step. Never push or open a PR yourself.'
     );
     const reader = step({ workspace: { of: 'fix' }, deliverables: ['review'] });
     expect(stepBrief(reader, 'Review it.', { handback: '/jobs/1/handback/web' })).toContain(
@@ -707,25 +704,6 @@ describe('a step whose cost Fleet cannot measure', () => {
       .listQuestions(ref.repoId, { jobId, statuses: ['open'] })
       .find((q) => q.kind === 'rehire');
 
-  it('needs the client to accept it before the plan is approved', async () => {
-    const job = service.openJob({ repoId: ref.repoId, title: 'T', brief: 'b', budgetUsd: null });
-    const plan = PlanSchema.parse({
-      playbook: 'feature',
-      summary: 's',
-      steps: capped({ turns: 5 }),
-      budget: { usd: 5 }
-    });
-    const out = await toolsOf(job.id).jobPlan!(plan);
-    const planVersionId = Number(/plan#(\d+)/.exec(out.summary)?.[1]);
-    expect(await service.jobs.decide({ planVersionId, action: 'approve' })).toEqual({
-      ok: false,
-      reason: 'Accept the steps whose cost Fleet cannot measure on the plan card first.'
-    });
-    expect(
-      await service.jobs.decide({ planVersionId, action: 'approve', acceptCost: true })
-    ).toEqual({ ok: true, version: 1 });
-  });
-
   it('stops the crew member at the turn cap, and asks the client before hiring again', async () => {
     const jobId = await live({ turns: 2 });
     service.crew.turnEnded('session-a');
@@ -983,12 +961,10 @@ describe('a swap', () => {
       recommended: 0
     });
     const id = await change(jobId, [step('front', { scope: 'front', model: 'opus' }), back]);
-    const decided = await service.jobs.decide({
-      planVersionId: id,
-      action: 'approve',
-      swaps: { front: choice }
-    });
-    if (!decided.ok) throw new Error(decided.reason);
+    const effects = service.store.plans.version(id)?.effects;
+    if (!effects) throw new Error('The change did not start.');
+    // Every swap goes on from its branch now; a start-over is one recorded before.
+    service.store.plans.setEffects(id, { ...effects, swaps: { front: choice } });
     await new Promise((r) => setImmediate(r));
     return { jobId, first };
   }
@@ -1064,7 +1040,7 @@ describe('a swap', () => {
     expect(crewOf(jobId)[0].status).not.toBe('ended');
   });
 
-  it('is proposed from a crew card as the client’s plan change, and refused while one waits', async () => {
+  it('starts from a crew card as the client’s plan change', async () => {
     const jobId = await approvedJob();
     await toolsOf(jobId).crewHire!({ step: 'front', brief: 'x' });
     const swap = { jobId, stepId: 'front', role: 'builder', runtime: null, model: null };
@@ -1073,20 +1049,29 @@ describe('a swap', () => {
       ok: false,
       reason: 'The step runs that way now.'
     });
-    const out = await service.jobs.swapStep({ ...swap, runtime: 'eva' });
-    expect(out).toEqual({ ok: true, version: 2 });
-    const card = service.jobs.detail(jobId)?.versions.find((v) => v.version === 2);
-    expect(card).toMatchObject({ author: 'client', status: 'proposed' });
-    expect(card?.plan.steps[0]).toMatchObject({ id: 'front', runtime: 'eva' });
-    expect(card?.effects?.swaps).toEqual([{ stepId: 'front', fields: ['runtime'] }]);
+    expect(await service.jobs.swapStep({ ...swap, model: 'opus' })).toEqual({
+      ok: true,
+      version: 2
+    });
+    const started = service.store.plans.approved(jobId);
+    expect(started).toMatchObject({ version: 2, author: 'client', status: 'approved' });
+    expect(started?.plan.steps[0]).toMatchObject({ id: 'front', model: 'opus' });
+    expect(started?.effects?.swaps).toEqual({ front: 'continue' });
     expect(service.store.pullWakeups({ repoId: ref.repoId, jobId }).text).toContain(
       'Client swapped step front on a crew card, as plan v2'
     );
+  });
 
-    expect(await service.jobs.swapStep({ ...swap, model: 'opus' })).toMatchObject({
-      ok: false,
-      reason: 'Plan v2 is waiting for you. Approve or reject it first.'
-    });
+  it('refuses a swap a check stops, and leaves no version waiting', async () => {
+    const jobId = await approvedJob();
+    const swap = { jobId, stepId: 'front', role: 'builder', runtime: 'eva' as const, model: null };
+
+    const out = await service.jobs.swapStep(swap);
+
+    expect(out).toMatchObject({ ok: false });
+    expect(!out.ok && out.reason).toContain('needs a cap');
+    expect(service.store.plans.newest(jobId)?.status).toBe('replaced');
+    expect(service.store.plans.approved(jobId)?.version).toBe(1);
   });
 
   it('keeps the role the plan was approved with when the role file changes', async () => {

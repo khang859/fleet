@@ -120,7 +120,7 @@ export class Understanding {
       commits: email === null ? 'Git has no user.email set here.' : null,
       reviews: github,
       prs: github,
-      jobs: jobs === 0 ? 'No past job here has a plan change or answer yet.' : null
+      jobs: jobs === 0 ? 'No past job here has your answers yet.' : null
     };
     const detail: Record<ReadSourceId, string> = {
       instructions: instructionsDetail(project, own),
@@ -216,12 +216,11 @@ export class Understanding {
   }
 
   /**
-   * Save lines the client kept, each tagged with where it was read, and open
-   * a conflict for one that clashes with a project rule. Refused while a
-   * layer it writes has an outside change the client has not kept.
+   * Save lines the client kept, each tagged with where it was read. Refused
+   * while a layer it writes has an outside change the client has not kept.
    */
   keep(repo: AgencyRepoRef, lines: ReadProposal[]): ClientLineResult {
-    const { clientFiles, store } = this.deps;
+    const { clientFiles } = this.deps;
     const layerOf = (l: ReadProposal): string => (l.layer === 'you' ? YOU_LAYER : repo.repoId);
     const layers = [...new Set(lines.map(layerOf))];
     if (layers.some((layer) => clientFiles.changedOutside(layer))) return OUTSIDE_CHANGE;
@@ -231,20 +230,6 @@ export class Understanding {
         name: layer === YOU_LAYER ? 'You' : repo.name,
         lines: mine.map((l) => ({ text: l.text, source: l.source }))
       });
-      for (const l of mine) {
-        if (l.clash === null) continue;
-        const open = store.preferences
-          .conflicts(layer)
-          .some((c) => c.normText === normText(l.text));
-        if (!open) {
-          store.preferences.openConflict({
-            layer,
-            text: l.text,
-            ruleSource: l.clash.source,
-            ruleText: l.clash.rule
-          });
-        }
-      }
     }
     this.deps.emit(repo.repoId);
     return { ok: true };

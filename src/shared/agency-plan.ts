@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * A job's plan, as the Admiral proposes it with `job_plan` and the client
- * approves, edits or rejects it on the plan card. The Admiral always sends the
- * whole plan; Fleet works out what changed against the approved version.
+ * A job's plan, as the Admiral proposes it with `job_plan`. It starts once
+ * Fleet's checks pass, with no client action. The Admiral always sends the
+ * whole plan; Fleet works out what changed against the started version.
  */
 
 /**
@@ -141,7 +141,7 @@ export const PLAN_MAX_USES = 20;
 /**
  * A role the plan brings because no crew role fits a step, written as the
  * fields of a role file. Fleet saves it in the project's crew folder, never
- * in the repository, only when the client approves the plan.
+ * in the repository, only when the plan starts.
  */
 export const NewRoleSchema = z.object({
   name: z
@@ -451,7 +451,7 @@ export function diffPlans(prev: Plan | null, next: Plan): PlanDiffEntry[] {
   return diff;
 }
 
-/** A diff entry as one line for the card and the model. */
+/** A diff entry as one line for the model. */
 export function diffLine(entry: PlanDiffEntry): string {
   switch (entry.kind) {
     case 'added':

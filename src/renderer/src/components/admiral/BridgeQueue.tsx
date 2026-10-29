@@ -36,7 +36,6 @@ export function BridgeQueue({
   reading,
   defaultBudgetUsd,
   onRead,
-  onOpenJob,
   onOpenSettings,
   className = ''
 }: {
@@ -48,7 +47,6 @@ export function BridgeQueue({
   reading: Reading | null;
   defaultBudgetUsd: number;
   onRead: (key: string) => void;
-  onOpenJob: (jobId: number) => void;
   onOpenSettings: () => void;
   className?: string;
 }): React.JSX.Element {
@@ -87,7 +85,6 @@ export function BridgeQueue({
             refused={refused}
             readingKey={readingKey}
             onRead={onRead}
-            onOpenJob={onOpenJob}
             onOpenSettings={onOpenSettings}
           />
         )}
@@ -101,7 +98,7 @@ export function BridgeQueue({
 
       {snapshot?.clientFileChanged === true && <ClientFileNotice repoId={snapshot.repoId} />}
 
-      {firstRun && <HowAJobGoes trust={snapshot?.trust.level ?? 'ask'} />}
+      {firstRun && <HowAJobGoes />}
 
       <LeftoversSection snapshot={snapshot} />
 
@@ -131,7 +128,6 @@ function QueueList({
   refused,
   readingKey,
   onRead,
-  onOpenJob,
   onOpenSettings
 }: {
   items: WaitingItem[];
@@ -139,7 +135,6 @@ function QueueList({
   refused: RefusedDecision[];
   readingKey: string | null;
   onRead: (key: string) => void;
-  onOpenJob: (jobId: number) => void;
   onOpenSettings: () => void;
 }): React.JSX.Element {
   const [focused, setFocused] = useState<string | null>(null);
@@ -170,7 +165,6 @@ function QueueList({
               refusal={refused.find((r) => r.key === item.key) ?? null}
               reading={readingKey === item.key}
               onRead={() => onRead(item.key)}
-              onOpenJob={onOpenJob}
               onOpenSettings={onOpenSettings}
             />
           </li>
@@ -187,7 +181,6 @@ function KeyHints(): React.JSX.Element {
     ['Enter', 'read'],
     ['A', 'approve'],
     ['D', 'deny'],
-    ['C', 'change'],
     ['R', 'reply']
   ];
   return (
@@ -249,7 +242,7 @@ function AllClear(): React.JSX.Element {
       <CircleCheck size={20} aria-hidden className="text-green-500" />
       <span className="text-[13px] font-semibold text-fleet-text">Nothing waits on you</span>
       <span className="max-w-[260px] text-xs leading-relaxed text-fleet-text-muted">
-        New plans, questions and permissions show here. The Bridge tab gets a badge.
+        Questions and permissions show here. The Bridge tab gets a badge.
       </span>
     </div>
   );

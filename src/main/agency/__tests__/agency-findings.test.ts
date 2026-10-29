@@ -68,7 +68,7 @@ const LISTER: PlanInput = {
   steps: [{ ...SCOUT.steps[0], deliverables: [{ kind: 'copy', label: 'Short list' }] }]
 };
 
-const { openJob, approve } = planHelpers(() => service, SCOUT);
+const { openJob, startPlan } = planHelpers(() => service, SCOUT);
 
 const settings = (): typeof DEFAULT_AGENCY_SETTINGS => ({
   ...DEFAULT_AGENCY_SETTINGS,
@@ -94,7 +94,7 @@ async function deliveredJob(
   deliver: Record<string, unknown> | null
 ): Promise<number> {
   const { job, tools } = openJob('Triage issues');
-  await approve(tools, plan);
+  await startPlan(tools, plan);
   const step = plan.steps[0].id;
   await tools.jobUpdate!({ step, status: 'running' });
   if (deliver !== null) await tools.jobDeliver!(JobDeliverArgs.parse({ step, ...deliver }));
@@ -259,7 +259,7 @@ describe('a follow-up job', () => {
 describe('findings', () => {
   it("keep each step's latest crew reports however long the job's record grew", async () => {
     const { job, tools } = openJob('Long triage');
-    await approve(tools, SCOUT);
+    await startPlan(tools, SCOUT);
     const log = (kind: string, text: string, stepId?: string): void =>
       service.store.plans.log({ jobId: job.id, kind, stepId, text });
     for (const n of [1, 2, 3, 4]) log('crew', `read ${n}`, 'scout-1');

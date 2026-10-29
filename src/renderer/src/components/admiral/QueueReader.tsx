@@ -5,11 +5,9 @@ import { holdAnswer, type Reading, type RefusedDecision } from '../../store/brid
 import { NeedsYouCard } from './JobSheet';
 import { DeliveredCard } from './JobClose';
 import { PermissionCard } from './PermissionCard';
-import { PlanReader } from './PlanReader';
 import { QueueHead, RefusalLine } from './QueueCard';
 import { QuestionCard } from './QuestionCard';
 import { ReaderFrame } from './ReaderFrame';
-import { SettingsCardView } from './SettingsCard';
 import { crewPaneId } from './job-view';
 import { keyHint, keyProps, type QueueKey } from './queue-keys';
 import { useKeepFocus } from './use-bridge-queue';
@@ -123,7 +121,7 @@ function OpenReader({
   );
 }
 
-/** The item in full: a reader of its own for plans, permissions and questions, else its card. */
+/** The item in full: a reader of its own for permissions and questions, else its card. */
 function ReaderBody({
   item,
   head,
@@ -136,8 +134,6 @@ function ReaderBody({
   onOpenSettings: () => void;
 }): React.JSX.Element {
   switch (item.kind) {
-    case 'plan':
-      return <PlanReader version={item.version} detail={item.detail} head={head} />;
     case 'permission':
       return (
         <PermissionCard
@@ -154,16 +150,9 @@ function ReaderBody({
           layout="reader"
           question={item.question}
           head={head}
-          clientFileChanged={snapshot.clientFileChanged}
           onOpenSettings={onOpenSettings}
           onAnswer={holdAnswer(snapshot.repoId, item.question)}
         />
-      );
-    case 'settings':
-      return (
-        <ReaderFrame head={head}>
-          <SettingsCardView card={item.card} />
-        </ReaderFrame>
       );
     case 'delivered':
       return (

@@ -4,7 +4,7 @@ import { formatList } from './format-list';
 export type PrComment = {
   /** GitHub's id of the thread's first comment. */
   id: number;
-  /** The bot's login, as `name[bot]`. */
+  /** A review bot's login, as `name[bot]`, or the client's own GitHub login. */
   author: string;
   path: string | null;
   line: number | null;

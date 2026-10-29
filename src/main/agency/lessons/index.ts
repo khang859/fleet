@@ -1,17 +1,12 @@
 import { join } from 'node:path';
+import { TERMINAL_JOB_STATES } from '../../../shared/agency';
+import type { CrewCatalog } from '../../../shared/agency-crew';
 import {
-  jobDisplayId,
-  TERMINAL_JOB_STATES,
-  type AgencyAnswerRequest,
-  type AgencyQuestion
-} from '../../../shared/agency';
-import type { CrewCatalog, CrewRole } from '../../../shared/agency-crew';
-import {
-  applyLesson,
-  lessonOptions,
-  lessonPick,
   lessonTopic,
-  type CrewLesson
+  undoLesson,
+  type AppliedCrewLesson,
+  type CrewLessonUndo,
+  type LessonAnswer
 } from '../../../shared/agency-lessons';
 import { createLogger } from '../../logger';
 import { maskCredentials } from '../../redactor';
@@ -40,24 +35,23 @@ const ATTEMPTS = 2;
 const TOPIC_PREFIX = 'crew-lesson:';
 
 export type CrewLessonsDeps = {
-  store: Pick<AgencyStore, 'getJob' | 'plans' | 'listQuestions' | 'askQuestion' | 'preferences'>;
+  store: Pick<AgencyStore, 'getJob' | 'plans' | 'preferences' | 'lessons'>;
   spend: Pick<SpendService, 'reserveAdmiralCall' | 'admiralCallDone'>;
   /** Unset, there is no model to review with. */
   complete: AdmiralCompletion | null;
   /** The job's record as Markdown, with env file values masked, or null for a job still open. */
   record: (jobId: number) => Promise<string | null>;
   catalog: (repoId: string) => Promise<CrewCatalog>;
-  /** The user's crew folder, and a project's. */
-  userCrew: string | null;
+  /** A project's crew folder. */
   projectCrew: (repoId: string) => string;
   changed: (repoId: string) => void;
 };
 
 /**
  * Crew lessons: after a job that ran crew ends, one review on the Admiral's
- * model proposes at most one change to a role, as a card on the Bridge.
- * Nothing is written until the client approves, and a bundled role is never
- * changed: approving saves the project's or the user's copy.
+ * model finds at most one change to a role, and Fleet writes it at once to
+ * the project's copy of the role. A bundled or user role is never changed.
+ * Each lesson is recorded, so the client can undo it.
  */
 export class CrewLessons {
   /** Jobs reviewed this run, so a second close does not review again. */
@@ -65,7 +59,7 @@ export class CrewLessons {
 
   constructor(private readonly deps: CrewLessonsDeps) {}
 
-  /** Review an ended job and put a lesson up as a card, if there is one to keep. */
+  /** Review an ended job and write a lesson into its role, if there is one to keep. */
   async review(jobId: number): Promise<void> {
     if (this.reviewed.has(jobId)) return;
     this.reviewed.add(jobId);
@@ -74,10 +68,6 @@ export class CrewLessons {
     if (job === null || !TERMINAL_JOB_STATES.includes(job.state) || complete === null) return;
     const ran = this.ranRoles(jobId);
     if (ran.size === 0) return;
-    if (this.openCard(job.repoId) !== undefined) {
-      log.info('a lesson card is open already; no review', { jobId });
-      return;
-    }
     const record = await this.deps.record(jobId);
     if (record === null) return;
     const catalog = await this.deps.catalog(job.repoId);
@@ -108,7 +98,7 @@ export class CrewLessons {
         return;
       }
       if (outcome.kind === 'keep') {
-        this.propose(job.repoId, jobId, outcome.lesson, outcome.checked);
+        await this.write(job.repoId, jobId, outcome.lesson, outcome.checked);
         return;
       }
       log.info('lesson refused', { jobId, attempt, reason: outcome.reason });
@@ -152,69 +142,81 @@ export class CrewLessons {
     );
   }
 
-  private openCard(repoId: string): AgencyQuestion | undefined {
-    return this.deps.store
-      .listQuestions(repoId, { statuses: ['open'] })
-      .find((q) => q.kind === 'crew_lesson');
-  }
-
-  private propose(
+  /** Write the lesson into the project's copy of the role, and record it for Undo. */
+  private async write(
     repoId: string,
     jobId: number,
-    answer: Omit<CrewLesson, 'jobId' | 'source'>,
-    { role }: CheckedLesson
-  ): void {
-    const lesson: CrewLesson = { ...answer, jobId, source: role.source };
-    this.deps.store.askQuestion({
-      repoId,
-      jobId: null,
-      kind: 'crew_lesson',
-      question: `Teach the ${role.name} role?`,
-      context: `${lesson.lesson}\n\n**When:** ${lesson.cue}. **Seen on ${jobDisplayId(jobId)}:** ${lesson.evidence}`,
-      options: lessonOptions(role.source).map(({ label, detail }) => ({ label, detail })),
-      recommended: 0,
-      lesson
+    lesson: LessonAnswer,
+    { role, instructions }: CheckedLesson
+  ): Promise<void> {
+    const createdCopy = role.source !== 'project';
+    const path = createdCopy
+      ? join(this.deps.projectCrew(repoId), 'roles', `${role.name}.md`)
+      : role.path;
+    try {
+      await writeRole(path, role, instructions);
+    } catch (err) {
+      log.warn('lesson not written', { jobId, err: String(err) });
+      return;
+    }
+    this.deps.store.lessons.record({
+      projectId: repoId,
+      jobId,
+      role: role.name,
+      cue: lesson.cue,
+      lesson: lesson.lesson,
+      replace: lesson.replace,
+      with: lesson.with,
+      path,
+      createdCopy
     });
     this.deps.changed(repoId);
   }
 
-  /**
-   * Write what the client picked on a lesson card, before the answer is
-   * recorded. The role is read again, so a lesson applies to its text now;
-   * false refuses the answer when it picks no option, when the text it
-   * replaces is gone, or when the file cannot be written. Not now remembers the lesson as turned down.
-   */
-  async apply(q: AgencyQuestion, req: AgencyAnswerRequest): Promise<boolean> {
-    const { lesson } = q;
-    if (q.kind !== 'crew_lesson' || q.status !== 'open' || lesson === null) return true;
-    const pick = lessonPick(lesson, req.option);
-    if (pick === null) return false;
-    if (pick === 'decline') {
-      this.deps.store.preferences.declineTopic(q.repoId, lessonTopic(lesson.role, lesson.cue));
-      return true;
-    }
-    const role = (await this.deps.catalog(q.repoId)).roles.find((r) => r.name === lesson.role);
-    const instructions = role === undefined ? null : applyLesson(role.prompt, lesson);
-    if (role === undefined || instructions === null) {
-      log.warn('lesson no longer applies', { question: q.id, role: lesson.role });
-      return false;
-    }
-    const path = this.target(pick, role, q.repoId);
-    if (path === null) return false;
-    try {
-      await writeRole(path, role, instructions);
-    } catch (err) {
-      log.warn('lesson not written', { question: q.id, err: String(err) });
-      return false;
-    }
-    return true;
+  /** The lessons written into a project's roles, newest first. */
+  list(repoId: string): AppliedCrewLesson[] {
+    return this.deps.store.lessons.list(repoId).map((l) => ({
+      id: l.id,
+      jobId: l.jobId,
+      role: l.role,
+      cue: l.cue,
+      lesson: l.lesson,
+      replace: l.replace,
+      with: l.with,
+      appliedAt: l.appliedAt,
+      undoneAt: l.undoneAt
+    }));
   }
 
-  /** The file a pick writes: the role's own file when it is already there, else a new copy. */
-  private target(pick: 'own' | 'project' | 'user', role: CrewRole, repoId: string): string | null {
-    const source = pick === 'user' ? 'user' : 'project';
-    if (role.source === source) return role.path;
-    const dir = source === 'user' ? this.deps.userCrew : this.deps.projectCrew(repoId);
-    return dir === null ? null : join(dir, 'roles', `${role.name}.md`);
+  /**
+   * Take a lesson out of its role again, and remember it so the same lesson
+   * is not learned again. Refused when the client changed that part since.
+   */
+  async undo(id: number): Promise<CrewLessonUndo> {
+    const { store } = this.deps;
+    const lesson = store.lessons.get(id);
+    if (lesson?.undoneAt !== null) {
+      return { ok: false, reason: 'That lesson is undone already.' };
+    }
+    const role = (await this.deps.catalog(lesson.projectId)).roles.find(
+      (r) => r.name === lesson.role && r.path === lesson.path
+    );
+    const instructions = role === undefined ? null : undoLesson(role.prompt, lesson);
+    if (role === undefined || instructions === null) {
+      return {
+        ok: false,
+        reason: `The ${lesson.role} role changed there since. Edit it in Settings instead.`
+      };
+    }
+    try {
+      await writeRole(lesson.path, role, instructions);
+    } catch (err) {
+      log.warn('lesson not undone', { id, err: String(err) });
+      return { ok: false, reason: 'The role file could not be written.' };
+    }
+    store.lessons.markUndone(id);
+    store.preferences.declineTopic(lesson.projectId, lessonTopic(lesson.role, lesson.cue));
+    this.deps.changed(lesson.projectId);
+    return { ok: true };
   }
 }

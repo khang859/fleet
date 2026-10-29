@@ -10,7 +10,7 @@ import {
 import {
   MEET_BUDGET,
   MEET_TEXT_MAX,
-  meetAnswerResult,
+  meetAnswerLines,
   meetQuestion,
   type MeetAnswer,
   type MeetQuestion,
@@ -118,8 +118,8 @@ export function MeetYou({
           }
         });
       }
-      const { lines, trust } = meetAnswerResult(question, given);
-      setLast({ said: saidText(question, given), got: gotText(lines, trust !== null) });
+      const lines = meetAnswerLines(question, given);
+      setLast({ said: saidText(question, given), got: gotText(lines) });
       setFresh(lines);
       setStep(step + 1);
       await loadLayers();
@@ -350,8 +350,7 @@ function saidText(question: MeetQuestion, given: MeetAnswer): string | null {
   return given.picks.map((i) => question.picks.at(i)?.label ?? '').join(', ');
 }
 
-function gotText(lines: string[], trustSet: boolean): string {
-  if (trustSet) return 'Got it. You can change this per project later.';
+function gotText(lines: string[]): string {
   if (lines.length === 0) return 'Skipped. You can add it later in Settings.';
   if (lines.length > 1) return `Got it. I wrote down ${lines.length} lines.`;
   return `Got it. ${lines[0]}`;

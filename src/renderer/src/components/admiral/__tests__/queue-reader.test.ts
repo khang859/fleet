@@ -3,30 +3,18 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { AgencySnapshot } from '../../../../../shared/agency';
 import type { AgencyJobDetail } from '../../../../../shared/agency-jobs';
-import { PlanSchema } from '../../../../../shared/agency-plan';
 import { agencyQuestion } from '../../../../../shared/__tests__/agency-fixtures';
 import { QueueReader } from '../QueueReader';
 import { queueOrder, waitingItems } from '../waiting-queue';
-import {
-  bridgeQueue,
-  crew,
-  detail,
-  job,
-  permission,
-  PLAN,
-  settings,
-  snap,
-  version
-} from './queue-fixtures';
+import { bridgeQueue, crew, detail, job, permission, snap } from './queue-fixtures';
 
 /** The Bridge reader: a queue item in full in the main column. */
 
-/** j2 with a permission request and a plan, a lobby question, and a settings card. */
+/** j2 with a permission request, and a lobby question. */
 function queue(): { snapshot: AgencySnapshot; details: Record<number, AgencyJobDetail> } {
   const planned = job({
     title: 'Get PR #61 to green CI',
     brief: 'Get PR #61 to green CI, and do not touch main.',
-    pendingPlan: { id: 7, version: 1 },
     permissionsWaiting: [5]
   });
   return {
@@ -42,12 +30,10 @@ function queue(): { snapshot: AgencySnapshot; details: Record<number, AgencyJobD
           recommended: 1,
           createdAt: 40
         })
-      ],
-      settingsCards: [settings({ at: 60 })]
+      ]
     }),
     details: {
       2: detail(planned, {
-        versions: [version()],
         permissions: [permission({ target: 'git push --force-with-lease origin fix/pr-61' })],
         crew: [crew({ flag: null })]
       })
@@ -79,47 +65,17 @@ function split(html: string): [string, string] {
 
 describe('the Bridge reader', () => {
   it('names the item and its place in the queue, with Previous, Next and Close', () => {
-    const html = read('plan:7');
-    expect(html).toContain('aria-label="Reading plan v1"');
-    expect(html).toContain('>PLAN v1<');
-    expect(html).toContain('Get PR #61 to green CI');
-    expect(html).toContain('2 of 4 waiting');
+    const html = read('q:35');
+    expect(html).toContain('>QUESTION<');
+    expect(html).toContain('2 of 2 waiting');
     expect(html).toMatch(/aria-label="Previous" title="Previous \(K\)" data-key="previous"/);
     expect(html).toMatch(/aria-label="Next"/);
     expect(html).toMatch(/aria-label="Close"/);
 
     const first = read('perm:5');
-    expect(first).toContain('1 of 4 waiting');
+    expect(first).toContain('Get PR #61 to green CI');
+    expect(first).toContain('1 of 2 waiting');
     expect(first).toMatch(/aria-label="Previous"[^>]*disabled=""/);
-  });
-
-  it('shows a long plan in full, with its decision in a footer out of the scroll', () => {
-    const long = PlanSchema.parse({
-      ...PLAN,
-      steps: Array.from({ length: 9 }, (_, i) => ({
-        id: `builder-${i + 1}`,
-        role: 'builder',
-        title: `Step number ${i + 1}`,
-        skills: i === 8 ? ['vitest'] : [],
-        after: i === 8 ? ['builder-1'] : [],
-        cap: i === 8 ? { turns: 40 } : undefined
-      })),
-      budget: { usd: 8, weekPct: 12 }
-    });
-    const { snapshot, details } = queue();
-    details[2].versions = [version({ plan: long })];
-    const [content, footer] = split(read('plan:7', { snapshot, details }));
-    expect(content).toContain('Get PR #61 to green CI, and do not touch main.');
-    for (let i = 1; i <= 9; i++) expect(content).toContain(`Step number ${i}`);
-    expect(content).toMatch(/Uses<\/dt><dd[^>]*>vitest/);
-    expect(content).toMatch(/Waits on<\/dt><dd[^>]*>step 1/);
-    expect(content).toMatch(/Stops at<\/dt><dd[^>]*>40 turns/);
-    expect(content).toContain('9 crew members');
-    expect(content).toContain('12% Claude week');
-    expect(footer).toContain('>Approve plan<');
-    expect(footer).toContain('>Change<');
-    expect(footer).toContain('>Reject<');
-    expect(content).not.toContain('>Approve plan<');
   });
 
   it('shows a permission request with its full target and the answers in the footer', () => {
@@ -144,17 +100,21 @@ describe('the Bridge reader', () => {
   });
 
   it('shows the other kinds as their cards at full width', () => {
-    const html = read('settings:4');
-    expect(html).toContain('aria-label="Settings');
+    const stuck = job({ id: 4, crewNeedingYou: 1 });
+    const html = read('crew:9', {
+      snapshot: snap({ jobs: [stuck] }),
+      details: { 4: detail(stuck, { crew: [crew()] }) }
+    });
+    expect(html).toContain('needs you"');
     expect(html).toContain('max-w-[760px]');
   });
 
   it('marks the card it shows in the queue, and offers Read on the others', () => {
     const { snapshot, details } = queue();
-    const html = bridgeQueue(snapshot, details, [], 'plan:7');
+    const html = bridgeQueue(snapshot, details, [], 'q:35');
     expect(html.match(/>READING</g)).toHaveLength(1);
-    expect(html.indexOf('>READING<')).toBeGreaterThan(html.indexOf('>PLAN v1<'));
-    expect(html.match(/aria-label="Read in full"/g)).toHaveLength(3);
+    expect(html.indexOf('>READING<')).toBeGreaterThan(html.indexOf('>QUESTION<'));
+    expect(html.match(/aria-label="Read in full"/g)).toHaveLength(1);
     expect(html).toContain('ring-2 ring-blue-400/50');
   });
 });

@@ -257,7 +257,7 @@ describe('checkPlan', () => {
     ]);
     expect(checks.issues[0]?.text).toContain('3 uncommitted changes');
     expect(checks.issues[1]?.text).toBe(
-      'j4 is also working on 1 path this plan touches. Ask the client: queue this job behind, or run both?'
+      'j4 is also working on 1 path this plan touches. Queue this job behind with queueBehind, unless the changes cannot clash.'
     );
     expect(checks.overlap).toHaveLength(1);
   });

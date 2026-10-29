@@ -1,10 +1,5 @@
 import type { AgencyJob, AgencySnapshot } from '../../../../shared/agency';
-import type {
-  AgencyJobDetail,
-  AgencyPlanVersion,
-  MemberBase
-} from '../../../../shared/agency-jobs';
-import type { Plan } from '../../../../shared/agency-plan';
+import type { AgencyJobDetail } from '../../../../shared/agency-jobs';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 
 /** How a job that ended is labeled wherever it shows. */
@@ -41,7 +36,7 @@ export type JobStatus = { label: string; tone: JobTone };
  * worked on whatever the job's own state says.
  */
 export function jobStatus(
-  job: Pick<AgencyJob, 'state'>,
+  job: Pick<AgencyJob, 'state'> & Partial<Pick<AgencyJob, 'prsWaiting'>>,
   live: { asking: boolean; working: boolean }
 ): JobStatus {
   if (live.asking) return { label: 'Waiting on you', tone: 'amber' };
@@ -50,13 +45,15 @@ export function jobStatus(
     case 'briefing':
       return { label: 'Briefing', tone: 'blue' };
     case 'planned':
-      return { label: 'Plan ready', tone: 'blue' };
+      return { label: 'Planning', tone: 'blue' };
     case 'running':
       return { label: 'Working', tone: 'green' };
     case 'waiting':
       return { label: 'Waiting on you', tone: 'amber' };
     case 'delivered':
-      return { label: 'Delivered', tone: 'green' };
+      return job.prsWaiting === true
+        ? { label: 'PR in review', tone: 'blue' }
+        : { label: 'Delivered', tone: 'green' };
     case 'interrupted':
       return { label: 'Interrupted', tone: 'amber' };
     case 'closing':
@@ -127,36 +124,7 @@ export function leftText(ms: number): string {
   return sec >= 60 ? `${Math.ceil(sec / 60)}m` : `${sec}s`;
 }
 
-/** A member not pinned yet whose default branch tip and HEAD differ: the client picks where it starts. */
-export function baseChoice(base: MemberBase): boolean {
-  return (
-    base.pinned === null &&
-    base.defaultSha !== null &&
-    base.headSha !== null &&
-    base.defaultSha !== base.headSha
-  );
-}
-
-/**
- * Whether approving a version takes a choice only its full card asks for:
- * steps whose cost Fleet cannot measure, what a swapped step does with its
- * work so far, or where a member's work starts.
- */
-export function needsChoices(version: AgencyPlanVersion): boolean {
-  return (
-    version.checks.issues.some((i) => i.severity === 'accept') ||
-    (version.effects?.swaps.length ?? 0) > 0 ||
-    version.checks.bases.some(baseChoice)
-  );
-}
-
 /** The pane of a job's crew member, for Peek; null when the member or its pane is gone. */
 export function crewPaneId(detail: AgencyJobDetail, crewId: number): string | null {
   return detail.crew.find((c) => c.id === crewId)?.paneId ?? null;
-}
-
-/** A step as a change request names it: its number and title, or its id once it is gone. */
-export function stepLabel(plan: Plan, id: string): string {
-  const at = plan.steps.findIndex((s) => s.id === id);
-  return at < 0 ? id : `Step ${at + 1}: ${plan.steps[at].title}`;
 }

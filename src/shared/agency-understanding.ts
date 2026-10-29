@@ -24,7 +24,7 @@ export const READ_SOURCE_COPY: Record<ReadSourceId, { label: string; hint: strin
     hint: 'What you ask others to change. Through the GitHub CLI.'
   },
   prs: { label: 'Your pull request descriptions', hint: 'How you explain a change.' },
-  jobs: { label: 'Past Admiral jobs here', hint: 'What you changed in plans, and what you said.' }
+  jobs: { label: 'Past Admiral jobs here', hint: 'What you said on past jobs.' }
 };
 
 /** A source for one project: whether it can be read, and what it holds or why not. */
@@ -70,9 +70,10 @@ export type ReadProposal = {
   source: ReadTag;
   /** What in the source the line rests on, like "94 of your 100 commits use a scope". */
   evidence: string;
-  /** The project rule the line goes against, for the client to pick a winner. */
-  clash: { source: RuleFile; rule: string } | null;
 };
+
+/** A line as the model sent it, with the project rule it says the line goes against. */
+export type ExtractedLine = ReadProposal & { clash: { source: RuleFile; rule: string } | null };
 
 export type ReadResult = { ok: true; lines: ReadProposal[] } | { ok: false; reason: string };
 
@@ -111,14 +112,14 @@ export function answerJson(text: string, key = 'lines'): unknown {
  * Thinking, a fence or words around the object are allowed; a line that does
  * not fit the shape is left out, and every line is made one line and cut to size.
  */
-export function parseExtraction(text: string): ReadProposal[] | null {
+export function parseExtraction(text: string): ExtractedLine[] | null {
   const parsed = Extraction.safeParse(answerJson(text));
   if (!parsed.success) return null;
   return parsed.data.lines.flatMap((raw) => {
     const line = ExtractionLine.safeParse(raw);
     if (!line.success) return [];
     const { clashesWith, ...l } = line.data;
-    const proposal: ReadProposal = {
+    const proposal: ExtractedLine = {
       ...l,
       text: oneLine(l.text).slice(0, READ_LINE_MAX),
       evidence: oneLine(l.evidence).slice(0, READ_EVIDENCE_MAX),

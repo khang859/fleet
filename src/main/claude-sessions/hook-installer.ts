@@ -191,11 +191,15 @@ export function fleetHookCommand(configDir?: string): string {
 /**
  * Whether the hook binary in a config folder is the one this Fleet ships,
  * so it speaks the current protocol. The install refreshes it at start.
+ * A dev build never installs: the installed hook hands a dev pane off to the
+ * checkout's own build, so there it only has to be installed.
  */
-export function hookBinaryCurrent(configDir?: string): boolean {
+export function hookBinaryCurrent(configDir?: string, dev: boolean = IS_FLEET_DEV): boolean {
   const { hookDest } = resolvePaths(configDir);
   const source = getHookBinarySourcePath();
   if (!existsSync(hookDest) || !existsSync(source)) return false;
+  if (dev) return isInstalled(configDir);
+
   return readFileSync(hookDest).equals(readFileSync(source));
 }
 

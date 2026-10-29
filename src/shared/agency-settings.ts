@@ -5,15 +5,15 @@ import type { ProjectMemberSetup } from './agency-projects';
 /**
  * Every setting the Admiral can read and change, and which kind each change
  * is. The kind comes from the key and the direction of the change, never from
- * the Admiral, so an instruction injected into a page it read can at most put
- * a card in front of the client.
+ * the Admiral, so an instruction injected into a page it read cannot loosen a
+ * brake the client owns.
  *
- * - `apply`: gives no more money or reach, so it is written at once with Undo.
- * - `approve`: gives more, so it waits on a card for the client's OK.
- * - `client-only`: the Admiral's own model and Agency itself, which only the
- *   client changes, in Settings.
+ * - `apply`: written at once, with Undo.
+ * - `client-only`: a brake on the Admiral itself (its model, the monthly cap,
+ *   the Claude reserve, the checks a PR must pass, secrets for crew), which
+ *   only the client loosens, in Settings.
  */
-export type SettingKind = 'apply' | 'approve' | 'client-only';
+export type SettingKind = 'apply' | 'client-only';
 
 /** A setting's value as JSON: what the tool takes and the history keeps. */
 export type SettingValue = string | number | boolean | string[] | null;
@@ -34,30 +34,33 @@ const clientOnly = {
   kind: (): SettingKind => 'client-only',
   rule: 'only the client changes it, in Settings > Agency > Admiral'
 };
-/** More money is the client's call; less is not. */
-const moreNeedsOk = {
+/** A higher cap is the client's call; a lower one is not. */
+const moreIsClientOnly = {
   kind: (before: SettingValue, after: SettingValue): SettingKind =>
     typeof before === 'number' && typeof after === 'number' && after <= before
       ? 'apply'
-      : 'approve',
-  rule: "lowering it applies at once; raising it needs the client's OK"
+      : 'client-only',
+  rule: 'lowering it applies at once; only the client raises it, in Settings > Agency > Admiral'
 };
+
 /** Waiting for one more check or bot costs nothing; dropping one lets work through unchecked. */
-const droppingNeedsOk = {
+const droppingIsClientOnly = {
   kind: (before: SettingValue, after: SettingValue): SettingKind => {
     const kept = new Set(Array.isArray(after) ? after : []);
-    return (Array.isArray(before) ? before : []).every((v) => kept.has(v)) ? 'apply' : 'approve';
+    return (Array.isArray(before) ? before : []).every((v) => kept.has(v))
+      ? 'apply'
+      : 'client-only';
   },
-  rule: "adding one applies at once; removing one needs the client's OK"
+  rule: 'adding one applies at once; only the client removes one, in project setup'
 };
 
 /** Crew getting one more env file is the client's call; getting one less is not. */
-const addingNeedsOk = {
+const addingIsClientOnly = {
   kind: (before: SettingValue, after: SettingValue): SettingKind => {
     const had = new Set(Array.isArray(before) ? before : []);
-    return (Array.isArray(after) ? after : []).every((v) => had.has(v)) ? 'apply' : 'approve';
+    return (Array.isArray(after) ? after : []).every((v) => had.has(v)) ? 'apply' : 'client-only';
   },
-  rule: "removing one applies at once; adding one needs the client's OK"
+  rule: 'removing one applies at once; only the client adds one, in project setup'
 };
 
 /** A crew mode that asks the Admiral less: only the client turns it on. */
@@ -65,12 +68,6 @@ const onIsClientOnly = {
   kind: (_before: SettingValue, after: SettingValue): SettingKind =>
     after === 'default' ? 'apply' : 'client-only',
   rule: 'turning it off applies at once; only the client turns it on, in Settings > Agency > Crew'
-};
-
-/** A change that can cost more either way, such as another model. */
-const needsOk = {
-  kind: (): SettingKind => 'approve',
-  rule: "needs the client's OK"
 };
 
 const Usd = z.number().min(0).max(100_000);
@@ -97,40 +94,40 @@ const AGENCY_SETTINGS = {
   'agency.admiral.defaultBudgetUsd': {
     label: 'Default job budget (USD)',
     schema: Usd,
-    ...moreNeedsOk
+    ...apply
   },
   'agency.admiral.monthlyCapUsd': {
     label: 'Monthly cap (USD)',
     schema: Usd,
-    ...moreNeedsOk
+    ...moreIsClientOnly
   },
   'agency.admiral.defaultBudgetWeekPct': {
     label: 'Default job share of the weekly Claude limit (%)',
     schema: Pct,
-    ...moreNeedsOk
+    ...apply
   },
   // A higher line leaves the user less of their own subscription.
   'agency.admiral.reserveFiveHourPct': {
     label: 'Claude crew stop at this much of the 5-hour window (%)',
     schema: Pct,
-    ...moreNeedsOk
+    ...moreIsClientOnly
   },
   'agency.admiral.reserveSevenDayPct': {
     label: 'Claude crew stop at this much of the weekly limit (%)',
     schema: Pct,
-    ...moreNeedsOk
+    ...moreIsClientOnly
   },
   // Each nudge is another crew turn the job pays for.
   'agency.admiral.nudgeLimit': {
     label: 'Nudges per idle crew member',
     schema: z.number().int().min(0).max(NUDGE_LIMIT_MAX),
-    ...moreNeedsOk
+    ...apply
   },
   // Each automatic turn is another Admiral turn the job pays for.
   'agency.admiral.turnLimit': {
     label: 'Automatic turns before a job asks to continue',
     schema: z.number().int().min(1).max(TURN_LIMIT_MAX),
-    ...moreNeedsOk
+    ...moreIsClientOnly
   },
   // How long the client has to answer a crew permission card is theirs to set.
   'agency.admiral.permissionExpirySec': {
@@ -138,14 +135,14 @@ const AGENCY_SETTINGS = {
     schema: z.number().int().min(PERMISSION_EXPIRY_MIN_SEC).max(PERMISSION_EXPIRY_MAX_SEC),
     ...clientOnly
   },
-  'agency.crew.claude.atOnce': { label: 'Claude crew at once', schema: AtOnce, ...moreNeedsOk },
-  'agency.crew.eva.atOnce': { label: 'eva crew at once', schema: AtOnce, ...moreNeedsOk },
+  'agency.crew.claude.atOnce': { label: 'Claude crew at once', schema: AtOnce, ...apply },
+  'agency.crew.eva.atOnce': { label: 'eva crew at once', schema: AtOnce, ...apply },
   'agency.crew.claude.defaultModel': {
     label: 'Default Claude Code model',
     schema: Model,
-    ...needsOk
+    ...apply
   },
-  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...needsOk },
+  'agency.crew.eva.defaultModel': { label: 'Default eva model', schema: Model, ...apply },
   'agency.crew.claude.permissionMode': {
     label: 'Claude crew permission mode',
     schema: z.enum(['default', 'auto']),
@@ -170,13 +167,13 @@ const MEMBER_SETTINGS = {
   },
   checkCommands: { label: 'check commands', schema: List, ...apply },
   checks: { label: 'CI checks', schema: List, ...apply },
-  requiredChecks: { label: 'required checks', schema: List, ...droppingNeedsOk },
-  reviewBots: { label: 'review bots', schema: List, ...droppingNeedsOk },
+  requiredChecks: { label: 'required checks', schema: List, ...droppingIsClientOnly },
+  reviewBots: { label: 'review bots', schema: List, ...droppingIsClientOnly },
   stack: { label: 'stack', schema: List, ...apply },
   packageManager: { label: 'package manager', schema: z.string().max(80).nullable(), ...apply },
   defaultBranch: { label: 'default branch', schema: z.string().max(200).nullable(), ...apply },
   portVars: { label: 'port variables', schema: List, ...apply },
-  envFiles: { label: 'env files for crew', schema: List, ...addingNeedsOk }
+  envFiles: { label: 'env files for crew', schema: List, ...addingIsClientOnly }
 } satisfies Partial<Record<keyof ProjectMemberSetup, SettingDef>>;
 
 export type MemberSettingField = keyof typeof MEMBER_SETTINGS;
@@ -254,11 +251,11 @@ export const AGENCY_SETTING_KEYS = Object.keys(AGENCY_SETTINGS).filter(isAgencyK
 export const MEMBER_SETTING_FIELDS = Object.keys(MEMBER_SETTINGS).filter(isMemberField);
 
 /**
- * Where a change stands. `applied` was written at once and `approved` once the
- * client said yes; a refused change was never written, and an undone one was
- * put back.
+ * Where a change stands. `applied` was written at once; an undone one was put
+ * back. `approved` and `refused` are kept only for changes from before every
+ * change applied at once, when some waited on the client.
  */
-export type SettingChangeStatus = 'applied' | 'pending' | 'approved' | 'refused' | 'undone';
+export type SettingChangeStatus = 'applied' | 'approved' | 'refused' | 'undone';
 
 /** One change to one setting, as a card and Settings show it. */
 export type SettingChange = {
@@ -267,7 +264,6 @@ export type SettingChange = {
   label: string;
   before: SettingValue;
   after: SettingValue;
-  kind: Exclude<SettingKind, 'client-only'>;
   status: SettingChangeStatus;
 };
 

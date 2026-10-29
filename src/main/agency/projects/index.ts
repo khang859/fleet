@@ -6,7 +6,7 @@ import {
 } from '../../../shared/agency';
 import { YOU_LAYER, YOU_SOURCE } from '../../../shared/agency-client-file';
 import {
-  meetAnswerResult,
+  meetAnswerLines,
   meetQuestion,
   type MeetAnswer,
   type MeetQuestionId
@@ -15,7 +15,6 @@ import type {
   AgencyProjectSummary,
   BriefIdeas,
   ClientFileView,
-  ProjectTrust,
   ClientLineInput,
   ClientLineResult,
   ImportDiff,
@@ -253,17 +252,6 @@ export class ProjectsService {
     };
   }
 
-  /** How much Fleet does on its own in a project. */
-  trust(repoId: string): ProjectTrust {
-    return this.deps.store.preferences.trust(repoId);
-  }
-
-  /** Set a project's trust level from Settings, so its Bridge says what now happens. */
-  setTrust(input: { repoId: string; trust: ProjectTrust }): void {
-    this.deps.store.preferences.setTrust(input.repoId, input.trust);
-    this.deps.emit({ repoId: input.repoId, jobIds: [] });
-  }
-
   /**
    * The repository that speaks for a project where one is needed, such as for
    * its instruction file and its GitHub issues: the project's own repository,
@@ -287,8 +275,7 @@ export class ProjectsService {
 
   /**
    * One Meet you answer: its lines go to the question's layer, told by the
-   * client, and the last question's pick sets the project's trust level. The
-   * question counts as gone through, answered or skipped. Refused while the
+   * client. The question counts as gone through, answered or skipped. Refused while the
    * layer has an outside change the client has not kept.
    */
   async meetAnswer(input: {
@@ -300,7 +287,7 @@ export class ProjectsService {
     const { clientFiles, store } = this.deps;
     const question = meetQuestion(input.id);
     const layer = question.layer === 'you' ? YOU_LAYER : repo.repoId;
-    const { lines, trust } = meetAnswerResult(question, input.answer);
+    const lines = meetAnswerLines(question, input.answer);
     if (lines.length > 0) {
       if (clientFiles.changedOutside(layer)) {
         return {
@@ -313,11 +300,6 @@ export class ProjectsService {
         lines: lines.map((text) => ({ text, source: YOU_SOURCE }))
       });
     }
-    if (trust !== null)
-      store.preferences.setTrust(repo.repoId, {
-        ...store.preferences.trust(repo.repoId),
-        level: trust
-      });
     store.preferences.markMeetSeen(layer, [question.id]);
     this.deps.emit({ repoId: repo.repoId, jobIds: [] });
     return { ok: true };

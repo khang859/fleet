@@ -71,7 +71,7 @@ const PLAN: PlanInput = {
   budget: { usd: 10 }
 };
 
-const { openJob, approve } = planHelpers(() => service, PLAN);
+const { openJob, startPlan } = planHelpers(() => service, PLAN);
 
 const worktree = (jobId: number, label = 'builder-1 worktree'): number =>
   service.store.resources.record({
@@ -102,7 +102,7 @@ describe('cancel and accept', () => {
   it('accepts a delivered job, and refuses to accept one still running', async () => {
     start({ member_worktree: scripted({ status: 'cleaned' }) });
     const { job, tools } = openJob();
-    await approve(tools);
+    await startPlan(tools);
     worktree(job.id);
 
     const early = service.closeJob({ jobId: job.id, action: 'accept' });
@@ -165,9 +165,9 @@ describe('cancel and accept', () => {
   it('lets a job queued behind a cancelled one start', async () => {
     start();
     const first = openJob('First');
-    await approve(first.tools);
+    await startPlan(first.tools);
     const second = openJob('Second');
-    await approve(second.tools, { ...PLAN, queueBehind: first.job.id });
+    await startPlan(second.tools, { ...PLAN, queueBehind: first.job.id });
     await second.tools.jobUpdate!({ step: 'builder-1', status: 'running' });
     expect(service.store.plans.step(second.job.id, 'builder-1')?.status).toBe('queued');
 

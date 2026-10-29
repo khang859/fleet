@@ -4,7 +4,6 @@ import {
   type ClientDecision,
   type JobState
 } from '../../../shared/agency';
-import type { PlanVersionRecord } from './plan-store';
 import type { PermissionRecord } from './permission-store';
 
 /** The most decisions Done today lists. */
@@ -17,35 +16,16 @@ export function startOfDay(now: number): number {
   return day.getTime();
 }
 
-const PLAN_VERBS: Partial<Record<PlanVersionRecord['status'], string>> = {
-  approved: 'Approved',
-  superseded: 'Approved',
-  rejected: 'Rejected',
-  replaced: 'Asked for a change to'
-};
-
 /**
  * The client's decisions of the day, newest first, from what the stores
- * hold: plan versions they decided, questions they answered and permission
- * requests they answered. `jobState` reads where each job stands now.
+ * hold: questions they answered and permission requests they answered. `jobState` reads where each job stands now.
  */
 export function clientDecisions(input: {
-  plans: PlanVersionRecord[];
   questions: AgencyQuestion[];
   permissions: PermissionRecord[];
   jobState: (jobId: number) => JobState | null;
 }): ClientDecision[] {
   const { jobState } = input;
-  const plans = input.plans.map(
-    (v): ClientDecision => ({
-      key: `plan:${v.id}`,
-      jobId: v.jobId,
-      label: `${PLAN_VERBS[v.status] ?? 'Decided'} plan v${v.version}`,
-      detail: v.decisionNote,
-      jobState: jobState(v.jobId),
-      at: v.decidedAt ?? 0
-    })
-  );
   const questions = input.questions.map(
     (q): ClientDecision => ({
       key: `q:${q.id}`,
@@ -66,9 +46,7 @@ export function clientDecisions(input: {
       at: p.answeredAt ?? 0
     })
   );
-  return [...plans, ...questions, ...permissions]
-    .sort((a, b) => b.at - a.at)
-    .slice(0, DECISIONS_MAX);
+  return [...questions, ...permissions].sort((a, b) => b.at - a.at).slice(0, DECISIONS_MAX);
 }
 
 /** The option the client picked, or the words they wrote. */

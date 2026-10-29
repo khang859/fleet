@@ -1,14 +1,14 @@
 import { create } from 'zustand';
-import type { AgencyAnswerRequest, AgencyJob, AgencyQuestion } from '../../../shared/agency';
+import type { AgencyAnswerRequest, AgencyQuestion } from '../../../shared/agency';
 import { questionDisplayId } from '../../../shared/agency';
-import type { AgencyPlanVersion, HoldRequest } from '../../../shared/agency-jobs';
+import type { HoldRequest } from '../../../shared/agency-jobs';
 
 /** A decision from the Bridge that main would not carry out, with its reason. */
 export type RefusedDecision = {
-  /** The queue item it was about: `plan:12`, `q:35`. */
+  /** The queue item it was about, such as `q:35`. */
   key: string;
   jobId: number | null;
-  /** What the client tried, as a sentence start: `Approve plan v1`. */
+  /** What the client tried, as a sentence start: `Answer q35`. */
   label: string;
   reason: string;
 };
@@ -32,7 +32,7 @@ type BridgeState = {
   /** By repository, newest first, until the client dismisses one or decides on its item again. */
   refused: Record<string, RefusedDecision[]>;
   /**
-   * Hold a plan or question decision for undo. The card that sent it leaves
+   * Hold a question answer for undo. The card that sent it leaves
    * the queue while it is held, so a refusal, at once or when its time
    * comes, lands here for the queue to show.
    */
@@ -80,44 +80,6 @@ export const useBridgeStore = create<BridgeState>((set, get) => ({
       return { refused: { ...s.refused, [repoId]: list.filter((r) => r.key !== key) } };
     })
 }));
-
-/** A plan decision the Bridge holds for undo: any but a direct edit. */
-export type HeldPlanAction = Extract<HoldRequest, { kind: 'plan' }>['action'];
-
-/** Hold a decision on a plan version from the Bridge, keyed as its queue item. */
-export function holdPlan(
-  job: AgencyJob,
-  version: AgencyPlanVersion,
-  label: string,
-  action: HeldPlanAction
-): void {
-  void useBridgeStore
-    .getState()
-    .hold(
-      job.repoId,
-      { key: `plan:${version.id}`, jobId: job.id, label },
-      { kind: 'plan', action }
-    );
-}
-
-/** A change asked for or a rejection of a plan, held like the other plan decisions. */
-export function holdPlanNote(
-  job: AgencyJob,
-  version: AgencyPlanVersion,
-  action: 'revise' | 'reject',
-  note: string,
-  steps: string[]
-): void {
-  const name = `plan v${version.version}`;
-  holdPlan(
-    job,
-    version,
-    action === 'revise' ? `Ask for a change to ${name}` : `Reject ${name}`,
-    action === 'revise'
-      ? { planVersionId: version.id, action, note, steps }
-      : { planVersionId: version.id, action, note }
-  );
-}
 
 /**
  * A question card's answer from the Bridge: held for undo, and taken at once,

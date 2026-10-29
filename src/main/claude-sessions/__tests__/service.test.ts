@@ -106,6 +106,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await service.stop();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -742,12 +743,17 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       await service.start();
       await vi.waitFor(() => expect(snapshots.length).toBeGreaterThan(0));
       snapshots.length = 0;
+      // Fake timers, so a slow machine cannot stretch the events past the window.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
       await send(socketPath, event());
       await send(socketPath, event({ event: 'PreToolUse', tool: 'Bash', tool_use_id: 't1' }));
       await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
-      await vi.waitFor(() => expect(snapshots.at(-1)?.sessions[0]?.phase).toBe('waitingForInput'));
-      // Three events in quick succession, not three pushes (git may add one more).
-      expect(snapshots.length).toBeLessThanOrEqual(2);
+      expect(snapshots).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0].sessions[0]?.phase).toBe('waitingForInput');
     });
 
     it('reports folders it could not install hooks into', async () => {

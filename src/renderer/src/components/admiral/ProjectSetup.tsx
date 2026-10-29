@@ -157,7 +157,8 @@ export function ProjectSetup({
               Crew use your logins and tools on this Mac. I answer their permission prompts.
             </p>
             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-              I ask you first: merge, production deploy, deletes, and anything outside the plan.
+              I ask you first: merge, production deploy, deletes, pushes to the default branch, and
+              spending money.
             </p>
           </OnboardingCard>
           <AskCard repo={repo} />

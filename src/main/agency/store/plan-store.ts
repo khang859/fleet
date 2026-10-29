@@ -282,24 +282,6 @@ export class PlanStore {
     return row ? toVersion(row) : null;
   }
 
-  /**
-   * The versions the client decided since `since` in a repository, newest
-   * first: approved by them (and perhaps changed since), rejected, or sent
-   * back with a change request. Fleet's own approvals are left out.
-   */
-  decidedByClient(repoId: string, since: number, limit: number): PlanVersionRecord[] {
-    return this.db
-      .prepare<[string, number, number], VersionRow>(
-        `SELECT v.* FROM plan_versions v JOIN jobs j ON j.id = v.job_id
-         WHERE j.repo_id = ? AND v.decided_at >= ? AND v.auto_start_usd IS NULL
-           AND (v.status IN ('approved', 'superseded', 'rejected')
-             OR (v.status = 'replaced' AND v.decision_note IS NOT NULL))
-         ORDER BY v.decided_at DESC, v.id DESC LIMIT ?`
-      )
-      .all(repoId, since, limit)
-      .map(toVersion);
-  }
-
   /** Mark every version still waiting as replaced, before a newer one goes up or the job closes. */
   replacePending(jobId: number): void {
     this.db

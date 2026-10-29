@@ -80,7 +80,7 @@ export type PrReviewFacts = {
   committedAt: number | null;
   /** The bots that reviewed the newest commit, as setup keys them. */
   reviewedHead: Set<string>;
-  /** Open threads a bot started, oldest first. */
+  /** Open threads a bot or the client started, oldest first. */
   comments: PrComment[];
 };
 
@@ -105,7 +105,12 @@ export function commentSummary(body: string): string {
   return line.length > 160 ? `${line.slice(0, 159)}…` : line;
 }
 
-export function parsePrReview(json: unknown): PrReviewFacts | null {
+/**
+ * What GitHub says about a PR. Only threads a bot or the client started are
+ * kept: anyone else's words never reach the Admiral, as they could carry
+ * instructions it should not follow.
+ */
+export function parsePrReview(json: unknown, client: string | null): PrReviewFacts | null {
   const parsed = ReviewView.safeParse(json);
   if (!parsed.success) return null;
   const pr = parsed.data.data.repository.pullRequest;
@@ -116,6 +121,11 @@ export function parsePrReview(json: unknown): PrReviewFacts | null {
     if (name !== undefined) checks.set(name, checkOutcome(c.conclusion ?? c.state));
   }
   const bot = (a: z.infer<typeof Author>): a is NonNullable<typeof a> => a?.__typename === 'Bot';
+  const author = (a: z.infer<typeof Author>): string | null => {
+    if (a?.__typename === 'Bot') return `${a.login}[bot]`;
+    const isClient = client !== null && a?.login.toLowerCase() === client.toLowerCase();
+    return isClient ? client : null;
+  };
   return {
     checks,
     committedAt: head ? Date.parse(head.committedDate) || null : null,
@@ -126,11 +136,12 @@ export function parsePrReview(json: unknown): PrReviewFacts | null {
     ),
     comments: pr.reviewThreads.nodes.flatMap((t): PrComment[] => {
       const first = t.comments.nodes.at(0);
-      if (t.isResolved || first === undefined || !bot(first.author)) return [];
+      const by = first === undefined ? null : author(first.author);
+      if (t.isResolved || first === undefined || by === null) return [];
       return [
         {
           id: first.databaseId,
-          author: `${first.author.login}[bot]`,
+          author: by,
           path: first.path,
           line: first.line,
           url: first.url,
@@ -141,10 +152,12 @@ export function parsePrReview(json: unknown): PrReviewFacts | null {
   };
 }
 
+/** `client` is the client's GitHub login, whose own comments count; null when unknown. */
 export async function readPrReview(
   gh: GhRun,
   cwd: string,
-  url: string
+  url: string,
+  client: string | null
 ): Promise<PrReviewFacts | null> {
   const address = prAddress(url);
   if (address === null) return null;
@@ -164,7 +177,7 @@ export async function readPrReview(
     ],
     cwd
   );
-  return parsePrReview(ghJson(out));
+  return parsePrReview(ghJson(out), client);
 }
 
 /** What setup says a member's PRs wait on. */
@@ -173,7 +186,8 @@ export type ReviewWants = { requiredChecks: string[]; reviewBots: string[] };
 /**
  * Setup's lists applied to what GitHub says: the required checks not passed
  * or failed yet, the listed bots that have not reviewed the newest commit,
- * and the required checks that never started.
+ * the required checks that never started, and the comments of the client
+ * and of the listed bots.
  */
 export function prReview(facts: PrReviewFacts, wants: ReviewWants, now: number): PrReview {
   const late = facts.committedAt !== null && now - facts.committedAt >= CHECK_START_LIMIT_MS;
@@ -181,7 +195,10 @@ export function prReview(facts: PrReviewFacts, wants: ReviewWants, now: number):
     checks: wants.requiredChecks.filter((c) => (facts.checks.get(c) ?? 'pending') === 'pending'),
     bots: wants.reviewBots.filter((b) => !facts.reviewedHead.has(botKey(b))),
     stuck: late ? wants.requiredChecks.filter((c) => !facts.checks.has(c)) : [],
-    comments: facts.comments
+    comments: facts.comments.filter(
+      (c) =>
+        !c.author.endsWith('[bot]') || wants.reviewBots.some((b) => botKey(b) === botKey(c.author))
+    )
   };
 }
 
@@ -219,7 +236,7 @@ export function reviewEvents(
   if (before !== undefined && waitingFor(before) !== '' && waitingFor(after) === '') {
     events.push({
       line: `${name} is ready`,
-      body: `${name} passed its required checks and each review bot reviewed its newest commit. Tell the client it is ready.`
+      body: `${name} passed its required checks and each review bot reviewed its newest commit. Tell the client it is ready once every PR of the job is: what changed for the user, the PR links, the choices you made on their behalf, and the settings and lines you changed.`
     });
   }
   return events;
@@ -230,12 +247,16 @@ export function conflictEvent(pr: PrState, step: string, before: PrState): Revie
   if (pr.state !== 'open' || pr.conflicts !== true || before.conflicts === true) return null;
   return {
     line: `PR #${pr.number} has conflicts with ${pr.base}`,
-    body: `Step ${step} delivered this PR, and ${pr.base} has moved on since: GitHub cannot merge it until its branch is brought up to date. Send it to step ${step} to merge ${pr.base} into its branch, settle the conflicts and push, or tell the client why not.`
+    body: `Step ${step} delivered this PR, and ${pr.base} has moved on since: GitHub cannot merge it until its branch is brought up to date. Send it to step ${step} to merge ${pr.base} into its branch, settle the conflicts and push, without asking the client.`
   };
 }
 
+/** Who left a comment, as the Admiral reads it: the bot's name, or the client. */
+const commenter = (c: PrComment): string =>
+  c.author.endsWith('[bot]') ? botName(c.author) : 'the client';
+
 function commentsEvent(pr: PrState, step: string, fresh: PrComment[]): ReviewEvent {
-  const bots = formatList([...new Set(fresh.map((c) => botName(c.author)))]);
+  const who = formatList([...new Set(fresh.map(commenter))]);
   const n = fresh.length === 1 ? 'a comment' : `${fresh.length} comments`;
   const quoted = fresh
     .map(
@@ -244,30 +265,30 @@ function commentsEvent(pr: PrState, step: string, fresh: PrComment[]): ReviewEve
     )
     .join('\n\n');
   return {
-    line: `${bots} left ${n} on PR #${pr.number}`,
+    line: `${who.charAt(0).toUpperCase()}${who.slice(1)} left ${n} on PR #${pr.number}`,
     body: [
       fence(`PR #${pr.number} review comments`, quoted),
-      `Step ${step} delivered this PR: send the comments to it to fix, or tell the client why not. They stay open on the result card until resolved on GitHub.`
+      `Step ${step} delivered this PR: send the comments to it to fix, without asking the client. A comment you judge wrong gets a reply on the PR that says why. They stay open on the result card until resolved on GitHub.`
     ].join('\n')
   };
 }
 
 /**
  * What the Admiral reads about a PR it just delivered: what it still waits
- * on, and the bot comments already open on it. Later news comes as events.
+ * on, or that it is ready now, and the comments already open on it. Later
+ * news comes as events, and a PR ready now gets no ready event.
  */
 export function deliveryNote(pr: PrState, step: string): string {
   if (pr.state !== 'open' || pr.review === undefined) return '';
-  const parts: string[] = [];
   const waiting = waitingFor(pr.review);
-  if (waiting !== '') {
-    parts.push(
-      `PR #${pr.number} is not ready yet: it waits for ${waiting}. Do not tell the client it is ready; Fleet tells you when it is.`
-    );
-  }
+  const parts = [
+    waiting === ''
+      ? `PR #${pr.number} is ready now: it waits for no required check or review bot. Tell the client once every PR of the job is ready.`
+      : `PR #${pr.number} is not ready yet: it waits for ${waiting}. Do not tell the client it is ready; Fleet tells you when it is.`
+  ];
   if (pr.review.comments.length > 0) {
     const { line, body } = commentsEvent(pr, step, pr.review.comments);
     parts.push(`${line}:\n${body}`);
   }
-  return parts.length === 0 ? '' : `\n${parts.join('\n')}`;
+  return `\n${parts.join('\n')}`;
 }

@@ -298,7 +298,6 @@ function AdmiralWorkspace({
           setSheetOpen(false);
           read(key);
         }}
-        onOpenJob={selectJob}
         onOpenSettings={() => openSettings('agencyAdmiral')}
         className={className}
       />

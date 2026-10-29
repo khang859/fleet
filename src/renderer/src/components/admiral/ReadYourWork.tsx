@@ -301,12 +301,6 @@ export function ReadLines(props: {
                   ? 'Dropped · not saved'
                   : `From ${line.source}: ${line.evidence} · ${LAYER_LABEL[line.layer]}`}
               </span>
-              {line.clash !== null && !dropped && (
-                <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                  Clashes with {line.clash.source}: &ldquo;{line.clash.rule}&rdquo; If you keep it,
-                  you pick which one wins.
-                </span>
-              )}
             </span>
             <span className="flex shrink-0 gap-1.5">
               {choice === 'kept' ? (

@@ -370,14 +370,14 @@ function overlapIssue(overlap: PlanOverlap[]): PlanIssue[] {
     {
       code: 'overlap',
       severity: 'warn',
-      text: `${jobs.join(' and ')} ${jobs.length === 1 ? 'is' : 'are'} also working on ${plural(new Set(overlap.map((o) => `${o.member}/${o.path}`)).size, 'path')} this plan touches. Ask the client: queue this job behind, or run both?`
+      text: `${jobs.join(' and ')} ${jobs.length === 1 ? 'is' : 'are'} also working on ${plural(new Set(overlap.map((o) => `${o.member}/${o.path}`)).size, 'path')} this plan touches. Queue this job behind with queueBehind, unless the changes cannot clash.`
     }
   ];
 }
 
 /**
- * The pre-approval check: what would keep the plan from being met, and what
- * the client should know before approving. Pure over facts read just before,
+ * The pre-start check: what would keep the plan from being met, and what
+ * the Admiral should know before it starts. Pure over facts read just before,
  * so the same plan and facts always give the same card.
  */
 /** The env files each step's workspace gets: those of the members it holds, the root always. */

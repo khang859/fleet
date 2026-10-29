@@ -48,22 +48,19 @@ const LINES: ReadProposal[] = [
     text: 'Conventional commits with a scope.',
     layer: 'project',
     source: 'your commits',
-    evidence: '94 of 100 commits',
-    clash: null
+    evidence: '94 of 100 commits'
   },
   {
     text: 'Skip docs unless asked.',
     layer: 'project',
     source: 'past jobs',
-    evidence: 'j19 dropped the docs step',
-    clash: { source: 'CLAUDE.md', rule: 'Update docs with every change.' }
+    evidence: 'j19 dropped the docs step'
   },
   {
     text: 'Reproduce a bug before fixing it.',
     layer: 'you',
     source: 'your CLAUDE.md',
-    evidence: 'says to reproduce first',
-    clash: null
+    evidence: 'says to reproduce first'
   }
 ];
 
@@ -84,12 +81,6 @@ describe('ReadLines', () => {
     expect(html).toContain('From your CLAUDE.md: says to reproduce first · You');
     expect(html.match(/Keep/g)).toHaveLength(3);
     expect(html.match(/Not me/g)).toHaveLength(3);
-  });
-
-  it('flags a line that clashes with a rule', () => {
-    expect(text(read())).toContain(
-      'Clashes with CLAUDE.md: “Update docs with every change.” If you keep it, you pick which one wins.'
-    );
   });
 
   it('marks a kept line, and strikes a dropped one with Undo', () => {

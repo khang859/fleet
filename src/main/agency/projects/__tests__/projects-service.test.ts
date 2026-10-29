@@ -196,7 +196,7 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
       service.projects.meetAnswer({ repo, id, answer });
     expect(service.store.onboarding(repo.repoId)).toMatchObject({
       meetDue: true,
-      meetLeft: ['report', 'never', 'prs', 'delivery', 'tests', 'budget', 'checks']
+      meetLeft: ['report', 'never', 'prs', 'delivery', 'tests', 'budget']
     });
 
     expect(await meet('report', { kind: 'picks', picks: [0] })).toEqual({ ok: true });
@@ -204,7 +204,6 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     await meet('prs', { kind: 'skip' });
     await meet('tests', { kind: 'text', text: '  e2e tests only\nfor UI changes ' });
     await meet('budget', { kind: 'budget', usd: 25, weekPct: 5 });
-    await meet('checks', { kind: 'picks', picks: [1] });
 
     const you = readFileSync(clientFilePath(YOU_LAYER, home), 'utf8');
     expect(you).toMatch(/^# You\n- Keep updates short: .+ \(from you, \d{4}-\d\d-\d\d\)\n/);
@@ -216,12 +215,11 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     expect(project).toMatch(/^# shop\n- e2e tests only for UI changes \(from you, [\d-]+\)\n/);
     expect(project).toContain('- Default job budget: $25 and 5% of my weekly Claude limit.');
     expect(project).not.toContain('PRs');
-    expect(service.store.preferences.trust(repo.repoId).level).toBe('ship');
     expect(service.store.onboarding(repo.repoId)).toMatchObject({
       meetDue: true,
       meetLeft: ['delivery']
     });
-    expect(emitted).toHaveLength(6);
+    expect(emitted).toHaveLength(5);
   });
 
   it('refuses an answer while its layer has an outside change', async () => {
@@ -249,7 +247,7 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     );
     expect(service.store.onboarding(repo.repoId)).toMatchObject({
       meetDue: false,
-      meetLeft: ['never', 'prs', 'delivery', 'tests', 'budget', 'checks']
+      meetLeft: ['never', 'prs', 'delivery', 'tests', 'budget']
     });
     expect(service.store.onboarding(repo.repoId).starterDoneAt).not.toBeNull();
     expect(service.preferencesForNote(repo.repoId).project?.text).toMatch(/^P1\. Use pnpm\./);
@@ -265,7 +263,7 @@ describe('ProjectsService', { timeout: 20_000 }, () => {
     if (!res.ok) throw new Error('not a repo');
     expect(service.store.onboarding(res.repoId)).toMatchObject({
       meetDue: true,
-      meetLeft: ['prs', 'delivery', 'tests', 'budget', 'checks']
+      meetLeft: ['prs', 'delivery', 'tests', 'budget']
     });
   });
 

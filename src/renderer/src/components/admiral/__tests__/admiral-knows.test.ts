@@ -6,9 +6,7 @@ import {
   type ClientEntry,
   type PreferenceConflict
 } from '../../../../../shared/agency-client-file';
-import type { ProjectTrust } from '../../../../../shared/agency-projects';
 import { PreferenceLines, type LineDraft } from '../../settings/AdmiralKnows';
-import { TrustChoices } from '../../settings/TrustPicker';
 
 /** What the Admiral knows: each line with where it came from, one edit at a time. */
 
@@ -117,38 +115,5 @@ describe('conflicts', () => {
     expect(html).toMatch(/Open PRs as drafts\..*Wins over CLAUDE\.md/s);
     expect(html).not.toContain('Which one wins?');
     expect(html).toContain('aria-label="Remove &quot;Open PRs as drafts.&quot;"');
-  });
-});
-
-describe('TrustChoices', () => {
-  const choices = (trust: ProjectTrust): string =>
-    renderToStaticMarkup(
-      createElement(TrustChoices, {
-        trust,
-        defaultUsd: 10,
-        weekPct: 15,
-        monthlyCapUsd: null,
-        onChange: () => {}
-      })
-    );
-
-  it('marks the project level, and asks no limit under Ask me', () => {
-    const html = choices({ level: 'ask', autoStartUsd: null });
-    expect(html).toContain('HOW MUCH I DO ON MY OWN');
-    expect(html).toMatch(/aria-pressed="true"[^>]*>.*?Ask me/s);
-    expect(html).toContain('Plans up to $10 start on their own.');
-    expect(html).toContain('Merge when checks pass. Report after.');
-    expect(html).not.toContain('starts on its own up to');
-  });
-
-  it('shows the auto-start limit, the default budget until the client sets one', () => {
-    const own = choices({ level: 'pr', autoStartUsd: 25 });
-    expect(own).toMatch(/aria-pressed="true"[^>]*>.*?Show me the PR/s);
-    expect(own).toContain('Plans up to $25 start on their own.');
-    expect(own).toContain('A first plan starts on its own up to');
-    expect(own).toContain('within 15% of your weekly Claude limit');
-    expect(choices({ level: 'ship', autoStartUsd: null })).toContain(
-      'Plans up to $10 start on their own.'
-    );
   });
 });

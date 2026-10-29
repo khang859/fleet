@@ -1838,7 +1838,6 @@ void app.whenReady().then(async () => {
   eventBus.on('pane-closed', (event) => agency.crew.ended(event.paneId, { kind: 'closed' }));
   // What crew sessions cost, from Claude Code's status line and eva's Stop.
   claudeSessions.onSpend((spend) => agency.spend.usage(spend));
-  agency.spend.onHardStop((jobId) => agentService?.cancelAdmiral(jobId));
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),

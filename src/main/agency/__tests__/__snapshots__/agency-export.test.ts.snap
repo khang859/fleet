@@ -41,17 +41,14 @@ Settings has room for one.
 
 Answer: 1. Switch - and keep it small
 
-### q2: Remember this?
+### q2: Which package manager?
 
 You said so.
 
-- Add: Use pnpm.
+- 1. npm (recommended)
+- 2. pnpm
 
-- 1. This project (recommended)
-- 2. All projects
-- 3. Just this job
-
-Withdrawn: the job is closing.
+Withdrawn: the job delivered.
 
 ## Permission requests
 
@@ -71,7 +68,7 @@ No permission requests.
 - 2026-10-17 12:05 briefing -> planned: plan v1
 - 2026-10-17 12:05 planned -> running: plan v1 approved
 - 2026-10-17 12:05 Plan v1 proposed by the Admiral
-- 2026-10-17 12:05 Plan v1 approved
+- 2026-10-17 12:05 Plan v1 started
 - 2026-10-17 12:18 builder-1: Step builder-1 running
 - 2026-10-17 12:18 builder-1: Step builder-1 done
 - 2026-10-17 12:18 builder-1: builder-1 finished.

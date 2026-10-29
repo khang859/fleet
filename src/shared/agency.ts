@@ -1,8 +1,6 @@
 import type { CrewRuntime } from './agency-crew';
-import type { CrewLesson } from './agency-lessons';
 import type { SettingsCard } from './agency-settings';
 import type { MeetQuestionId } from './agency-meet';
-import type { ProjectTrust } from './agency-projects';
 import { PERMISSION_EXPIRY_SEC_DEFAULT } from './agency-permissions';
 
 /**
@@ -97,6 +95,8 @@ export type AgencyJob = {
   crewNeedingYou: number;
   /** Crew permission requests waiting on the client, on a card or in the crew pane, by id. */
   permissionsWaiting: number[];
+  /** A delivered job whose open PRs still wait on checks or bot reviews: not ready for the client yet. */
+  prsWaiting: boolean;
   /** The agent session the job's conversation is written to. */
   sessionId: string;
   /** Whether the lobby messages that led to this job were carried into it. */
@@ -123,60 +123,41 @@ export type AgencyQuestionOption = { label: string; detail?: string };
  * the same way: `model_unreachable` (Retry or Settings), `continue` (go on
  * after the automatic-turn limit), `resume` (Resume or Cancel after a
  * restart), `rehire` (hire for a step again after its crew member left) and
- * `budget` (raise the budget or the monthly cap, or stop the job).
+ * `budget` (raise the monthly cap, or stop the job).
  */
 export type AgencyQuestionKind =
   | 'ask'
-  | 'client_file'
   | 'model_unreachable'
   | 'continue'
   | 'resume'
   | 'rehire'
-  | 'budget'
-  | 'crew_lesson';
+  | 'budget';
 
 export const AGENCY_QUESTION_KINDS: readonly AgencyQuestionKind[] = [
   'ask',
-  'client_file',
   'model_unreachable',
   'continue',
   'resume',
   'rehire',
-  'budget',
-  'crew_lesson'
+  'budget'
 ];
 
 /** The kinds the Admiral puts up itself, whose answers wake it; the rest are Fleet's own cards. */
-export const ADMIRAL_QUESTION_KINDS: readonly AgencyQuestionKind[] = ['ask', 'client_file'];
+export const ADMIRAL_QUESTION_KINDS: readonly AgencyQuestionKind[] = ['ask'];
 
-/**
- * A line the Admiral wants in the client file. `replaces` is an existing line
- * it contradicts: the card shows both, and the old one goes only on approval.
- */
+/** A line the Admiral writes in the client file. `replaces` is an existing line it contradicts. */
 export type ClientFileAddition = { text: string; replaces: string | null };
 
-/**
- * What a `budget` card raises when the client picks Raise: the job's dollar
- * budget, its share of the weekly Claude limit, or the monthly cap.
- */
-export type BudgetRaise = { target: 'usd' | 'week_pct' | 'cap'; to: number };
+/** What a `budget` card raises when the client picks Raise: the monthly cap. */
+export type BudgetRaise = { target: 'cap'; to: number };
 
-/** A Remember this? card's options, in the order the card shows them. */
-export const REMEMBER_OPTION = { project: 0, all: 1, decline: 2 } as const;
-
-/** Which client file a card writes: the project's, or the You file for every project. */
+/** Which client file the Admiral writes: the project's, or the You file for every project. */
 export type ClientLayerPick = 'project' | 'you';
 
-/**
- * What a `client_file` card asks to change in the client file. A card with
- * a `topic` is a Remember this? card: one new line, which the client saves
- * for this project or all of them, or declines for the topic.
- */
+/** What the Admiral changes in the client file, which Fleet writes at once. */
 export type ClientFileProposal = {
   add: ClientFileAddition[];
   remove: string[];
-  topic: string | null;
-  /** The layer the Admiral suggests, which the card marks as its pick. */
   layer: ClientLayerPick;
 };
 
@@ -203,12 +184,8 @@ export type AgencyQuestion = {
   status: AgencyQuestionStatus;
   answerOption: number | null;
   answerText: string | null;
-  /** What a `client_file` card would change; null for every other kind. */
-  proposal: ClientFileProposal | null;
   /** What a `budget` card raises; null for every other kind. */
   raise: BudgetRaise | null;
-  /** What a `crew_lesson` card would change in a role; null for every other kind. */
-  lesson: CrewLesson | null;
   /** Answered after it was withdrawn: kept, and the Admiral is told it came late. */
   late: boolean;
   withdrawnReason: string | null;
@@ -258,8 +235,6 @@ export type AgencySnapshot = {
   leftovers: AgencyLeftover[];
   /** The client file changed outside Fleet since Fleet last wrote it, and the client has not kept it yet. */
   clientFileChanged: boolean;
-  /** How much Fleet does on its own in this project. */
-  trust: ProjectTrust;
   /** The last closed, cancelled or failed jobs, newest first, for export. */
   pastJobs: AgencyJob[];
   /** The newest settings cards the Admiral put up, oldest first. */

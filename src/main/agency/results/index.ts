@@ -25,11 +25,16 @@ import type { PrCards } from './pr-cards';
 import { deliveryNote } from './pr-reviews';
 import { copyResultFiles, insideResults, resultsDir } from './result-files';
 import { jobDir } from '../projects/paths';
+import { gitExec } from '../exec';
+import type { GitWrite } from '../workspaces/job-workspace';
+import { pushAndOpenPr } from '../workspaces/open-pr';
 
 export type ResultsDeps = {
   store: AgencyStore;
   gh: GhRun;
   git: GitRun;
+  /** Pushes a crew branch for a PR; git itself when not given. */
+  gitWrite?: GitWrite;
   /** `~/.fleet/agency`, or the test's folder. */
   home: () => string;
   /** Reads a PR's review for the card a delivery makes. */
@@ -181,6 +186,7 @@ export class ResultsService {
     const { kind, url, paths, text, branch } = args;
     const title = args.title ?? '';
     if (kind === 'pr' && url !== undefined) return this.buildPr(repo, url);
+    if (kind === 'pr' && branch !== undefined) return this.openPr(repo, jobId, args, branch);
     if (kind === 'branch' && branch !== undefined) {
       return this.buildBranch(repo, jobId, branch, args.member);
     }
@@ -217,6 +223,38 @@ export class ResultsService {
     if (read === null) return { ok: false, reason: `gh could not read ${url}` };
     const pr = await this.deps.cards.withReview(repo.repoId, member, read);
     return { ok: true, title: pr.title, member: member.name, body: { kind: 'pr', pr } };
+  }
+
+  /**
+   * Push a crew branch and open its PR, or push to the PR it has, then read
+   * the PR back as a `pr` result.
+   */
+  private async openPr(
+    repo: AgencyRepoRef,
+    jobId: number,
+    args: JobDeliverArgs,
+    branch: string
+  ): Promise<Built> {
+    const local = await this.buildBranch(repo, jobId, branch, args.member);
+    if (!local.ok) return local;
+    const member = (await this.githubMembers(repo)).find((m) => m.name === local.member);
+    if (member?.github == null) {
+      return { ok: false, reason: `${local.member} has no GitHub remote, so deliver a branch` };
+    }
+    const base = (await repoFacts(member.root, this.deps.git)).defaultBranch;
+    if (base === null) return { ok: false, reason: `${member.name} has no default branch` };
+    const opened = await pushAndOpenPr(
+      {
+        root: member.root,
+        branch,
+        base,
+        title: args.title ?? branch,
+        body: args.text ?? '',
+        draft: args.draft === true
+      },
+      { git: this.deps.gitWrite ?? gitExec, gh: this.deps.gh }
+    );
+    return opened.ok ? this.buildPr(repo, opened.url) : opened;
   }
 
   /**

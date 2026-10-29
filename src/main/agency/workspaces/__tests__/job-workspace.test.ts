@@ -3,7 +3,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgencyRepoRef } from '../../../../shared/agency';
 import { PlanSchema, type PlanInput, type PlanStep } from '../../../../shared/agency-plan';
-import { approvedJobIn } from '../../__tests__/plan-helpers';
+import { startedJobIn } from '../../__tests__/plan-helpers';
 import { AgencyService } from '../../index';
 import {
   fakeGh,
@@ -50,7 +50,7 @@ const step = (changes: string[], reads: string[] = []): PlanInput['steps'][numbe
 });
 
 async function approvedJob(repo: AgencyRepoRef, s: PlanInput['steps'][number]): Promise<number> {
-  return (await approvedJobIn(service, repo, s)).jobId;
+  return (await startedJobIn(service, repo, s)).jobId;
 }
 
 const head = (dir: string): string => git(dir, 'rev-parse', 'HEAD');

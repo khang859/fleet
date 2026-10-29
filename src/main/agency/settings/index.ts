@@ -13,9 +13,9 @@ import {
   parseSettingValue,
   settingKind,
   settingLabel,
+  settingRule,
   settingTarget,
   settingValueText,
-  settingsCardDisplayId,
   type AdmiralSettingMark,
   type AgencySettingKey,
   type SettingTarget,
@@ -161,9 +161,9 @@ export class AgencySettingsService {
   }
 
   /**
-   * Check every change, write the ones that give no more money or reach, and
-   * put the rest on a card. One bad key refuses the whole call, so the
-   * Admiral never leaves half of what it meant applied.
+   * Check every change and write them all, on a card the client can Undo
+   * from. One bad key refuses the whole call, so the Admiral never leaves half
+   * of what it meant applied.
    */
   async change(
     scope: AdmiralThreadScope,
@@ -176,22 +176,12 @@ export class AgencySettingsService {
     if (changed.length === 0) {
       return { ok: true, card: null, unchanged: unchanged.map((w) => w.key) };
     }
-    const changes = changed.map((w) => ({
-      ...w,
-      status:
-        settingKind(w.key, w.before, w.after) === 'apply'
-          ? ('applied' as const)
-          : ('pending' as const)
-    }));
-    await this.write(
-      scope.repoId,
-      changes.filter((c) => c.status === 'applied')
-    );
+    await this.write(scope.repoId, changed);
     const id = this.deps.store.settings.addCard({
       repoId: scope.repoId,
       jobId: scope.jobId,
       reason: req.reason,
-      changes
+      changes: changed
     });
     this.deps.changed(scope.repoId, scope.jobId);
     return {
@@ -199,33 +189,6 @@ export class AgencySettingsService {
       card: this.deps.store.settings.card(id),
       unchanged: unchanged.map((w) => w.key)
     };
-  }
-
-  /** The client approved or refused one pending change on a card. */
-  async decide(changeId: number, approved: boolean): Promise<boolean> {
-    const { store } = this.deps;
-    const change = store.settings.change(changeId);
-    if (change?.status !== 'pending') return false;
-    let write: SettingWrite | null = null;
-    if (approved) {
-      const before = await this.current(change.repoId, change.key);
-      if (before === undefined) return false;
-      write = { key: change.key, before, after: change.after };
-      await this.write(change.repoId, [write]);
-    }
-    store.settings.decide(changeId, { approved, write });
-    const card = settingsCardDisplayId(change.cardId);
-    store.enqueueWakeup({
-      repoId: change.repoId,
-      jobId: change.jobId,
-      kind: 'client_action',
-      payload: {
-        line: `Client ${approved ? 'approved' : 'refused'} ${change.label} on ${card}`,
-        note: approved ? `${change.label} is now ${settingValueText(change.after)}.` : null
-      }
-    });
-    this.deps.changed(change.repoId, change.jobId);
-    return true;
   }
 
   /**
@@ -296,10 +259,9 @@ export class AgencySettingsService {
       const before = await this.current(repoId, c.key);
       if (before === undefined) return { ok: false, reason: await this.missing(repoId, c.key) };
       if (settingKind(c.key, before, parsed.value) === 'client-only') {
-        const tab = c.key.startsWith('agency.crew.') ? 'Crew' : 'Admiral';
         return {
           ok: false,
-          reason: `${settingLabel(c.key)} is the client's own setting. Tell them to change it in Settings > Agency > ${tab}; nothing was changed.`
+          reason: `${settingLabel(c.key)}: ${settingRule(c.key)}. Nothing was changed. If the job cannot go on without it, ask the client with ask_client.`
         };
       }
       writes.push({ key: c.key, before, after: parsed.value });

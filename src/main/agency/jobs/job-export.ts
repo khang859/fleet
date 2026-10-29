@@ -8,7 +8,6 @@ import type { AgencyJobDetail, AgencyPlanVersion, AgencyResult } from '../../../
 import { permissionDisplayId, type AgencyPermission } from '../../../shared/agency-permissions';
 import { Redactor } from '../../redactor';
 import { resultSummary } from '../results';
-import { proposalLines } from '../wakeup-text';
 
 /** What a job's export is made from: its detail, its questions, and its project's name. */
 export type JobRecord = {
@@ -63,7 +62,6 @@ function questionSection(q: AgencyQuestion): string[] {
     `### ${questionDisplayId(q.id)}: ${q.question}`,
     '',
     ...(q.context === '' ? [] : [q.context, '']),
-    ...(q.proposal === null ? [] : [...proposalLines(q.proposal).map((l) => `- ${l}`), '']),
     ...optionLines(q, 'recommended').map((l) => `- ${l}`),
     '',
     answerLine(q),

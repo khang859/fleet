@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { CircleAlert, Minus, Plus } from 'lucide-react';
-import type { ClientFileProposal } from '../../../../shared/agency';
 import { openClientFileSettings } from '../../store/settings-nav-store';
 import { PRIMARY, SECONDARY } from './JobClose';
 
@@ -21,36 +20,6 @@ export function Line({ sign, text }: { sign: 'add' | 'remove'; text: string }): 
         {text}
       </span>
     </li>
-  );
-}
-
-/**
- * What a client file card would change: a contradicted line struck out right
- * above the line that replaces it, then the removals, then the new lines.
- */
-export function ProposalLines({ proposal }: { proposal: ClientFileProposal }): React.JSX.Element {
-  const replaced = proposal.add.filter((a) => a.replaces !== null);
-  const added = proposal.add.filter((a) => a.replaces === null);
-  return (
-    <ul
-      aria-label="Client file changes"
-      className="flex flex-col gap-1 rounded border border-fleet-border bg-fleet-surface px-2 py-1.5 text-xs leading-snug"
-    >
-      {replaced.map((a, i) => (
-        <li key={`r${i}`} className="flex flex-col gap-0.5">
-          <ul className="flex flex-col gap-0.5">
-            <Line sign="remove" text={a.replaces ?? ''} />
-            <Line sign="add" text={a.text} />
-          </ul>
-        </li>
-      ))}
-      {proposal.remove.map((text, i) => (
-        <Line key={`d${i}`} sign="remove" text={text} />
-      ))}
-      {added.map((a, i) => (
-        <Line key={`a${i}`} sign="add" text={a.text} />
-      ))}
-    </ul>
   );
 }
 
