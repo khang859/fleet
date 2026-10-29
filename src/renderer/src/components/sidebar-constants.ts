@@ -1,6 +1,9 @@
 /** Default sidebar width in pixels (matches Tailwind `w-56` = 14rem = 224px). */
 export const DEFAULT_SIDEBAR_WIDTH = 224;
 
+/** Default width of the Telescope browser sidebar on the right. */
+export const DEFAULT_TELESCOPE_SIDEBAR_WIDTH = 260;
+
 /** Minimum resizable sidebar width — below this, tab labels become unreadable. */
 export const MIN_SIDEBAR_WIDTH = 180;
 

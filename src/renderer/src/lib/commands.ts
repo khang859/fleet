@@ -208,6 +208,14 @@ export function createCommandRegistry({
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))
     },
     {
+      id: 'telescope-sidebar',
+      label: 'Toggle Telescope Browser Sidebar',
+      shortcut: sc('telescope-sidebar'),
+      category: 'View',
+      keywords: ['files', 'folder', 'explorer', 'tree'],
+      execute: () => useWorkspaceStore.getState().toggleTelescopeSidebar()
+    },
+    {
       id: 'browse-remote-here',
       label: 'Browse Files on This Remote Host',
       category: 'File',

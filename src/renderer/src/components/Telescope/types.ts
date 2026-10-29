@@ -1,6 +1,7 @@
 // src/renderer/src/components/Telescope/types.ts
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import type { Crumb } from './use-browse-dir';
 
 export type TelescopeItem = {
   id: string;
@@ -22,7 +23,7 @@ export type TelescopeMode = {
   onSelect: (item: TelescopeItem) => void;
   onAltSelect?: (item: TelescopeItem) => void;
   /** Browse mode only: current path segments for breadcrumb display */
-  breadcrumbs?: string[];
+  crumbs?: Crumb[];
   /** Browse mode only: drill into a directory or jump to a breadcrumb path */
   onNavigate?: (dir: string) => void;
   /** Browse mode only: go up one directory */

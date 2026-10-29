@@ -12,7 +12,8 @@ import {
   NotebookPen,
   FolderSync,
   FilePenLine,
-  MoreHorizontal
+  MoreHorizontal,
+  FolderTree
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -56,6 +57,33 @@ const BUTTON_CLASS =
 const CLOSE_BUTTON_CLASS =
   'p-1 text-fleet-text-subtle hover:text-red-400 rounded hover:bg-red-500/10 transition active:scale-90 focus-ring';
 
+function ToolbarButton({
+  label,
+  ariaLabel,
+  icon,
+  onClick
+}: {
+  label: string;
+  ariaLabel: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <ToolbarTooltip label={label}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        className={BUTTON_CLASS}
+        aria-label={ariaLabel}
+      >
+        {icon}
+      </button>
+    </ToolbarTooltip>
+  );
+}
+
 function MenuItem({
   icon,
   label,
@@ -95,6 +123,7 @@ type PaneToolbarProps = {
   onClipboardHistory?: () => void;
   onAnnotate?: () => void;
   onTelescope?: () => void;
+  onTelescopeSidebar?: () => void;
   onNotes?: () => void;
   onEnvSync?: () => void;
   onEnvEditor?: () => void;
@@ -112,6 +141,7 @@ export function PaneToolbar({
   onClipboardHistory,
   onAnnotate,
   onTelescope,
+  onTelescopeSidebar,
   onNotes,
   onEnvSync,
   onEnvEditor
@@ -173,45 +203,35 @@ export function PaneToolbar({
         style={{ WebkitAppRegion: 'no-drag' }}
       >
         {onSplitHorizontal && (
-          <ToolbarTooltip label={`Split Right (${shortcutLabel('split-right')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSplitHorizontal();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Split right"
-            >
-              <Columns2 size={14} />
-            </button>
-          </ToolbarTooltip>
+          <ToolbarButton
+            label={`Split Right (${shortcutLabel('split-right')})`}
+            ariaLabel="Split right"
+            icon={<Columns2 size={14} />}
+            onClick={onSplitHorizontal}
+          />
         )}
         {onSplitVertical && (
-          <ToolbarTooltip label={`Split Down (${shortcutLabel('split-down')})`}>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSplitVertical();
-              }}
-              className={BUTTON_CLASS}
-              aria-label="Split down"
-            >
-              <Rows2 size={14} />
-            </button>
-          </ToolbarTooltip>
+          <ToolbarButton
+            label={`Split Down (${shortcutLabel('split-down')})`}
+            ariaLabel="Split down"
+            icon={<Rows2 size={14} />}
+            onClick={onSplitVertical}
+          />
         )}
-        <ToolbarTooltip label={`Search in Pane (${shortcutLabel('search')})`}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSearch();
-            }}
-            className={BUTTON_CLASS}
-            aria-label="Search in pane"
-          >
-            <Search size={14} />
-          </button>
-        </ToolbarTooltip>
+        <ToolbarButton
+          label={`Search in Pane (${shortcutLabel('search')})`}
+          ariaLabel="Search in pane"
+          icon={<Search size={14} />}
+          onClick={onSearch}
+        />
+        {onTelescopeSidebar && (
+          <ToolbarButton
+            label={`Telescope Browser (${shortcutLabel('telescope-sidebar')})`}
+            ariaLabel="Toggle Telescope browser"
+            icon={<FolderTree size={14} />}
+            onClick={onTelescopeSidebar}
+          />
+        )}
         {menuActions.length > 0 && (
           <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
             <ToolbarTooltip label="More actions">
