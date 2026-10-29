@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.140.0
+
+- **The Admiral works like a dev team.**
+  No plan approval and no trust levels: the Admiral only asks you about intent, and tells you "PR ready" or "stuck".
+  Fleet now pushes the crew branch and opens the PR itself, and your own PR comments wake the Admiral to fix them.
+  Risky acts such as a prod deploy, deleting data or merging still need you (#700).
+- **Plan card in the copilot.**
+  When Claude Code finishes a plan, the copilot shows it as Markdown and offers the terminal's three choices: auto mode, accept edits, or approve edits manually.
+  Type feedback to send Claude back to planning.
+  The session list and header also show the session's mode, such as "plan mode" or "accept edits" (#698, #699).
+- **New worktree dialog.**
+  The repo group "+" opens a dialog with a branch name, a "Start from" branch or commit picker, and the setup commands to run.
+  A per-repo `.fleet/worktree.toml` sets `setup` commands and `copy` paths like `.env`, and Ctrl+C during setup no longer closes the pane (#701).
+- **Telescope browser sidebar.**
+  Press Cmd+Shift+B, or click the folder-tree icon in a terminal pane's toolbar, to browse the focused terminal's folder in a sidebar on the right.
+  It follows the terminal you focus, and remembers if it is open and how wide it is (#702).
+- **Fixed: Allow on a plan left the plan dialog open.**
+  Allowing a plan from Fleet now closes Claude Code's plan dialog, with or without the `fleet-bridge` mod (#696, #697).
+
 ## v2.139.0
 
 - **Answer permissions from Fleet, the whole time the dialog is open.**
