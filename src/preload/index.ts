@@ -36,6 +36,8 @@ import type {
   RemoteCwdPayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
+  WorktreePrepareRequest,
+  WorktreePrepareResponse,
   WorktreeRemoveRequest,
   ShellProfilesListResponse,
   WslStatusResponse,
@@ -405,6 +407,8 @@ const fleetApi = {
     ): Promise<GitStatusPayload> => typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef, pathContext)
   },
   worktree: {
+    prepare: async (req: WorktreePrepareRequest): Promise<WorktreePrepareResponse> =>
+      typedInvoke(IPC_CHANNELS.WORKTREE_PREPARE, req),
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
       typedInvoke(IPC_CHANNELS.WORKTREE_CREATE, req),
     remove: async (req: WorktreeRemoveRequest): Promise<void> =>

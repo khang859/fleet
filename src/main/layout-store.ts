@@ -27,15 +27,16 @@ function leavesOf(node: PaneNode): PaneLeaf[] {
 export type PanePlace = { workspaceName: string; tab: string | null; pane: string | null };
 
 /**
- * Strip one-shot startup commands (e.g. session-resume `cmd`) from pane leaves before
- * persisting. Otherwise a resumed tab would re-run `claude --resume <id>` on every
- * app restart.
+ * Strip one-shot startup commands (e.g. session-resume `cmd`, a worktree's setup
+ * `typeOnStart`) from pane leaves before persisting. Otherwise a resumed tab would
+ * re-run `claude --resume <id>` on every app restart.
  */
 function stripPaneCmds(node: PaneNode): PaneNode {
   if (node.type === 'leaf') {
-    if (node.cmd === undefined) return node;
+    if (node.cmd === undefined && node.typeOnStart === undefined) return node;
     const copy = { ...node };
     delete copy.cmd;
+    delete copy.typeOnStart;
     return copy;
   }
   return {

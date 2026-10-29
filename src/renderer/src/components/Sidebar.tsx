@@ -31,6 +31,7 @@ import {
 import { openAdmiralHere } from '../lib/open-admiral';
 import { useWorkspaceListStore } from '../store/workspace-list-store';
 import { CreateWorkspaceDialog } from './workspace/CreateWorkspaceDialog';
+import { CreateWorktreeDialog, type WorktreeTarget } from './workspace/CreateWorktreeDialog';
 import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
 import { useSidebarSectionsStore } from '../store/sidebar-sections-store';
@@ -481,7 +482,6 @@ export function Sidebar({
     markClean,
     collapsedGroups,
     toggleGroupCollapsed,
-    createWorktreeGroup,
     closeWorktreeTab,
     renameWorktreeGroup,
     ungroupWorktreeGroup,
@@ -512,7 +512,6 @@ export function Sidebar({
       markClean: s.markClean,
       collapsedGroups: s.collapsedGroups,
       toggleGroupCollapsed: s.toggleGroupCollapsed,
-      createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
       renameWorktreeGroup: s.renameWorktreeGroup,
       ungroupWorktreeGroup: s.ungroupWorktreeGroup,
@@ -728,16 +727,12 @@ export function Sidebar({
   ]);
 
   // --- Worktree creation ---
+  const [worktreeTarget, setWorktreeTarget] = useState<WorktreeTarget | null>(null);
   const handleCreateWorktree = useCallback(
-    async (tabId: string, cwd: string, pathContext?: PathContext) => {
-      try {
-        const result = await window.fleet.worktree.create({ repoPath: cwd, pathContext });
-        createWorktreeGroup(tabId, result.worktreePath, result.branchName, cwd);
-      } catch (err) {
-        console.error('Failed to create worktree:', err);
-      }
+    (tabId: string, cwd: string, pathContext?: PathContext) => {
+      setWorktreeTarget({ tabId, repoPath: cwd, pathContext });
     },
-    [createWorktreeGroup]
+    []
   );
 
   // Track which tabs are in git repos (for showing "Create Worktree" in context menu)
@@ -1301,7 +1296,7 @@ export function Sidebar({
                       const anyTab = groupTabs[0];
                       const firstPane = collectPaneIds(anyTab.splitRoot)[0];
                       const cwd = (firstPane ? liveCwds.get(firstPane) : undefined) ?? anyTab.cwd;
-                      void handleCreateWorktree(anyTab.id, cwd, getPaneContextById(firstPane));
+                      handleCreateWorktree(anyTab.id, cwd, getPaneContextById(firstPane));
                     }}
                     onDragStart={() => handleDragStart(firstTabIdx, 'group')}
                     onDragOver={(e) => handleDragOver(e, firstTabIdx, true)}
@@ -1411,7 +1406,7 @@ export function Sidebar({
                       ? () => {
                           const firstPane = collectPaneIds(tab.splitRoot)[0];
                           const liveCwd = firstPane ? liveCwds.get(firstPane) : undefined;
-                          void handleCreateWorktree(
+                          handleCreateWorktree(
                             tab.id,
                             liveCwd ?? tab.cwd,
                             getPaneContextById(firstPane)
@@ -1718,6 +1713,8 @@ export function Sidebar({
             +
           </button>
         </SectionHeader>
+
+        <CreateWorktreeDialog target={worktreeTarget} onClose={() => setWorktreeTarget(null)} />
 
         <CreateWorkspaceDialog
           open={showNewWsDialog}

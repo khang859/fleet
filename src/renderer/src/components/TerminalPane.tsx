@@ -37,6 +37,7 @@ type TerminalPaneProps = {
   onClose?: () => void;
   shellProfileId?: string;
   cmd?: string;
+  typeOnStart?: string;
 };
 
 export function TerminalPane({
@@ -57,7 +58,8 @@ export function TerminalPane({
   onSplitVertical,
   onClose,
   shellProfileId,
-  cmd
+  cmd,
+  typeOnStart
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -77,6 +79,7 @@ export function TerminalPane({
     workspaceId,
     shellProfileId,
     ...(cmd !== undefined ? { cmd, exitOnComplete: false } : {}),
+    typeOnStart,
     onScrollStateChange: setIsScrolledUp
   });
   const [searchOpen, setSearchOpen] = useState(false);

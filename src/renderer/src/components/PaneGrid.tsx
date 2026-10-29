@@ -369,6 +369,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
       onClose={handleClose}
       shellProfileId={node.shellProfileId}
       cmd={node.cmd}
+      typeOnStart={node.typeOnStart}
     />
   );
 });

@@ -49,6 +49,8 @@ export type UseTerminalOptions = {
   cmd?: string;
   /** If true, PTY exits when cmd finishes instead of falling back to shell. */
   exitOnComplete?: boolean;
+  /** Typed into the shell once its prompt is up, like a worktree's setup. */
+  typeOnStart?: string;
   serializedContent?: string;
   onScrollStateChange?: (isScrolledUp: boolean) => void;
   /** If true, skip PTY creation (attach to an already-running PTY, e.g. Admiral). */
@@ -697,6 +699,7 @@ function createTerminal(
         paneId: options.paneId,
         cwd: options.cwd,
         cmd: options.cmd,
+        typeOnStart: options.typeOnStart,
         exitOnComplete: options.exitOnComplete,
         workspaceId: options.workspaceId,
         shellProfileId: options.shellProfileId

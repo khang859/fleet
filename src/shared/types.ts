@@ -148,6 +148,8 @@ export type PaneLeaf = {
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */
   cmd?: string;
+  /** One-shot text typed into the shell at its first prompt, like a worktree's setup. */
+  typeOnStart?: string;
   label?: string;
   labelIsCustom?: boolean;
   /** ShellProfile id used to spawn this pane's PTY. Optional for legacy persisted leaves. */

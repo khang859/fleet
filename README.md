@@ -127,7 +127,23 @@ It shows modified, added, deleted, renamed, and untracked files with line-level 
 ### Worktree Management
 
 Create, list, and remove git worktrees directly from Fleet.
-Worktree tabs are automatically grouped by parent repository in the sidebar, and branches get auto-generated descriptive names.
+Worktree tabs are automatically grouped by parent repository in the sidebar.
+The New worktree dialog lets you name the branch (or leave it empty for a generated name) and pick the branch or commit it starts from.
+
+A repository can commit a `.fleet/worktree.toml` to set up each new worktree:
+
+```toml
+# Typed into the new worktree's terminal once its prompt is up.
+setup = """
+npm install
+"""
+
+# Git-ignored files and folders, copied from the main checkout.
+copy = [".env", "apps/web/.env"]
+```
+
+The dialog shows the setup before it runs, and you can turn it off for one worktree.
+Fleet copies only paths git ignores, and never overwrites a file the worktree already has.
 
 ### File Editor & Viewers
 

@@ -137,6 +137,8 @@ import type {
   FileGrepRequest,
   LogEntry,
   WorktreeCreateRequest,
+  WorktreeCreateResponse,
+  WorktreePrepareRequest,
   WorktreeRemoveRequest,
   ShellProfilesListResponse,
   WslHomeDirRequest,
@@ -913,9 +915,19 @@ export function registerIpcHandlers(
   startClipboardMonitor();
 
   // Worktree handlers
-  ipcMain.handle(IPC_CHANNELS.WORKTREE_CREATE, async (_event, req: WorktreeCreateRequest) => {
-    return worktreeService.create(req.repoPath, req.pathContext);
+  ipcMain.handle(IPC_CHANNELS.WORKTREE_PREPARE, async (_event, req: WorktreePrepareRequest) => {
+    return worktreeService.prepare(req.repoPath, req.pathContext);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.WORKTREE_CREATE,
+    async (_event, req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> => {
+      const ctx = req.pathContext;
+      const made = await worktreeService.create(req.repoPath, ctx, req.branch, req.startPoint);
+      const copy = await worktreeService.copyFromMain(req.repoPath, made.worktreePath, ctx);
+      return { ...made, ...copy };
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.WORKTREE_REMOVE, async (_event, req: WorktreeRemoveRequest) => {
     return worktreeService.remove(req.worktreePath, req.pathContext);
