@@ -7,6 +7,8 @@ import { toWindowsAccessiblePath } from '../shared/path-platform';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { WslService } from './wsl-service';
 import { FLEET_HOME } from '../shared/constants';
+import type { WorktreeCopySkip, WorktreePrepareResponse } from '../shared/ipc-api';
+import { copyIgnoredPath, localPath, readWorktreeSetup } from './worktree-config';
 
 const log = createLogger('worktree');
 
@@ -143,10 +145,7 @@ export class WorktreeService {
 
   /** Remove a directory, bridging to the UNC share for a WSL posix path. */
   private async rmDir(ctx: PathContext | undefined, dir: string): Promise<void> {
-    await rm(isWslContext(ctx) ? toWindowsAccessiblePath(dir, ctx) : dir, {
-      recursive: true,
-      force: true
-    });
+    await rm(localPath(ctx, dir), { recursive: true, force: true });
   }
 
   /**
@@ -332,6 +331,79 @@ export class WorktreeService {
     } catch {
       // Branch may already be deleted or not exist
     }
+  }
+
+  /** What the new-worktree dialog offers: the branches to start from, and the setup file. */
+  async prepare(repoPath: string, ctx?: PathContext): Promise<WorktreePrepareResponse> {
+    const [current, local, remote, setup] = await Promise.all([
+      this.git(ctx, repoPath, ['branch', '--show-current']),
+      this.refNames(ctx, repoPath, 'refs/heads/'),
+      this.refNames(ctx, repoPath, 'refs/remotes/'),
+      readWorktreeSetup(repoPath, ctx)
+    ]);
+
+    return {
+      current: current.trim() || null,
+      // `origin/HEAD` only points at another remote branch.
+      refs: [...local, ...remote.filter((ref) => !ref.endsWith('/HEAD'))],
+      ...setup
+    };
+  }
+
+  /** Branch names under `prefix`, without it, most recent commit first. */
+  private async refNames(
+    ctx: PathContext | undefined,
+    repoPath: string,
+    prefix: string
+  ): Promise<string[]> {
+    const raw = await this.git(ctx, repoPath, [
+      'for-each-ref',
+      '--sort=-committerdate',
+      '--format=%(refname)',
+      prefix
+    ]);
+    return raw
+      .split('\n')
+      .filter(Boolean)
+      .map((ref) => ref.slice(prefix.length));
+  }
+
+  /**
+   * Copy the git-ignored files the setup file lists, like `.env`, from the main
+   * checkout into a new worktree. A path that git tracks, that is missing, or
+   * that the worktree already has is skipped, so no file git knows is overwritten.
+   */
+  async copyFromMain(
+    repoPath: string,
+    worktreePath: string,
+    ctx?: PathContext
+  ): Promise<{ copied: string[]; skipped: WorktreeCopySkip[] }> {
+    const { setup } = await readWorktreeSetup(repoPath, ctx);
+    if (setup === null || setup.copy.length === 0) return { copied: [], skipped: [] };
+
+    const ignored = (
+      await this.git(ctx, repoPath, [
+        'ls-files',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '--directory',
+        '--',
+        ...setup.copy
+      ])
+    )
+      .split('\n')
+      .filter(Boolean);
+
+    const copied: string[] = [];
+    const skipped: WorktreeCopySkip[] = [];
+    for (const path of setup.copy) {
+      const reason = await copyIgnoredPath(ctx, repoPath, worktreePath, path, ignored);
+      if (reason === null) copied.push(path);
+      else skipped.push({ path, reason });
+    }
+    log.info('copied into worktree', { worktreePath, copied, skipped });
+    return { copied, skipped };
   }
 
   async list(

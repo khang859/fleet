@@ -33,6 +33,8 @@ export type PtyCreateOptions = {
   cwd: string;
   shell?: string;
   cmd?: string;
+  /** Typed into the shell once its prompt is up, as if the user typed it. */
+  typeOnStart?: string;
   cols?: number;
   rows?: number;
   env?: Record<string, string | undefined>;
@@ -90,6 +92,38 @@ const BUFFER_OVERFLOW_BYTES = 256 * 1024;
  * is never second-guessed, and short enough that nobody reads it as a hang.
  */
 const RESUME_WITHOUT_DRAIN_MS = 250;
+
+/** Quiet this long after a new shell's first output means its prompt is up. */
+const READY_QUIET_MS = 400;
+/** Typed anyway after this long, for a shell that never goes quiet. */
+const READY_MAX_MS = 10_000;
+
+/**
+ * Type `text` into a new shell once it waits at its prompt: when its startup
+ * output has gone quiet. Typed rather than run with `-c`, so the shell has
+ * read its rc files (nvm, PATH) and Ctrl+C stops the command, not the shell.
+ */
+export function typeWhenReady(proc: pty.IPty, text: string): void {
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  const stop = (): void => {
+    clearTimeout(quiet);
+    clearTimeout(cap);
+    data.dispose();
+    exit.dispose();
+  };
+  const type = (): void => {
+    stop();
+    // Enter is a carriage return; each line runs in turn, as if pasted line by line.
+    proc.write(`${text.replace(/\r?\n/g, '\r')}\r`);
+  };
+
+  const cap = setTimeout(type, READY_MAX_MS);
+  const data = proc.onData(() => {
+    clearTimeout(quiet);
+    quiet = setTimeout(type, READY_QUIET_MS);
+  });
+  const exit = proc.onExit(stop);
+}
 
 export class PtyManager {
   /** @param appVersion Fleet's version, given to programs as TERM_PROGRAM_VERSION. */
@@ -220,6 +254,8 @@ export class PtyManager {
         proc.pause();
       }
     });
+
+    if (opts.typeOnStart) typeWhenReady(proc, opts.typeOnStart);
 
     this.ptys.set(opts.paneId, entry);
 

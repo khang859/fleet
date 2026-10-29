@@ -7,6 +7,8 @@ export type PtyCreateRequest = {
   cwd: string;
   shell?: string;
   cmd?: string;
+  /** Typed into the shell once its prompt is up, as if the user typed it. */
+  typeOnStart?: string;
   workspaceId?: string;
   /** If true, PTY exits when cmd finishes instead of falling back to shell. */
   exitOnComplete?: boolean;
@@ -264,15 +266,50 @@ export interface DiagnosticsInfo {
   node: string;
 }
 
+/** A repository's `.fleet/worktree.toml`: what each new worktree of it gets. */
+export type WorktreeSetup = {
+  /** Shell commands the new worktree's terminal runs first; empty for none. */
+  setup: string;
+  /** Git-ignored files and folders, by path from the root, copied from the main checkout. */
+  copy: string[];
+};
+
+export type WorktreePrepareRequest = {
+  repoPath: string;
+  pathContext?: PathContext;
+};
+
+/** What the new-worktree dialog offers, read from the repository. */
+export type WorktreePrepareResponse = {
+  /** The main checkout's branch; null when its HEAD is detached. */
+  current: string | null;
+  /** Local branches, then remote ones like `origin/main`, most recent commit first. */
+  refs: string[];
+  /** Null when the repository has no setup file, or when it is broken. */
+  setup: WorktreeSetup | null;
+  /** Why the setup file could not be read; null when it was, or there is none. */
+  setupError: string | null;
+};
+
 export type WorktreeCreateRequest = {
   repoPath: string;
   /** Pane context; for a WSL pane the worktree is created inside the distro. */
   pathContext?: PathContext;
+  /** The new branch's name; without it, Fleet picks a free one. */
+  branch?: string;
+  /** The branch or commit the worktree starts from; without it, the main checkout's HEAD. */
+  startPoint?: string;
 };
+
+/** A path from the setup file that was not copied, and why. */
+export type WorktreeCopySkip = { path: string; reason: string };
 
 export type WorktreeCreateResponse = {
   worktreePath: string;
   branchName: string;
+  /** Paths copied from the main checkout, as the setup file lists them. */
+  copied: string[];
+  skipped: WorktreeCopySkip[];
 };
 
 export type WorktreeRemoveRequest = {

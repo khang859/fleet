@@ -91,6 +91,7 @@ export const IPC_CHANNELS = {
   ACTIVITY_CHIME: 'activity:chime',
   AI_SUMMARIZE_PANE: 'ai:summarize-pane',
   REMOTE_STATE: 'remote:state',
+  WORKTREE_PREPARE: 'worktree:prepare',
   WORKTREE_CREATE: 'worktree:create',
   WORKTREE_REMOVE: 'worktree:remove',
   // Claude Code session tracking

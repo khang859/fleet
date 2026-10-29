@@ -240,11 +240,13 @@ type WorkspaceStore = {
   /** An Admiral about to close with jobs still running, waiting on the client's choice. */
   admiralCloseConfirm: AdmiralCloseConfirm | null;
   setAdmiralCloseConfirm: (confirm: AdmiralCloseConfirm | null) => void;
+  /** `setup` is typed into the worktree's terminal once its prompt is up. */
   createWorktreeGroup: (
     tabId: string,
     worktreePath: string,
     branchName: string,
-    repoPath: string
+    repoPath: string,
+    setup?: string
   ) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
@@ -1048,8 +1050,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  createWorktreeGroup: (tabId, worktreePath, branchName, repoPath) => {
-    const leaf = createLeaf(worktreePath);
+  createWorktreeGroup: (tabId, worktreePath, branchName, repoPath, setup) => {
+    const leaf: PaneLeaf = { ...createLeaf(worktreePath), typeOnStart: setup };
     const newGroupId = generateId();
 
     set((state) => {
