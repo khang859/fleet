@@ -71,6 +71,14 @@ describe('parsePermissionAsk', () => {
     });
   });
 
+  it('takes the call id the mod sends, and reads a request without one', () => {
+    const named = parsePermissionAsk(JSON.stringify({ ...permission, tool_use_id: 'toolu_1' }));
+    expect(named?.event.toolUseId).toBe('toolu_1');
+    expect(parsePermissionAsk(JSON.stringify(permission))?.event.toolUseId).toBeUndefined();
+    const blank = parsePermissionAsk(JSON.stringify({ ...permission, tool_use_id: '' }));
+    expect(blank?.event.toolUseId).toBeUndefined();
+  });
+
   it('refuses a request without its id or pane', () => {
     expect(parsePermissionAsk(JSON.stringify({ ...permission, request_id: '' }))).toBeNull();
     expect(parsePermissionAsk(JSON.stringify({ ...permission, pane_id: undefined }))).toBeNull();
