@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
 import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
 import type { CopilotApi } from '../../../../preload/copilot';
+import type { PlanApprovalMode } from '../../../../shared/claude-sessions';
 import { firstOpenPermission, sortSessions, turnFinished } from '../lib/sessions';
 
 const log = createLogger('store');
@@ -56,12 +57,16 @@ type CopilotStoreState = {
   topPermissionId: () => string | null;
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
-  /** `suggestion` allows one of the request's `suggestions` along with it, by its place. */
+  /**
+   * `suggestion` allows one of the request's `suggestions` along with it, by its place.
+   * `mode` is the mode a plan is approved into; `reason` on a deny reaches Claude.
+   */
   respondPermission: (
     toolUseId: string,
     decision: 'allow' | 'deny',
     reason?: string,
-    suggestion?: number
+    suggestion?: number,
+    mode?: PlanApprovalMode
   ) => Promise<void>;
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
@@ -175,15 +180,15 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
     set({ settings });
   },
 
-  respondPermission: async (toolUseId, decision, reason, suggestion) => {
+  respondPermission: async (toolUseId, decision, reason, suggestion, mode) => {
     // A second answer to the same request would only race the first.
     if (get().permissionStatus[toolUseId]) return;
-    log.info('respondPermission', { toolUseId, decision });
+    log.info('respondPermission', { toolUseId, decision, mode });
     const setStatus = (status: PermissionStatus): void =>
       set((s) => ({ permissionStatus: { ...s.permissionStatus, [toolUseId]: status } }));
     setStatus('sending');
     const delivered = await window.copilot
-      .respondPermission(toolUseId, decision, reason, suggestion)
+      .respondPermission(toolUseId, decision, reason, suggestion, mode)
       .catch(() => false);
     // Delivered stays 'sending' until the session update removes the request.
     if (!delivered) setStatus('failed');
