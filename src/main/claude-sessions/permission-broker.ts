@@ -6,8 +6,12 @@ const log = createLogger('claude-sessions:permission-broker');
 /** The answer a held request got through Fleet. */
 export type PermissionAnswer = {
   decision: 'allow' | 'deny';
+  /** A deny's message to the model, such as what to change in a plan; empty for a default one. */
   reason: string;
-  /** Changes Claude Code suggested that the user allowed along with the request. */
+  /**
+   * Changes the user allowed along with the request: one Claude Code
+   * suggested, or the `setMode` a plan is approved into.
+   */
   updatedPermissions?: PermissionSuggestion[];
 };
 

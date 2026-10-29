@@ -69,9 +69,27 @@ Checked in a Fleet pane with the copilot card:
 
 - Allow with `updatedInput` alone closed the dialog, showed "Allowed by PermissionRequest hook", and the plan ran.
 - The session landed in `default` mode: the status line read "⏸ manual mode on", and the plan's first Write asked for permission.
-  So a plain Allow is the dialog's "Yes, manually approve edits".
+  That held only because the session started in plan mode.
+  On 2.1.308 a plain Allow puts back the mode from before plan mode: accept edits after Shift+Tab from accept edits, auto after `/plan` from auto.
 - A plan ask carries no `permission_suggestions`, so the card offers no mode; a `setMode` in `updatedPermissions` picks one (see the probe report on #693).
 - Deny with a `message` still means "keep planning".
+
+### The Go hook strands a plan the same way
+
+The fix above was only in the mod.
+A plan ask that reaches Fleet through the Go hook (eva, older Claude Code, the mod off or failed, a 409) still got a bare allow, so the card went away and the dialog stayed open.
+**Fix:** `permissionOutput` in `hooks/fleet-copilot-go/main.go` adds `updatedInput`, the tool input as received, on an allow for `ExitPlanMode`.
+`SocketHold` now passes the answer's `updatedPermissions` on as `updated_permissions`, and the hook puts them on the allow, so a picked mode works on this path too.
+
+### Approving a plan into a mode
+
+Checked on 2.1.309 in a Fleet pane, on both paths (the Go hook with `env -u CLAUDE_CODE_PLUGIN_DIRS -u FLEET_BRIDGE_SOCKET claude --permission-mode plan`, and the mod):
+
+- Allow with `updatedInput` and no mode closed the dialog; the session went back to the mode from before plan mode.
+- Allow with `updatedInput` and `updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]` closed the dialog, the status line read "⏵⏵ accept edits on", and the plan's Write ran with no ask, from a session started in plan mode.
+- Allow with a `setMode` to `default` closed the dialog and landed in "⏸ manual mode on", even when the session was in accept edits before plan mode; the plan's Write asked.
+
+So the mode the card picks wins over the mode from before plan mode.
 
 ## The call id on the mod's asks
 

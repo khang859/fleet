@@ -138,6 +138,19 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     expect(broker.has('tu-1')).toBe(false);
   });
 
+  it('passes on the changes allowed with a request, such as the mode a plan is approved into', async () => {
+    const reply = sendEvent(socketPath, { ...permission, tool: 'ExitPlanMode' });
+    await vi.waitFor(() => expect(broker.has('tu-1')).toBe(true));
+
+    const setMode = { type: 'setMode', mode: 'acceptEdits', destination: 'session' } as const;
+    expect(broker.respond('tu-1', 'allow', '', [setMode])).toBe(true);
+    expect(JSON.parse(await reply)).toEqual({
+      decision: 'allow',
+      reason: '',
+      updated_permissions: [setMode]
+    });
+  });
+
   it('releases a held permission once the hook has waited out its time', async () => {
     const reply = sendEvent(socketPath, permission);
     await vi.waitFor(() => expect(broker.has('tu-1')).toBe(true));

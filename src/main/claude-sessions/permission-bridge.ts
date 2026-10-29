@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { PermissionSuggestion } from '../../shared/claude-sessions';
 import { NOT_ANSWERED, POLL_HOLD_MS, reply, type BridgeRoute } from './bridge-server';
-import { HOOK_PROTOCOL, lenient, nonEmpty, type HookEvent } from './hook-events';
+import { HOOK_PROTOCOL, lenient, nonEmpty, permissionMode, type HookEvent } from './hook-events';
 import type { HeldRequest, PermissionAnswer } from './permission-broker';
 import { toolCallKey } from './registry';
 
@@ -58,6 +58,8 @@ const Suggestion = z.discriminatedUnion('type', [
 /**
  * What the mod sends: the `PermissionRequest` hook's input, with its pane, an
  * id of its own, and the call's id, which the mod takes from `tool.check`.
+ * `tool_input` is kept whole: for `ExitPlanMode` it is `{ plan, planFilePath }`,
+ * which the plan card shows.
  */
 const WireAsk = z.object({
   request_id: nonEmpty,
@@ -68,7 +70,8 @@ const WireAsk = z.object({
   transcript_path: lenient(nonEmpty),
   tool_name: nonEmpty,
   tool_input: lenient(z.record(z.string(), z.unknown())),
-  permission_suggestions: lenient(z.array(z.unknown()))
+  permission_suggestions: lenient(z.array(z.unknown())),
+  permission_mode: permissionMode
 });
 
 /** A permission request the mod asks about, as a hook event, or null when it is not one. */
@@ -100,6 +103,7 @@ export function parsePermissionAsk(text: string): { requestId: string; event: Ho
       paneId: w.pane_id,
       transcriptPath: w.transcript_path,
       ...(suggestions.length > 0 && { permissionSuggestions: suggestions }),
+      permissionMode: w.permission_mode,
       protocol: HOOK_PROTOCOL
     }
   };

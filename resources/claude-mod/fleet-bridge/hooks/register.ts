@@ -137,7 +137,9 @@ async function askPermission(
     transcript_path: e.transcript_path,
     tool_name: e.tool_name,
     tool_input: e.tool_input,
-    permission_suggestions: e.permission_suggestions
+    permission_suggestions: e.permission_suggestions,
+    // Fleet drops the Go hook's copy of this request, and with it the mode.
+    permission_mode: e.permission_mode
   });
   for (;;) {
     // Answered in the terminal between two asks.
