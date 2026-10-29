@@ -480,6 +480,35 @@ func TestRun_EvaPermissionPrintsTheAnswerEvaTakes(t *testing.T) {
 	}
 }
 
+func TestRun_AllowOfAPlanCarriesItsInput(t *testing.T) {
+	startAnsweringServer(t, `{"decision":"allow"}`)
+	_, out := runHook(t, nil, `{"session_id":"c1","hook_event_name":"PermissionRequest",
+		"tool_name":"ExitPlanMode","tool_input":{"plan":"# Plan\nWrite hello.txt","allowedPrompts":[]}}`)
+
+	want := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow",` +
+		`"updatedInput":{"plan":"# Plan\nWrite hello.txt","allowedPrompts":[]}}}}`
+	if strings.TrimSpace(out) != want {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+func TestPermissionOutput_OnlyAnAllowOfAPlanCarriesTheInput(t *testing.T) {
+	plan := &HookInput{ToolName: "ExitPlanMode", ToolInput: json.RawMessage(`{"plan":"x"}`)}
+	bash := &HookInput{ToolName: "Bash", ToolInput: json.RawMessage(`{"command":"ls"}`)}
+	cases := map[string]struct {
+		resp  *SocketResponse
+		input *HookInput
+	}{
+		"deny of a plan":  {&SocketResponse{Decision: "deny"}, plan},
+		"allow of a tool": {&SocketResponse{Decision: "allow"}, bash},
+	}
+	for name, c := range cases {
+		if out := string(permissionOutput(c.resp, c.input)); strings.Contains(out, "updatedInput") {
+			t.Errorf("%s: %s", name, out)
+		}
+	}
+}
+
 func TestRun_DenyCarriesTheReason(t *testing.T) {
 	startAnsweringServer(t, `{"decision":"deny","reason":"not in the plan"}`)
 	_, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"PermissionRequest","tool_name":"bash","tool_use_id":"c"}`)
