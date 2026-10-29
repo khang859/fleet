@@ -212,6 +212,12 @@ export function usePaneNavigation(): void {
         return;
       }
 
+      if (matchesShortcut(e, sc('telescope-sidebar'))) {
+        e.preventDefault();
+        useWorkspaceStore.getState().toggleTelescopeSidebar();
+        return;
+      }
+
       if (matchesShortcut(e, sc('open-scratch'))) {
         e.preventDefault();
         useWorkspaceStore.getState().openScratch();

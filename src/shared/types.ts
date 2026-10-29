@@ -32,6 +32,10 @@ export type Workspace = {
   collapsedGroups?: string[];
   /** Pixel width of the expanded sidebar. Undefined = use DEFAULT_SIDEBAR_WIDTH. */
   sidebarWidth?: number;
+  /** Whether the Telescope browser sidebar on the right is open. */
+  telescopeSidebarOpen?: boolean;
+  /** Pixel width of the Telescope browser sidebar. Undefined = use DEFAULT_TELESCOPE_SIDEBAR_WIDTH. */
+  telescopeSidebarWidth?: number;
   userGroups?: UserGroup[];
 };
 

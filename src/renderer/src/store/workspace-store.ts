@@ -298,6 +298,8 @@ type WorkspaceStore = {
   setWorkspace: (workspace: Workspace) => void;
   renameWorkspace: (label: string) => void;
   setSidebarWidth: (width: number) => void;
+  toggleTelescopeSidebar: () => void;
+  setTelescopeSidebarWidth: (width: number) => void;
   markClean: () => void;
 
   ensureSessionsTab: () => void;
@@ -1779,6 +1781,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (state.workspace.sidebarWidth === clamped) return state;
       return {
         workspace: { ...state.workspace, sidebarWidth: clamped },
+        isDirty: true
+      };
+    });
+  },
+
+  toggleTelescopeSidebar: () => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        telescopeSidebarOpen: !state.workspace.telescopeSidebarOpen
+      },
+      isDirty: true
+    }));
+  },
+
+  setTelescopeSidebarWidth: (width) => {
+    const clamped = clampSidebarWidth(width, window.innerWidth);
+    set((state) => {
+      if (state.workspace.telescopeSidebarWidth === clamped) return state;
+      return {
+        workspace: { ...state.workspace, telescopeSidebarWidth: clamped },
         isDirty: true
       };
     });

@@ -49,7 +49,6 @@ import { initClaudeSessionsListener } from './store/claude-sessions-store';
 import { initAgentFleet } from './store/agent-fleet';
 import { initAdmiralRuntime } from './store/admiral-runtime';
 import { switchToWorkspace } from './lib/switch-workspace';
-import { ShortcutsHint } from './components/ShortcutsHint';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
@@ -58,6 +57,8 @@ import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ToolsConfigModal } from './components/ToolsConfigModal';
 import { TelescopeModal } from './components/Telescope/TelescopeModal';
+import { TelescopeSidebar } from './components/Telescope/TelescopeSidebar';
+import { TitleStripButtons } from './components/TitleStripButtons';
 import { AgentOverview } from './components/AgentOverview';
 import { PeekPanel } from './components/PeekPanel';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
@@ -70,7 +71,6 @@ import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
 import { AdmiralCloseDialog } from './components/admiral/AdmiralCloseDialog';
-import { UpdatePill } from './components/UpdatePill';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
 import { useFleetSpawnTabs } from './hooks/use-fleet-spawn-tabs';
@@ -824,8 +824,8 @@ export function App(): React.JSX.Element {
       )}
       {/* Top bar — drag region for window movement, houses OS window controls */}
       {/* Transparent rather than a solid band: on a canvas the strip the window
-          drags by is part of the canvas. It holds nothing but the shortcut hint
-          at its right edge, so there is no text for the picture to fight.
+          drags by is part of the canvas. It holds only a few small buttons at
+          one edge, so there is no text for the picture to fight.
           Height is set by the traffic lights, not by content: they are placed at
           y=10 and are 12px tall, so 24px leaves them the same 10px underneath
           they have above. The cards' own 8px gutter then starts at 32. */}
@@ -833,8 +833,7 @@ export function App(): React.JSX.Element {
         className="relative z-10 h-6 shrink-0 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
-        <UpdatePill />
-        <ShortcutsHint />
+        <TitleStripButtons />
       </div>
       <div className="relative z-10 flex flex-1 min-h-0">
         {!sidebarCollapsed ? (
@@ -1149,6 +1148,13 @@ export function App(): React.JSX.Element {
           </main>
         </div>
         {/* end content column */}
+        {workspace.telescopeSidebarOpen && (
+          <TelescopeSidebar
+            cwd={focusedPaneCwd}
+            paneId={activePaneId}
+            pathContext={activePathContext}
+          />
+        )}
       </div>
       {/* end sidebar+content row */}
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

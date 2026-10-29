@@ -1,12 +1,14 @@
 // src/renderer/src/components/Telescope/TelescopeModal.tsx
-import { useState, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { useWorkspaceStore } from '../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../store/workspace-store';
 import { createFilesMode } from './modes/files-mode';
 import { createGrepMode } from './modes/grep-mode';
 import { createBrowseMode } from './modes/browse-mode';
 import { createPanesMode } from './modes/panes-mode';
+import { useBrowseDir } from './use-browse-dir';
+import { Breadcrumbs } from './Breadcrumbs';
 import type { TelescopeMode, TelescopeItem } from './types';
 import { ShikiPreview } from './ShikiPreview';
 import { Overlay } from '../Overlay';
@@ -56,7 +58,6 @@ export function TelescopeModal({
     mimeType: string;
   } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [browseRevision, forceUpdate] = useReducer((n: number) => n + 1, 0);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -64,18 +65,22 @@ export function TelescopeModal({
   const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
+  const pathContext = useMemo(() => getPaneContextById(activePaneId), [activePaneId]);
+  const browse = useBrowseDir(isOpen ? cwd : null, pathContext);
 
-  const triggerUpdate = useCallback(() => forceUpdate(), []);
-
-  const modes = useMemo(() => {
+  const searchModes = useMemo(() => {
     if (!isOpen) return {} as Record<string, TelescopeMode>;
     return {
       files: createFilesMode(cwd, activePaneId),
       grep: createGrepMode(cwd, activePaneId),
-      browse: createBrowseMode(cwd, activePaneId, triggerUpdate),
       panes: createPanesMode()
     };
-  }, [isOpen, cwd, activePaneId, triggerUpdate]);
+  }, [isOpen, cwd, activePaneId]);
+
+  const modes = useMemo(() => {
+    if (!isOpen) return searchModes;
+    return { ...searchModes, browse: createBrowseMode(browse, activePaneId) };
+  }, [isOpen, searchModes, browse, activePaneId]);
 
   const modeList = useMemo<TelescopeMode[]>(
     () => [modes.files, modes.grep, modes.browse, modes.panes].filter(Boolean),
@@ -122,7 +127,7 @@ export function TelescopeModal({
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [isOpen, query, activeModeId, activeMode, browseRevision]);
+  }, [isOpen, query, activeModeId, activeMode]);
 
   // Preview effect
   useEffect(() => {
@@ -296,48 +301,6 @@ export function TelescopeModal({
     [results, selectedIndex, activeMode, activeModeId, query, modeList, onClose]
   );
 
-  const browseBreadcrumbs = activeModeId === 'browse' && activeMode?.breadcrumbs;
-
-  const renderBreadcrumbs = (): React.JSX.Element | null => {
-    if (!browseBreadcrumbs || browseBreadcrumbs.length === 0) return null;
-
-    // Reconstruct full paths for each crumb
-    const homeDir = window.fleet.homeDir;
-
-    return (
-      <div className="px-3 py-1.5 border-b border-fleet-border flex items-center gap-1 text-xs text-fleet-text-muted overflow-x-auto min-w-0">
-        {browseBreadcrumbs.map((segment, i) => {
-          const isLast = i === browseBreadcrumbs.length - 1;
-          // Build the absolute path for this crumb
-          const pathUpToSegment = browseBreadcrumbs
-            .slice(0, i + 1)
-            .join('/')
-            .replace(/^~/, homeDir);
-
-          return (
-            <span key={i} className="flex items-center gap-1 shrink-0">
-              {i > 0 && <span className="text-fleet-text-subtle">/</span>}
-              <button
-                onClick={() => {
-                  if (!isLast && activeMode.onNavigate) {
-                    activeMode.onNavigate(pathUpToSegment);
-                  }
-                }}
-                className={
-                  isLast
-                    ? 'text-fleet-text-secondary cursor-default transition active:scale-[0.97]'
-                    : 'text-fleet-text-muted hover:text-fleet-text-secondary transition-colors active:scale-[0.97]'
-                }
-              >
-                {segment}
-              </button>
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
-
   const renderPreviewPanel = (): React.JSX.Element => {
     if (previewLoading) {
       return <div className="text-xs text-fleet-text-subtle p-3">Loading preview...</div>;
@@ -439,7 +402,9 @@ export function TelescopeModal({
       </div>
 
       {/* Breadcrumbs (browse mode only) */}
-      {renderBreadcrumbs()}
+      {activeModeId === 'browse' && activeMode?.crumbs && activeMode.onNavigate && (
+        <Breadcrumbs crumbs={activeMode.crumbs} onNavigate={activeMode.onNavigate} />
+      )}
 
       {/* Body */}
       <div className="flex flex-row flex-1 min-h-0 overflow-hidden">

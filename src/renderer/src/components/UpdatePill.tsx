@@ -20,14 +20,10 @@ export function UpdatePill(): React.JSX.Element | null {
 
   if (!update) return null;
 
-  // Mirrors ShortcutsHint: on macOS the traffic lights own the left of the strip,
-  // everywhere else the window controls own the right.
-  const positionClass = window.fleet.platform === 'darwin' ? 'ml-auto mr-2' : 'ml-3';
-
   return (
     <button
       onClick={() => setWhatsNewOpen(true)}
-      className={`${positionClass} flex h-5 items-center gap-1 rounded-full border border-fleet-border bg-fleet-glass-chrome pl-1.5 pr-2 text-[11px] text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text active:scale-95`}
+      className="flex h-5 items-center gap-1 rounded-full border border-fleet-border bg-fleet-glass-chrome pl-1.5 pr-2 text-[11px] text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text active:scale-95"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       title={`Fleet ${update.version} is ready to install`}
     >

@@ -6,95 +6,31 @@ import { getFileIcon } from '../../../lib/file-icons';
 import { quotePathForShell, bracketedPaste } from '../../../lib/shell-utils';
 import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
 import { pathForPaneContext } from '../../../../../shared/path-platform';
-import type { DirEntry } from '../../../../../shared/ipc-api';
+import type { BrowseDir } from '../use-browse-dir';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
-// Module-level cache for gitignore results per directory
-const ignoreCache = new Map<string, Set<string>>();
-
-type BrowseState = {
-  currentDir: string;
-  entries: DirEntry[];
-  loading: boolean;
-  ignoredNames: Set<string>;
+/** Browse filters what is already loaded, so its search is synchronous. */
+export type BrowseMode = Omit<TelescopeMode, 'onSearch'> & {
+  onSearch: (query: string) => TelescopeItem[];
 };
 
-export function createBrowseMode(
-  cwd: string,
-  activePaneId: string | null,
-  onStateChange: () => void
-): TelescopeMode & { getState: () => BrowseState } {
+/** Builds the Browse mode from a `useBrowseDir` snapshot. Holds no state of its own. */
+export function createBrowseMode(browse: BrowseDir, activePaneId: string | null): BrowseMode {
   const ctx = getPaneContextById(activePaneId);
-  const state: BrowseState = {
-    currentDir: cwd,
-    entries: [],
-    loading: false,
-    ignoredNames: new Set()
-  };
 
-  async function loadDir(dir: string): Promise<void> {
-    state.currentDir = dir;
-    state.loading = true;
-    onStateChange();
-
-    const result = await window.fleet.file.readdir(dir, ctx);
-    if (result.success) {
-      // Sort: directories first, then alphabetical within each group
-      state.entries = [...result.entries].sort((a, b) => {
-        if (a.isDirectory !== b.isDirectory) {
-          return a.isDirectory ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-      });
-
-      // Fetch gitignore status (use cache if available)
-      if (!ignoreCache.has(dir)) {
-        const ignored = await window.fleet.file.checkIgnored(dir, ctx);
-        ignoreCache.set(dir, new Set(ignored));
-      }
-      state.ignoredNames = ignoreCache.get(dir) ?? new Set();
-    } else {
-      state.entries = [];
-      state.ignoredNames = new Set();
-    }
-
-    state.loading = false;
-    onStateChange();
-  }
-
-  // Initial load
-  void loadDir(cwd);
-
-  const mode: TelescopeMode & { getState: () => BrowseState } = {
+  return {
     id: 'browse',
     label: 'Browse',
     icon: FolderOpen,
     placeholder: 'Filter current directory...',
-
-    get breadcrumbs(): string[] {
-      const dir = state.currentDir;
-      const homeDir = window.fleet.homeDir;
-      if (dir.startsWith(homeDir)) {
-        const relative = dir.slice(homeDir.length);
-        const parts = relative.split('/').filter(Boolean);
-        return ['~', ...parts];
-      }
-      return dir.split('/').filter(Boolean);
-    },
-
-    onNavigate: (dir: string) => {
-      void loadDir(dir);
-    },
-
-    onNavigateUp: () => {
-      const parent = state.currentDir.split('/').slice(0, -1).join('/') || '/';
-      void loadDir(parent);
-    },
+    crumbs: browse.crumbs,
+    onNavigate: browse.navigate,
+    onNavigateUp: browse.navigateUp,
 
     onSearch: (query: string): TelescopeItem[] => {
       const entries = query
-        ? state.entries.filter((e) => fuzzyMatch(query, e.name))
-        : state.entries;
+        ? browse.entries.filter((e) => fuzzyMatch(query, e.name))
+        : browse.entries;
 
       return entries.map(
         (entry): TelescopeItem => ({
@@ -106,7 +42,7 @@ export function createBrowseMode(
           data: {
             filePath: entry.path,
             isDirectory: entry.isDirectory,
-            isIgnored: state.ignoredNames.has(entry.name) || entry.name === '.git'
+            isIgnored: browse.ignoredNames.has(entry.name) || entry.name === '.git'
           }
         })
       );
@@ -117,7 +53,7 @@ export function createBrowseMode(
       const isDirectory = item.data?.isDirectory;
       if (typeof filePath !== 'string') return;
       if (isDirectory === true) {
-        void loadDir(filePath);
+        browse.navigate(filePath);
       } else {
         useWorkspaceStore.getState().openFile(filePath, ctx);
       }
@@ -133,10 +69,6 @@ export function createBrowseMode(
       });
     },
 
-    renderPreview: () => null,
-
-    getState: () => state
+    renderPreview: () => null
   };
-
-  return mode;
 }

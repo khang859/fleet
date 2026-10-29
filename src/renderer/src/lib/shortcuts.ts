@@ -138,6 +138,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     other: { key: 'T', ctrl: true, shift: true }
   },
   {
+    id: 'telescope-sidebar',
+    label: 'Toggle Telescope browser sidebar',
+    mac: { key: 'B', meta: true, shift: true },
+    other: { key: 'B', ctrl: true, shift: true }
+  },
+  {
     id: 'open-scratch',
     label: 'New agent',
     mac: { key: 'J', meta: true, shift: true },
