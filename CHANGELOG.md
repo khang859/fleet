@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.141.1
+
+- **Log files are back.**
+  Fleet wrote no log file in installed or dev builds, so "Report a Problem" had no log text to send.
+  Fleet now writes its logs again.
+  Installed builds also ran as dev builds; they now log at `info` level, with no `debug` lines (#704).
+
 ## v2.141.0
 
 - **Colors for `.env` and config files.**
