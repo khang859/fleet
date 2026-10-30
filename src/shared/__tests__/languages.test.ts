@@ -35,6 +35,27 @@ describe('getLanguageForPath', () => {
     expect(getLanguageForPath('/project/Makefile')).toEqual({ id: 'makefile', label: 'Makefile' });
   });
 
+  it('matches env files by name, prefix and extension', () => {
+    const env = { id: 'dotenv', label: 'Env' };
+    expect(getLanguageForPath('/project/.env')).toEqual(env);
+    expect(getLanguageForPath('/project/.env.local')).toEqual(env);
+    expect(getLanguageForPath('/project/.env.production.local')).toEqual(env);
+    expect(getLanguageForPath('/project/secrets.env')).toEqual(env);
+    expect(getLanguageForPath('/project/.envrc')).toEqual({ id: 'bash', label: 'Bash' });
+  });
+
+  it('matches key=value config files', () => {
+    const ini = { id: 'ini', label: 'INI' };
+    expect(getLanguageForPath('setup.cfg')).toEqual(ini);
+    expect(getLanguageForPath('php.ini')).toEqual(ini);
+    expect(getLanguageForPath('/project/.editorconfig')).toEqual(ini);
+    expect(getLanguageForPath('/home/me/.npmrc')).toEqual(ini);
+    expect(getLanguageForPath('app.properties')).toEqual({
+      id: 'properties',
+      label: 'Properties'
+    });
+  });
+
   it('returns null for unknown extensions', () => {
     expect(getLanguageForPath('file.xyz')).toBeNull();
     expect(getLanguageForPath('noextension')).toBeNull();
