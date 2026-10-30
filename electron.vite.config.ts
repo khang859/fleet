@@ -3,9 +3,11 @@ import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { deriveRendererPort } from './src/shared/drive-session';
+import { esmShimGuard } from './scripts/esm-shim-guard';
 
 export default defineConfig({
   main: {
+    plugins: [esmShimGuard()],
     build: {
       rollupOptions: {
         input: {

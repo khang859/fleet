@@ -167,14 +167,14 @@ exec node ${cliPath} "$@"
     const tsSource = join(projectRoot, 'src', 'main', 'fleet-cli.ts');
 
     // Write a thin JS entrypoint that delegates to the TS source via tsx
-    // Must use .mjs extension so Node loads it as ESM (it contains import statements)
+    // Must use .mjs extension so Node loads it as ESM (it uses top-level await)
+    // Keep static imports out of this string. electron-vite puts its CommonJS
+    // shim after the last thing that looks like one, even inside a string.
     cliEntrypoint = join(libDir, 'fleet-cli.mjs');
     const jsEntrypoint = `#!/usr/bin/env node
 // Fleet CLI entrypoint — dev mode, delegates to TypeScript source via tsx
-import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+const { spawnSync } = await import('node:child_process');
+const { join } = await import('node:path');
 
 // Find tsx in the project's node_modules
 const tsSource = ${JSON.stringify(tsSource)};

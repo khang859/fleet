@@ -1,8 +1,47 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { createRequire } from 'node:module';
 import winston from 'winston';
 import { FLEET_HOME, IS_FLEET_DEV } from '../shared/constants';
 import { logRedactor } from './redactor';
+
+/**
+ * Explicit, because the bare `require` comes from electron-vite's ESM shim. If
+ * that shim goes missing, a bare `require` throws, the try/catch blocks below
+ * swallow it, and the app runs with no log file and no sign of why. Not named
+ * `require` because the shim declares that name at the top of the bundle.
+ */
+const nodeRequire = createRequire(import.meta.url);
+
+interface ElectronAppInfo {
+  isPackaged: boolean;
+  home: string;
+}
+
+/** Read app info from the `electron` module, or null if it has no usable `app`. */
+export function readElectronApp(electron: unknown): ElectronAppInfo | null {
+  if (
+    electron == null ||
+    typeof electron !== 'object' ||
+    !('app' in electron) ||
+    electron.app == null ||
+    typeof electron.app !== 'object' ||
+    !('isPackaged' in electron.app) ||
+    !('getPath' in electron.app) ||
+    typeof electron.app.getPath !== 'function'
+  ) {
+    return null;
+  }
+
+  // Called on `app`: Electron's getPath throws when it is detached from it.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed above, require returns any
+  const app = electron.app as { getPath: (name: string) => string };
+
+  return {
+    isPackaged: Boolean(electron.app.isPackaged),
+    home: String(app.getPath('home'))
+  };
+}
 
 /**
  * Resolve Electron app info at module load time. This must NOT use a static
@@ -10,36 +49,15 @@ import { logRedactor } from './redactor';
  * by starbase modules that get bundled into starbase-runtime-process — a plain
  * Node.js child process where `electron` is not available.
  */
-function resolveElectronApp(): {
-  isPackaged: boolean;
-  home: string;
-} | null {
+function resolveElectronApp(): ElectronAppInfo | null {
   try {
     // electron-vite externalises 'electron' so this resolves in the main
     // process but throws in the runtime child process.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const electron: unknown = require('electron');
-    if (
-      electron != null &&
-      typeof electron === 'object' &&
-      'app' in electron &&
-      electron.app != null &&
-      typeof electron.app === 'object' &&
-      'isPackaged' in electron.app &&
-      'getPath' in electron.app &&
-      typeof electron.app.getPath === 'function'
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- narrowed above, require returns any
-      const getPath = electron.app.getPath as (name: string) => string;
-      return {
-        isPackaged: Boolean(electron.app.isPackaged),
-        home: String(getPath('home'))
-      };
-    }
+    return readElectronApp(nodeRequire('electron'));
   } catch {
     // Not in Electron (runtime process, tests, CLI tools)
+    return null;
   }
-  return null;
 }
 
 const electronApp = resolveElectronApp();
@@ -99,8 +117,8 @@ const transports: winston.transport[] = [
 // It may not resolve in the runtime child process if the bundler
 // doesn't include it in that entry point.
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-type-assertion -- dynamic require returns any
-  const DailyRotateFile = require('winston-daily-rotate-file') as new (
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic require returns any
+  const DailyRotateFile = nodeRequire('winston-daily-rotate-file') as new (
     opts: Record<string, unknown>
   ) => winston.transport;
   transports.push(
