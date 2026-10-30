@@ -47,6 +47,12 @@ export function buildDevBootstrapHtml(opts: {
   mainTsxPath: string;
 }): string {
   const { viteUrl, title, mainTsxPath } = opts;
+
+  // Interpolated whole so the import line below does not read as a static
+  // import. electron-vite puts its CommonJS shim after the last one it finds,
+  // even inside a string, which would break the main bundle and this page.
+  const refreshRuntimeUrl = JSON.stringify(`${viteUrl}/@react-refresh`);
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,7 +64,7 @@ export function buildDevBootstrapHtml(opts: {
   </style>
   <script type="module" src="${viteUrl}/@vite/client"></script>
   <script type="module">
-    import RefreshRuntime from "${viteUrl}/@react-refresh";
+    import RefreshRuntime from ${refreshRuntimeUrl};
     RefreshRuntime.injectIntoGlobalHook(window);
     window.$RefreshReg$ = () => {};
     window.$RefreshSig$ = () => (type) => type;

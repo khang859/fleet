@@ -48,6 +48,29 @@ describe('logger', () => {
     expect(mod.logger.level).toBe('warn');
   });
 
+  it('attaches the daily file transport alongside the console', async () => {
+    const mod = await import('../logger');
+    expect(mod.logger.transports).toHaveLength(2);
+  });
+
+  it('calls getPath on app, which throws in real Electron when detached', async () => {
+    const mod = await import('../logger');
+    const app = {
+      isPackaged: true,
+      getPath(this: unknown): string {
+        if (this !== app) throw new TypeError('Illegal invocation');
+        return '/Users/someone';
+      }
+    };
+
+    expect(mod.readElectronApp({ app })).toEqual({ isPackaged: true, home: '/Users/someone' });
+  });
+
+  it('returns null when electron has no app', async () => {
+    const mod = await import('../logger');
+    expect(mod.readElectronApp('/path/to/electron')).toBeNull();
+  });
+
   it('writes to FLEET_LOG_DIR when it is set', async () => {
     const configured = process.env.FLEET_LOG_DIR;
     const elsewhere = join(tmpdir(), 'fleet-logger-test');
