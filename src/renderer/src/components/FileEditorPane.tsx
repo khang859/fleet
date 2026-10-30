@@ -10,7 +10,12 @@ import {
   highlightActiveLine
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { syntaxHighlighting, defaultHighlightStyle, LanguageSupport } from '@codemirror/language';
+import {
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  LanguageSupport,
+  type StreamParser
+} from '@codemirror/language';
 import { search, searchKeymap } from '@codemirror/search';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { getLanguageForPath } from '../../../shared/languages';
@@ -27,6 +32,19 @@ import type { FileOpenTarget } from '../../../shared/types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
+
+// The `properties` mode names keys `def` and values `quote`, which One Dark leaves uncolored
+const KEY_VALUE_STYLES: Record<string, string | undefined> = {
+  def: 'propertyName',
+  quote: 'string'
+};
+
+function keyValueToken(parser: StreamParser<unknown>): StreamParser<unknown>['token'] {
+  return (stream, state) => {
+    const style = parser.token(stream, state);
+    return (style && KEY_VALUE_STYLES[style]) ?? style;
+  };
+}
 
 async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport | null> {
   switch (langId) {
@@ -102,6 +120,15 @@ async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport |
       const { StreamLanguage } = await import('@codemirror/language');
       const { swift } = await import('@codemirror/legacy-modes/mode/swift');
       return new LanguageSupport(StreamLanguage.define(swift));
+    }
+    case 'dotenv':
+    case 'ini':
+    case 'properties': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { properties } = await import('@codemirror/legacy-modes/mode/properties');
+      return new LanguageSupport(
+        StreamLanguage.define({ ...properties, token: keyValueToken(properties) })
+      );
     }
     case 'makefile': {
       const { StreamLanguage } = await import('@codemirror/language');

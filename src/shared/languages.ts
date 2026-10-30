@@ -15,10 +15,13 @@ const extensionMap: Record<string, LanguageInfo | undefined> = {
   hpp: { id: 'cpp', label: 'C++' },
   cc: { id: 'cpp', label: 'C++' },
   cxx: { id: 'cpp', label: 'C++' },
+  cfg: { id: 'ini', label: 'INI' },
   css: { id: 'css', label: 'CSS' },
+  env: { id: 'dotenv', label: 'Env' },
   go: { id: 'go', label: 'Go' },
   html: { id: 'html', label: 'HTML' },
   htm: { id: 'html', label: 'HTML' },
+  ini: { id: 'ini', label: 'INI' },
   java: { id: 'java', label: 'Java' },
   js: { id: 'javascript', label: 'JavaScript' },
   mjs: { id: 'javascript', label: 'JavaScript' },
@@ -33,6 +36,7 @@ const extensionMap: Record<string, LanguageInfo | undefined> = {
   md: { id: 'markdown', label: 'Markdown' },
   markdown: { id: 'markdown', label: 'Markdown' },
   php: { id: 'php', label: 'PHP' },
+  properties: { id: 'properties', label: 'Properties' },
   py: { id: 'python', label: 'Python' },
   rb: { id: 'ruby', label: 'Ruby' },
   rs: { id: 'rust', label: 'Rust' },
@@ -52,8 +56,14 @@ const extensionMap: Record<string, LanguageInfo | undefined> = {
   zig: { id: 'zig', label: 'Zig' }
 };
 
-/** Filenames (no extension) that map to a language */
+const DOTENV: LanguageInfo = { id: 'dotenv', label: 'Env' };
+
+/** Whole filenames that map to a language */
 const filenameMap: Record<string, LanguageInfo | undefined> = {
+  '.editorconfig': { id: 'ini', label: 'INI' },
+  '.env': DOTENV,
+  '.envrc': { id: 'bash', label: 'Bash' },
+  '.npmrc': { id: 'ini', label: 'INI' },
   Dockerfile: { id: 'dockerfile', label: 'Dockerfile' },
   Makefile: { id: 'makefile', label: 'Makefile' }
 };
@@ -62,9 +72,12 @@ export function getLanguageForPath(filePath: string): LanguageInfo | null {
   // Extract the filename from the path
   const filename = filePath.split(/[/\\]/).pop() ?? '';
 
-  // Check special filenames first (Dockerfile, Makefile)
+  // Check special filenames first (Dockerfile, Makefile, .env)
   const byName = filenameMap[filename];
   if (byName) return byName;
+
+  // `.env.local`, `.env.production` and friends keep their type in the prefix
+  if (filename.startsWith('.env.')) return DOTENV;
 
   // Check by extension
   const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() ?? '') : '';
