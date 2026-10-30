@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.141.0
+
+- **Colors for `.env` and config files.**
+  `.env`, `.env.local`, `.env.*` and `*.env` files now open with syntax highlighting: keys, values and `#` comments each get their own color.
+  `.ini`, `.cfg`, `.properties`, `.editorconfig` and `.npmrc` files get the same key/value colors, with `[section]` headers highlighted.
+  `.envrc` opens as Bash (#703).
+
 ## v2.140.0
 
 - **The Admiral works like a dev team.**
