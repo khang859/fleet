@@ -8,7 +8,6 @@ import {
 import { DEFAULT_TOOL_VISIBILITY } from './tools';
 import { DEFAULT_AI_SETTINGS } from './agent-types';
 import { DEFAULT_TELEPROMPTER_SETTINGS } from './teleprompter';
-import { DEFAULT_AGENCY_SETTINGS } from './agency';
 export { IPC_CHANNELS } from './ipc-channels';
 
 // --- Main-process only (Node.js built-ins) ---
@@ -64,6 +63,5 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   teleprompter: DEFAULT_TELEPROMPTER_SETTINGS,
   tools: DEFAULT_TOOL_VISIBILITY,
   ai: DEFAULT_AI_SETTINGS,
-  remoteSsh: { hosts: [], rcConsent: {} },
-  agency: DEFAULT_AGENCY_SETTINGS
+  remoteSsh: { hosts: [], rcConsent: {} }
 };

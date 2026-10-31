@@ -164,14 +164,8 @@ export class ClaudeSessionRegistry {
   /**
    * Apply a hook event from a session in `placement`'s pane. Returns the event
    * as recorded, or null when it was ignored (a late event from an ended session).
-   * `delegates` says whether a permission request it asks is held for an
-   * answerer that takes it to the user its own way.
    */
-  ingest(
-    event: HookEvent,
-    placement: PanePlacement,
-    delegates: (toolUseId: string) => boolean = () => false
-  ): ClaudeSessionEvent | null {
+  ingest(event: HookEvent, placement: PanePlacement): ClaudeSessionEvent | null {
     const now = this.clock.now();
     let entry = this.entries.get(event.sessionId);
 
@@ -230,8 +224,6 @@ export class ClaudeSessionRegistry {
       toolInput: event.toolInput,
       toolUseId,
       notificationType: event.notificationType,
-      delegated:
-        event.status === 'waiting_for_approval' && toolUseId !== undefined && delegates(toolUseId),
       suggestions: event.permissionSuggestions,
       at: now
     });

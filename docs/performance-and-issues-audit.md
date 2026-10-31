@@ -20,7 +20,7 @@ When `PTY_CREATE` is called for an already-existing pane (idempotent path for HM
 
 **Files:** `src/main/pty-manager.ts:189`
 
-`onData()` uses `dataCallbacks.set(paneId, callback)` which silently overwrites any existing callback. On idempotent PTY create, any previous data callback (e.g., Admiral's state detector) is lost without cleanup.
+`onData()` uses `dataCallbacks.set(paneId, callback)` which silently overwrites any existing callback. On idempotent PTY create, any previous data callback is lost without cleanup.
 
 **Fix:** Guard in the IPC handler to skip re-registration if the PTY already existed, or warn/dispose the previous callback.
 
@@ -145,9 +145,3 @@ The visualizer was removed from Fleet, so this code no longer exists.
 **Originally reported:** closure captures `starbaseReadyPromise` by value, so IPC handlers keep awaiting the old rejected promise after bootstrap failure.
 
 **Why false:** `getBootstrapState` is a function called per-request. Each invocation re-evaluates the closure body and reads the current value of `starbaseReadyPromise`. The promise is always fresh.
-
-### CWD Poller Leak on Admiral Stop
-
-**Originally reported:** when Admiral stops, no `pane-closed` event is emitted, so the CWD poller timer leaks.
-
-**Why false:** `AdmiralProcess.stop()` calls `ptyManager.kill()`, which triggers the `onExit` callback, which emits `pane-closed`, which calls `cwdPoller.stopPolling()`. The cleanup chain is properly wired.

@@ -85,16 +85,6 @@ import { ComposerMenu } from './ComposerMenu';
 import { downscaleImage } from '../../lib/downscale-image';
 import { canRelocate, useAgentStore } from '../../store/agent-store';
 import { useSettingsStore } from '../../store/settings-store';
-import { threadModelId } from '../../store/admiral-thread';
-import {
-  AdmiralEventLine,
-  AskClientRow,
-  JobDeliverRow,
-  PermissionAnswerRow,
-  SettingsChangeRow,
-  JobLinkLine,
-  JobPlanRow
-} from '../admiral/AdmiralLines';
 import { useElementWidth } from '../../hooks/use-element-width';
 
 /**
@@ -211,24 +201,10 @@ export function AgentThread({
   schedules,
   schedulesInPanel,
   background,
-  backgroundInPanel,
-  variant = 'agent',
-  empty,
-  placeholder
+  backgroundInPanel
 }: {
   paneId: string;
   cwd: string;
-  /**
-   * An Admiral's conversation rather than an Agent pane's: no tool mode,
-   * orchestrator or folder controls, `/clear` starts only this conversation
-   * over, and a message sent while a turn runs is queued for it instead of
-   * refused.
-   */
-  variant?: 'agent' | 'admiral';
-  /** What an empty conversation shows instead of the Agent pane's watermark. */
-  empty?: React.ReactNode;
-  /** The composer's prompt when it is free to type in. */
-  placeholder?: string;
   /**
    * Whether the pane is showing the task list in its own column. When it is
    * not, the list still has to be somewhere, and the status line is where the
@@ -261,10 +237,7 @@ export function AgentThread({
   const catalog = useAgentStore((s) => s.catalog);
   const agent = useSettingsStore((s) => s.settings?.ai.agent ?? null);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
-  // An Admiral may run on a model of its own.
-  const model =
-    useSettingsStore((s) => (s.settings ? threadModelId(paneId, s.settings) : '')) || null;
-  const admiral = variant === 'admiral';
+  const model = agent?.coding.model ?? null;
   const modelCard = catalog?.models.find((m) => m.id === model) ?? null;
 
   const decidePermission = useAgentStore((s) => s.decidePermission);
@@ -316,7 +289,7 @@ export function AgentThread({
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       {messages.length === 0 ? (
-        (empty ?? <EmptyState scratch={isScratchDir(cwd)} paneId={paneId} />)
+        <EmptyState scratch={isScratchDir(cwd)} paneId={paneId} />
       ) : (
         <Transcript
           messages={messages}
@@ -428,27 +401,20 @@ export function AgentThread({
           blind={modelCard !== null && !modelCard.inputImage}
           onSend={(text, attachments) => send(paneId, cwd, text, attachments)}
           onStop={() => cancel(paneId)}
-          // An Admiral thread's new session comes from main; the store routes it there.
-          onClear={async () => startNewSession(paneId, cwd)}
+          onClear={() => startNewSession(paneId, cwd)}
           branch={gitHead?.branch ?? null}
-          admiral={admiral}
-          placeholder={placeholder}
         />
 
-        {admiral ? (
-          <div className="h-2.5" />
-        ) : (
-          <AgentLocation
-            cwd={cwd}
-            head={gitHead}
-            label={isScratchDir(cwd) ? 'Scratch' : undefined}
-            onMove={
-              thread && canRelocate(thread)
-                ? (folderPath, worktree) => relocate(paneId, folderPath, worktree)
-                : undefined
-            }
-          />
-        )}
+        <AgentLocation
+          cwd={cwd}
+          head={gitHead}
+          label={isScratchDir(cwd) ? 'Scratch' : undefined}
+          onMove={
+            thread && canRelocate(thread)
+              ? (folderPath, worktree) => relocate(paneId, folderPath, worktree)
+              : undefined
+          }
+        />
       </div>
     </div>
   );
@@ -548,10 +514,7 @@ function Transcript({
   // Whether the reader is parked at the tail. Written only from actual scrolls,
   // so when the content grows it still says where they were before it did.
   const parked = useRef(true);
-  // The message being written: the last one, unless the client has queued
-  // messages for an Admiral behind it while it runs.
-  const live = streaming ? messages.findLastIndex((m) => m.meta?.kind !== 'queued') : -1;
-  const last = live === -1 ? messages.at(-1) : messages[live];
+  const last = messages.at(-1);
   // Which results the next request will leave out. Worked out from the same
   // transcript and by the same function main uses, so a row that says it was
   // cleared is one the model is genuinely no longer being told about.
@@ -617,7 +580,7 @@ function Transcript({
           <Message
             key={message.id}
             message={message}
-            streaming={i === live}
+            streaming={streaming && i === messages.length - 1}
             ask={ask}
             onDecide={onDecide}
             imagePartials={imagePartials}
@@ -869,14 +832,7 @@ const Message = memo(function Message({
   // conversation, and drawn as either one it would read as somebody having said
   // something nobody said.
   if (message.role === 'scheduled') return <AgentScheduleFire text={messageText(message)} />;
-  if (message.meta?.kind === 'job-link') return <JobLinkLine message={message} />;
-  if (message.role === 'fleet' && message.meta?.kind === 'event') {
-    return <AdmiralEventLine message={message} />;
-  }
   if (message.role === 'fleet') return <AgentFleetDigest text={messageText(message)} />;
-  if (message.role === 'user' && message.meta?.kind === 'queued') {
-    return <QueuedMessage message={message} />;
-  }
   if (message.role === 'user') {
     const text = messageText(message);
     return (
@@ -923,22 +879,14 @@ const Message = memo(function Message({
         />
       )}
       {/* In the order the turn happened: what it said, what it looked at, and
-          what it said about what it found, with a run of the same lookup, or of
-          the Admiral waiting on and allowing its crew, folded into one row. Keyed by position because that is what a part is - text
+          what it said about what it found, with a run of the same lookup folded
+          into one row. Keyed by position because that is what a part is - text
           parts have no id, and two of them are only distinguishable by where
           they fall; a folded run takes the position of the first call in it. */}
       {groupParts(message.parts, ask?.callId ?? null).map((item) => {
         if (item.kind === 'run') {
           return (
-            <AgentToolGroup
-              key={item.key}
-              name={item.name}
-              calls={item.calls}
-              cleared={cleared}
-              row={(call) =>
-                call.name === 'permission_answer' ? <PermissionAnswerRow call={call} /> : null
-              }
-            />
+            <AgentToolGroup key={item.key} name={item.name} calls={item.calls} cleared={cleared} />
           );
         }
         const { part, key: i } = item;
@@ -968,18 +916,6 @@ const Message = memo(function Message({
         if (ask?.callId === part.call.id) {
           return <AgentPermissionRow key={i} ask={ask} onDecide={onDecide} />;
         }
-        // The Admiral's questions and plans are decided where they went up, as their cards.
-        if (part.call.name === 'ask_client' || part.call.name === 'client_file_propose') {
-          return <AskClientRow key={i} call={part.call} />;
-        }
-        if (part.call.name === 'job_plan') return <JobPlanRow key={i} call={part.call} />;
-        if (part.call.name === 'job_deliver') return <JobDeliverRow key={i} call={part.call} />;
-        if (part.call.name === 'permission_answer') {
-          return <PermissionAnswerRow key={i} call={part.call} />;
-        }
-        if (part.call.name === 'settings_change') {
-          return <SettingsChangeRow key={i} call={part.call} />;
-        }
         // A subagent is a conversation rather than a call, and gets a card.
         if (part.call.name === 'task' && part.call.task !== null) {
           return (
@@ -1007,28 +943,6 @@ const Message = memo(function Message({
     </div>
   );
 });
-
-/**
- * A message the client sent to an Admiral while its turn ran, not yet taken
- * in. Drawn as their bubble, dimmed, so it reads as said but not yet heard.
- */
-function QueuedMessage({ message }: { message: AgentMessage }): React.JSX.Element {
-  const text = messageText(message);
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <AgentMessageAttachments attachments={messageAttachments(message)} />
-      {text !== '' && (
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-fleet-glass-surface-2 px-3.5 py-2 text-sm text-fleet-text opacity-60 backdrop-blur-md">
-          {text}
-        </div>
-      )}
-      <span className="flex items-center gap-1 pr-1 text-[11px] text-fleet-text-subtle">
-        <Clock size={11} className="shrink-0" />
-        Queued for the Admiral
-      </span>
-    </div>
-  );
-}
 
 /**
  * The model's reasoning: open while it is thinking, folded away to a single
@@ -1135,9 +1049,6 @@ function Notice({ children }: { children: React.ReactNode }): React.JSX.Element 
   );
 }
 
-/** What each pane's composer held when it last unmounted, by pane id. */
-const drafts = new Map<string, string>();
-
 function Composer({
   paneId,
   disabled,
@@ -1153,14 +1064,8 @@ function Composer({
   onSend,
   onStop,
   onClear,
-  branch,
-  admiral = false,
-  placeholder
+  branch
 }: {
-  /** An Admiral's composer: no per-message controls, and sending mid-turn queues. */
-  admiral?: boolean;
-  /** What the box says when it is free to type in. */
-  placeholder?: string;
   disabled: boolean;
   streaming: boolean;
   /** Stopped on a question, which is the one thing typing here cannot answer. */
@@ -1188,14 +1093,9 @@ function Composer({
   onSend: (text: string, attachments: AgentAttachment[]) => void;
   onStop: () => void;
   /** Start a new session. Resolves whether the pane is on one. */
-  onClear: () => Promise<boolean>;
+  onClear: () => boolean;
 }): React.JSX.Element {
-  const [text, setText] = useState(() => drafts.get(paneId) ?? '');
-  // Kept past an unmount: an Admiral remounts its composer on every job tab switch.
-  useEffect(() => {
-    if (text === '') drafts.delete(paneId);
-    else drafts.set(paneId, text);
-  }, [paneId, text]);
+  const [text, setText] = useState('');
   const [refused, setRefused] = useState(false);
   /** The last `/clear` did not start a new session. */
   const [clearFailed, setClearFailed] = useState(false);
@@ -1447,19 +1347,16 @@ function Composer({
     // the fresh one.
     droppedRef.current = true;
     setClearFailed(false);
-    // Emptied only once the new session is there: an Admiral's comes from main,
-    // which can refuse it, and then the box keeps what was in it.
-    void onClear().then((cleared) => {
-      if (!cleared) {
-        setClearFailed(true);
-        return;
-      }
-      setText('');
-      // The chips go too. They were filed under the session being left behind,
-      // and deleting that session would delete the files out from under them.
-      setAttachments([]);
-      setAttachError(null);
-    });
+    // Emptied only once the new session is there. Refused, the box keeps what was in it.
+    if (!onClear()) {
+      setClearFailed(true);
+      return;
+    }
+    setText('');
+    // The chips go too. They were filed under the session being left behind,
+    // and deleting that session would delete the files out from under them.
+    setAttachments([]);
+    setAttachError(null);
   };
 
   /**
@@ -1562,8 +1459,7 @@ function Composer({
     // Not sent, and not thrown away either: the draft stays exactly where it
     // was typed. Silently doing nothing is what makes this feel like a message
     // that vanished, so it is worth a line saying what happened.
-    // An Admiral takes it in mid-turn instead, so it is sent as a queued one.
-    if (streaming && !admiral) {
+    if (streaming) {
       setRefused(true);
       return;
     }
@@ -1738,12 +1634,8 @@ function Composer({
           {/* Beside the paperclip rather than out on the right: both are about
               what this message will do, and the right-hand side of the box is
               where sending it lives. */}
-          {!admiral && (
-            <>
-              <ToolModePicker value={toolMode} disabled={disabled} onChange={onToolMode} />
-              <OrchestratorToggle paneId={paneId} disabled={disabled} />
-            </>
-          )}
+          <ToolModePicker value={toolMode} disabled={disabled} onChange={onToolMode} />
+          <OrchestratorToggle paneId={paneId} disabled={disabled} />
           <textarea
             ref={ref}
             rows={1}
@@ -1838,9 +1730,7 @@ function Composer({
             // is still worth sending after.
             placeholder={
               disabled
-                ? admiral
-                  ? 'Choose a model for the Admiral in Settings first'
-                  : 'Choose a coding model in Settings first'
+                ? 'Choose a coding model in Settings first'
                 : voice.state.phase === 'recording'
                   ? holding
                     ? 'Release to insert · move away to discard'
@@ -1849,9 +1739,9 @@ function Composer({
                     ? 'Transcribing…'
                     : asking
                       ? 'Press Enter to run it, or answer above'
-                      : (placeholder ?? 'Ask the agent…')
+                      : 'Ask the agent…'
             }
-            aria-label={admiral ? 'Message the Admiral' : 'Message the agent'}
+            aria-label="Message the agent"
             // The composer *is* the combobox while a menu is up: it keeps focus,
             // and points at the row the next Enter would take.
             role="combobox"
@@ -1862,9 +1752,7 @@ function Composer({
             }
             className="max-h-48 min-h-6 flex-1 resize-none bg-transparent px-1.5 py-1 text-sm text-fleet-text outline-none placeholder:text-fleet-text-subtle disabled:cursor-not-allowed"
           />
-          {/* An Admiral's composer sends mid-turn too, so it offers send while
-              there is something to send and stop otherwise. */}
-          {streaming && !(admiral && (text.trim() !== '' || attachments.length > 0)) ? (
+          {streaming ? (
             <button
               type="button"
               onClick={onStop}

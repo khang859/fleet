@@ -139,31 +139,6 @@ describe('fleet reads', () => {
     expect(out.text).toMatch(/<session-data session="all">[\s\S]*<\/session-data>$/);
   });
 
-  it("shows a starting pane's screen, fenced, from a host that keeps one", async () => {
-    const paneId = '99887766-0000-4000-8000-000000000000';
-    const spawn = { ref: '99887766', paneId, label: 'j1 › builder 1', cwd: '/work', at: NOW };
-    const withScreen: FleetHost = {
-      ...host(),
-      starting: () => [spawn],
-      screen: async (id) => Promise.resolve(id === paneId ? 'Log in to Claude Code' : null)
-    };
-    const read = async (h: FleetHost) =>
-      createFleetCapability({ host: h, ledger, act: null }, THREAD, 'admiral', '/work').read(
-        { session: '99887766', level: 'brief' },
-        signal
-      );
-
-    const out = await read(withScreen);
-    expect(out.summary).toBe('screen');
-    expect(out.text).toContain('j1 › builder 1 has not reported a session yet');
-    expect(out.text).toContain(
-      '<session-data session="99887766">\nLog in to Claude Code\n</session-data>'
-    );
-    await expect(read({ ...withScreen, screen: undefined })).rejects.toThrow(
-      'No session has the ref'
-    );
-  });
-
   it('reads an eva session from its database, and says why when it cannot', async () => {
     const fixtures = join(__dirname, '../../../claude-sessions/__tests__/fixtures');
     const dbPath = join(dir, 'sessions.db');

@@ -21,15 +21,10 @@ export type PhaseInput = {
   toolInput?: Record<string, unknown>;
   toolUseId?: string;
   notificationType?: string;
-  /** The request is held for an answerer that takes it to the user its own way. */
-  delegated?: boolean;
   /** What Claude Code suggests allowing with a permission request. */
   suggestions?: PermissionSuggestion[];
   at: number;
 };
-
-/** A pending permission the user has to answer, in the pane or through Fleet. */
-const asksUser = (p: ClaudePendingPermission): boolean => p.delegated !== true;
 
 export const INITIAL_PHASE: PhaseState = {
   phase: 'starting',
@@ -110,7 +105,6 @@ function addRequest(
       toolUseId,
       tool: { toolName, toolInput: input.toolInput ?? {}, toolUseId: input.toolUseId },
       receivedAt: input.at,
-      ...(input.delegated === true && { delegated: true }),
       ...(input.suggestions?.length && { suggestions: input.suggestions })
     }
   ];
@@ -125,11 +119,7 @@ export function reducePhase(state: PhaseState, input: PhaseInput): PhaseState {
   const asksQuestion = asked === 'AskUserQuestion';
 
   if (asksQuestion) phase = 'waitingForInput';
-  else if (asked) {
-    pendingPermissions = addRequest(pendingPermissions, input, asked);
-    // The answerer brings it to the user, so the session is still working.
-    if (input.delegated === true) phase = 'processing';
-  }
+  else if (asked) pendingPermissions = addRequest(pendingPermissions, input, asked);
 
   if (TOOL_FINISHED.has(input.event) && input.toolUseId) {
     const answered = input.toolUseId;
@@ -137,7 +127,7 @@ export function reducePhase(state: PhaseState, input: PhaseInput): PhaseState {
   }
 
   // Work on a parallel tool does not answer the one blocked on approval.
-  if (phase === 'processing' && pendingPermissions.some(asksUser)) phase = 'waitingForApproval';
+  if (phase === 'processing' && pendingPermissions.length > 0) phase = 'waitingForApproval';
 
   if (!phase) {
     return pendingPermissions === state.pendingPermissions
@@ -160,7 +150,7 @@ export function resolvePermission(state: PhaseState, toolUseId: string): PhaseSt
   const pendingPermissions = state.pendingPermissions.filter((p) => p.toolUseId !== toolUseId);
   if (pendingPermissions.length === state.pendingPermissions.length) return state;
   const phase =
-    !pendingPermissions.some(asksUser) && state.phase === 'waitingForApproval'
+    pendingPermissions.length === 0 && state.phase === 'waitingForApproval'
       ? 'processing'
       : state.phase;
   return { ...state, phase, pendingPermissions };

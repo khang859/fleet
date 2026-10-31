@@ -41,24 +41,6 @@ import { writeSkillBody } from '../skills/write';
 import { runWebFetch } from './web-fetch';
 import { runWrite } from './write';
 import { fleetMember } from './fleet';
-import { agencyMember } from './agency';
-import {
-  AskClientArgs,
-  ClientFileProposeArgs,
-  CrewHireArgs,
-  CrewInterruptArgs,
-  CrewSendArgs,
-  CrewStopArgs,
-  PermissionAnswerArgs,
-  SettingsChangeArgs,
-  SettingsReadArgs,
-  JobDeliverArgs,
-  JobListArgs,
-  JobResultsArgs,
-  JobOpenArgs,
-  JobPlanArgs,
-  JobUpdateArgs
-} from '../../../shared/agency-tools';
 import {
   FleetDiffArgs,
   FleetPermissionArgs,
@@ -181,40 +163,6 @@ export async function runAgentTool(
       const run = fleetMember(ctx, name, 'permission');
       return run(checked(FleetPermissionArgs, args, name), ctx.signal, ctx.approveFleet);
     }
-    case 'ask_client':
-      return agencyMember(ctx, name, 'askClient')(checked(AskClientArgs, args, name));
-    case 'job_open':
-      return agencyMember(ctx, name, 'jobOpen')(checked(JobOpenArgs, args, name));
-    case 'job_list':
-      return agencyMember(ctx, name, 'jobList')(checked(JobListArgs, args, name));
-    case 'job_results':
-      return agencyMember(ctx, name, 'jobResults')(checked(JobResultsArgs, args, name));
-    case 'job_plan':
-      return agencyMember(ctx, name, 'jobPlan')(checked(JobPlanArgs, args, name));
-    case 'job_update':
-      return agencyMember(ctx, name, 'jobUpdate')(checked(JobUpdateArgs, args, name));
-    case 'job_deliver':
-      return agencyMember(ctx, name, 'jobDeliver')(checked(JobDeliverArgs, args, name));
-    case 'crew_hire':
-      return agencyMember(ctx, name, 'crewHire')(checked(CrewHireArgs, args, name));
-    case 'crew_send':
-      return agencyMember(ctx, name, 'crewSend')(checked(CrewSendArgs, args, name));
-    case 'crew_interrupt':
-      return agencyMember(ctx, name, 'crewInterrupt')(checked(CrewInterruptArgs, args, name));
-    case 'crew_stop':
-      return agencyMember(ctx, name, 'crewStop')(checked(CrewStopArgs, args, name));
-    case 'permission_answer':
-      return agencyMember(ctx, name, 'permissionAnswer')(checked(PermissionAnswerArgs, args, name));
-    case 'client_file_propose':
-      return agencyMember(
-        ctx,
-        name,
-        'clientFilePropose'
-      )(checked(ClientFileProposeArgs, args, name));
-    case 'settings_read':
-      return agencyMember(ctx, name, 'settingsRead')(checked(SettingsReadArgs, args, name));
-    case 'settings_change':
-      return agencyMember(ctx, name, 'settingsChange')(checked(SettingsChangeArgs, args, name));
     default:
       throw new Error(`There is no tool called ${name}`);
   }

@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FLEET_HOME, checkoutRoot } from '../shared/fleet-home';
 
-/** What a new sandbox starts with: settings and saved keys. Never jobs, panes or history. */
+/** What a new sandbox starts with: settings and saved keys. Never panes or history. */
 const SEED_FILES = [
   'fleet-settings.json',
   'fleet-chat-secrets.json',

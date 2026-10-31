@@ -8,7 +8,6 @@ import {
   History,
   SlidersHorizontal,
   Bot,
-  Compass,
   Server,
   MessageCirclePlus,
   MessageCircle
@@ -25,8 +24,7 @@ import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById,
-  isAdmiralTab
+  getPaneContextById
 } from './store/workspace-store';
 import { isScratchTab } from './lib/scratch';
 import { isFileTab } from './lib/tab-nesting';
@@ -47,7 +45,6 @@ import { injectLiveCwd } from './lib/workspace-utils';
 import { focusPane } from './lib/focus-pane';
 import { initClaudeSessionsListener } from './store/claude-sessions-store';
 import { initAgentFleet } from './store/agent-fleet';
-import { initAdmiralRuntime } from './store/admiral-runtime';
 import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
@@ -70,7 +67,6 @@ import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
-import { AdmiralCloseDialog } from './components/admiral/AdmiralCloseDialog';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
 import { useFleetSpawnTabs } from './hooks/use-fleet-spawn-tabs';
@@ -183,8 +179,6 @@ function MiniTabButton({
   let icon: React.ReactNode;
   if (isScratchTab(tab)) {
     icon = <MessageCircle size={16} className="text-violet-300" />;
-  } else if (isAdmiralTab(tab)) {
-    icon = <Compass size={16} className={tint} />;
   } else if (tab.type === 'agent') {
     icon = <Bot size={16} className={tint} />;
   } else if (tab.type === 'ssh-browser') {
@@ -381,11 +375,6 @@ export function App(): React.JSX.Element {
   // Wake orchestrator panes when the sessions they look after need them
   useEffect(() => {
     return initAgentFleet();
-  }, []);
-
-  // Look after every Admiral pane: its claim, its conversations, its wakeups
-  useEffect(() => {
-    return initAdmiralRuntime();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
@@ -1215,7 +1204,6 @@ export function App(): React.JSX.Element {
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <RemoteRcPromptManager />
       <QuitConfirmDialog />
-      <AdmiralCloseDialog />
       <WhatsNewDialog />
       <ToastContainer />
     </div>

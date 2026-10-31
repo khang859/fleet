@@ -49,16 +49,6 @@ const GROUPABLE = new Set(['read', 'glob', 'grep']);
  */
 const MIN_RUN = 3;
 
-/**
- * The run name for an Admiral watching its crew: each `fleet_wait`, and each
- * request it allowed when the wait came back for one. A busy crew makes a pair
- * of rows a minute, and what a reader wants from forty of them is that the work
- * went on and how much was allowed - the rows are one click away for the rest.
- * A denial and a request put to the client stay out, for the same reason a
- * failed call does: each is the row a reader needs to see.
- */
-export const CREW_RUN = 'crew';
-
 /** The transcript as it is drawn: parts as they came, with the runs folded. */
 export type TranscriptItem =
   | { kind: 'part'; part: AgentPart; key: number }
@@ -151,14 +141,8 @@ function groupableName(part: AgentPart, askCallId: string | null): string | null
   if (part.type !== 'tool') return null;
   if (part.call.error !== null) return null;
   if (part.call.id === askCallId) return null;
-  if (isCrewWatch(part.call)) return CREW_RUN;
   if (!GROUPABLE.has(part.call.name)) return null;
   return part.call.name;
-}
-
-function isCrewWatch(call: AgentToolCall): boolean {
-  if (call.name === 'fleet_wait') return true;
-  return call.name === 'permission_answer' && call.summary?.startsWith('allowed ') === true;
 }
 
 /** Whether a folded run is still going. Only its last call can be. */
@@ -189,20 +173,6 @@ const RUNNING_VERB: Record<string, string> = {
 };
 const NOUN: Record<string, string> = { read: 'file', glob: 'pattern', grep: 'pattern' };
 
-/**
- * What a crew run says: how many requests the Admiral allowed, since the waits
- * between them are only how it got to each one. While a wait is still out, it
- * says so first, as the one part of the row that is still changing.
- */
-export function crewRunLabel(calls: AgentToolCall[]): string {
-  const allowed = calls.filter((c) => c.name === 'permission_answer').length;
-  if (runRunning(calls)) {
-    return allowed === 0 ? 'Waiting on the crew' : `Waiting on the crew · ${allowed} allowed`;
-  }
-  if (allowed === 0) return `Waited on the crew ${calls.length} times`;
-  return `Allowed ${allowed} crew ${allowed === 1 ? 'request' : 'requests'}`;
-}
-
 /** How many of a run's targets the folded row names before it gives a count. */
 const PREVIEW = 2;
 
@@ -222,7 +192,6 @@ const PREVIEW = 2;
 export function runPreview(name: string, calls: AgentToolCall[]): string {
   // Who was waited on and which request was allowed is in the rows; a preview
   // of session ids would say nothing a reader can use.
-  if (name === CREW_RUN) return '';
   if (runRunning(calls)) return target(name, calls[calls.length - 1]);
   const shown = calls.slice(0, PREVIEW).map((call) => target(name, call));
   const rest = calls.length - shown.length;

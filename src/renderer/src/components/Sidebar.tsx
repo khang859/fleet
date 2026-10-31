@@ -8,7 +8,6 @@ import {
   ImageIcon,
   ChevronRight,
   Bot,
-  Compass,
   MessageCircle,
   SlidersHorizontal,
   Server,
@@ -25,10 +24,8 @@ import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById,
-  isAdmiralTab
+  getPaneContextById
 } from '../store/workspace-store';
-import { openAdmiralHere } from '../lib/open-admiral';
 import { useWorkspaceListStore } from '../store/workspace-list-store';
 import { CreateWorkspaceDialog } from './workspace/CreateWorkspaceDialog';
 import { CreateWorktreeDialog, type WorktreeTarget } from './workspace/CreateWorktreeDialog';
@@ -82,10 +79,10 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
   return find(tab.splitRoot);
 }
 
-/** An agent tab's glyph: a scratch chat, an Admiral, or any other agent. */
+/** An agent tab's glyph: a scratch chat, or any other agent. */
 function agentTabIcon(tab: Tab): React.JSX.Element {
   if (isScratchTab(tab)) return <MessageCircle size={14} className="text-violet-300" />;
-  return isAdmiralTab(tab) ? <Compass size={14} /> : <Bot size={14} />;
+  return <Bot size={14} />;
 }
 
 const AUTO_SAVE_DEBOUNCE_MS = 500;
@@ -539,7 +536,6 @@ export function Sidebar({
 
   // --- Drag-and-drop state ---
   const toolSettings = useSettingsStore((s) => s.settings?.tools);
-  const agencyEnabled = useSettingsStore((s) => s.settings?.agency.enabled === true);
   const enabledToolCount = toolSettings
     ? TOGGLEABLE_TOOLS.filter((t) => toolSettings[t.type]).length
     : 0;
@@ -1584,20 +1580,6 @@ export function Sidebar({
           >
             +
           </button>
-          {agencyEnabled && (
-            <button
-              type="button"
-              className="text-fleet-text-subtle hover:text-fleet-text px-1 py-0.5 rounded hover:bg-fleet-surface-2 transition active:scale-90"
-              onClick={() => {
-                expandSection('agents');
-                void openAdmiralHere();
-              }}
-              title="Open Admiral for this repository"
-              aria-label="Open Admiral"
-            >
-              <Compass size={12} />
-            </button>
-          )}
         </SectionHeader>
         {!agentsCollapsed && agentRows.length > 0 && (
           <>

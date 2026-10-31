@@ -55,16 +55,16 @@ describe('WorktreeService start point', () => {
     const service = new WorktreeService();
     const pin = commit('a.txt');
 
-    const first = await service.create(repo, undefined, 'admiral/1/builder-1', pin);
+    const first = await service.create(repo, undefined, 'agent/1/builder-1', pin);
     // The client moves on in between: main advances and HEAD is on another branch.
     commit('b.txt');
     git(repo, 'checkout', '-q', '-b', 'elsewhere');
     commit('c.txt');
-    const second = await service.create(repo, undefined, 'admiral/1/builder-2', pin);
+    const second = await service.create(repo, undefined, 'agent/1/builder-2', pin);
 
     expect(git(first.worktreePath, 'rev-parse', 'HEAD')).toBe(pin);
     expect(git(second.worktreePath, 'rev-parse', 'HEAD')).toBe(pin);
-    expect(git(second.worktreePath, 'branch', '--show-current')).toBe('admiral/1/builder-2');
+    expect(git(second.worktreePath, 'branch', '--show-current')).toBe('agent/1/builder-2');
   });
 
   it('refuses a start point that is not a commit and makes nothing', async () => {
@@ -72,10 +72,10 @@ describe('WorktreeService start point', () => {
     commit('a.txt');
 
     await expect(
-      service.create(repo, undefined, 'admiral/1/builder-1', 'f'.repeat(40))
+      service.create(repo, undefined, 'agent/1/builder-1', 'f'.repeat(40))
     ).rejects.toThrow();
-    expect(existsSync(join(dir, '.fleet', 'worktrees', 'app', 'admiral-1-builder-1'))).toBe(false);
-    expect(git(repo, 'branch', '--list', 'admiral/*')).toBe('');
+    expect(existsSync(join(dir, '.fleet', 'worktrees', 'app', 'agent-1-builder-1'))).toBe(false);
+    expect(git(repo, 'branch', '--list', 'agent/*')).toBe('');
   });
 
   it('starts from the main checkout HEAD without a start point', async () => {

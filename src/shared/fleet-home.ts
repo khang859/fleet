@@ -47,7 +47,7 @@ const DEV_ID = IS_FLEET_DEV ? checkoutId(checkoutRoot()) : '';
 /**
  * Where this Fleet keeps its state. The installed app uses `~/.fleet`; a dev
  * build gets its own folder per checkout, so it never touches the installed
- * app's jobs, panes or sockets, nor another worktree's dev app.
+ * app's panes or sockets, nor another worktree's dev app.
  */
 export const FLEET_HOME = DEV_ID ? join(RELEASE_FLEET_HOME, 'dev', DEV_ID) : RELEASE_FLEET_HOME;
 

@@ -12,19 +12,17 @@ const URGENCY: Record<string, number> = {
   needs_me: 0,
   working: 1,
   subagent: 2,
-  job: 3,
-  background: 4
+  background: 3
 };
 
 function rankOf(item: QuitWorkItem): number {
-  return URGENCY[item.state ?? item.kind] ?? 5;
+  return URGENCY[item.state ?? item.kind] ?? 4;
 }
 
 const KIND_NOTE: Record<QuitWorkItem['kind'], string> = {
   pane: '',
   subagent: 'subagent',
-  background: 'background',
-  job: 'Admiral job'
+  background: 'background'
 };
 
 /**

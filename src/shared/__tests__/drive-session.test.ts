@@ -27,9 +27,8 @@ describe('deriveDebugPort', () => {
 });
 
 describe('deriveRendererPort', () => {
-  it('is the port after the checkout debug port, below the crew port blocks', () => {
+  it('is the port after the checkout debug port', () => {
     expect(deriveRendererPort('/wt/one')).toBe(deriveDebugPort('/wt/one') + 1);
-    expect(deriveRendererPort('/wt/one')).toBeLessThan(41000);
   });
 });
 

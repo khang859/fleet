@@ -169,79 +169,13 @@ describe('SettingsStore settings merge', () => {
     expect(teleprompter.fontSize).toBe(40);
   });
 
-  it('turns Admiral on with its default spending limits, including for an older file', () => {
-    store.set({ annotate: { retentionDays: 5 } });
-    expect(store.get().agency).toEqual({
-      enabled: true,
-      admiral: {
-        model: '',
-        defaultBudgetUsd: 10,
-        defaultBudgetWeekPct: 10,
-        monthlyCapUsd: 100,
-        reserveFiveHourPct: 80,
-        reserveSevenDayPct: 90,
-        nudgeLimit: 3,
-        turnLimit: 20,
-        permissionExpirySec: 180
-      },
-      crew: {
-        claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
-        eva: { atOnce: null, defaultModel: '', permissionMode: 'default' }
-      }
-    });
-  });
-
-  it('keeps the other Admiral settings when one is changed', () => {
-    store.set({ agency: { enabled: false } });
-    store.set({ agency: { admiral: { model: 'openrouter:some/model' } } });
-    store.set({ agency: { admiral: { monthlyCapUsd: 250 } } });
-    expect(store.get().agency).toEqual({
-      enabled: false,
-      admiral: {
-        model: 'openrouter:some/model',
-        defaultBudgetUsd: 10,
-        defaultBudgetWeekPct: 10,
-        monthlyCapUsd: 250,
-        reserveFiveHourPct: 80,
-        reserveSevenDayPct: 90,
-        nudgeLimit: 3,
-        turnLimit: 20,
-        permissionExpirySec: 180
-      },
-      crew: {
-        claude: { atOnce: null, defaultModel: '', permissionMode: 'default' },
-        eva: { atOnce: null, defaultModel: '', permissionMode: 'default' }
-      }
-    });
-  });
-
-  it("keeps each runtime's crew settings when one is changed", () => {
-    store.set({ agency: { crew: { eva: { atOnce: 6 } } } });
-    store.set({ agency: { crew: { eva: { defaultModel: 'qwen/qwen3-coder' } } } });
-    store.set({ agency: { crew: { claude: { atOnce: 1 } } } });
-    expect(store.get().agency.crew).toEqual({
-      claude: { atOnce: 1, defaultModel: '', permissionMode: 'default' },
-      eva: { atOnce: 6, defaultModel: 'qwen/qwen3-coder', permissionMode: 'default' }
-    });
-    store.set({ agency: { crew: { claude: { permissionMode: 'auto' } } } });
-    store.set({ agency: { crew: { claude: { atOnce: 2 } } } });
-    expect(store.get().agency.crew.claude).toEqual({
-      atOnce: 2,
-      defaultModel: '',
-      permissionMode: 'auto'
-    });
-  });
-
-  it('reads crew settings saved before permission modes as default', () => {
+  it('drops what an older Fleet saved for the Admiral, and keeps the rest', () => {
     const file = (store as unknown as { store: { set: (key: string, value: unknown) => void } })
       .store;
-    file.set('settings', {
-      agency: { crew: { claude: { atOnce: 2, defaultModel: 'opus' }, eva: { atOnce: 3 } } }
-    });
-    expect(store.get().agency.crew).toEqual({
-      claude: { atOnce: 2, defaultModel: 'opus', permissionMode: 'default' },
-      eva: { atOnce: 3, defaultModel: '', permissionMode: 'default' }
-    });
+    file.set('settings', { agency: { enabled: true }, annotate: { retentionDays: 5 } });
+    store.dropAgency();
+    expect(store.get()).not.toHaveProperty('agency');
+    expect(store.get().annotate.retentionDays).toBe(5);
   });
 });
 

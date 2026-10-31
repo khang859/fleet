@@ -47,19 +47,6 @@ describe('PaneGrid leaf dispatch (#469)', () => {
     expect(ptyCreate).not.toHaveBeenCalled();
   });
 
-  it('renders an admiral leaf as its own pane, never a terminal or an unsupported pane', () => {
-    const html = render(
-      leaf('admiral', {
-        admiralRepo: { repoId: '0123456789abcdef', root: '/home/repo', name: 'repo' },
-        admiralSessions: { lobby: 'lobby-1', jobs: {} },
-        admiralActiveJob: null
-      })
-    );
-    expect(html).not.toContain('This pane can&#x27;t be shown');
-    expect(terminalPane).not.toHaveBeenCalled();
-    expect(ptyCreate).not.toHaveBeenCalled();
-  });
-
   it('keeps the terminal beside an unknown pane in a split', () => {
     const html = render({
       type: 'split',

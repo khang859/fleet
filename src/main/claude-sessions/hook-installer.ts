@@ -173,36 +173,6 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
   };
 }
 
-/**
- * The hook entries an install writes in a config folder, word for word. A
- * crew job's `--settings` file repeats them: Claude Code runs one identical
- * command once, so a member whose global install is in place reports each
- * event once, and one whose install is missing still reports.
- */
-export function fleetHookEntries(configDir?: string): Record<string, HookEntry[]> {
-  return buildHookEntries(fleetHookCommand(configDir));
-}
-
-/** The command that runs the hook binary installed in a config folder. */
-export function fleetHookCommand(configDir?: string): string {
-  return quoteHookCommand(resolvePaths(configDir).hookDest, process.platform);
-}
-
-/**
- * Whether the hook binary in a config folder is the one this Fleet ships,
- * so it speaks the current protocol. The install refreshes it at start.
- * A dev build never installs: the installed hook hands a dev pane off to the
- * checkout's own build, so there it only has to be installed.
- */
-export function hookBinaryCurrent(configDir?: string, dev: boolean = IS_FLEET_DEV): boolean {
-  const { hookDest } = resolvePaths(configDir);
-  const source = getHookBinarySourcePath();
-  if (!existsSync(hookDest) || !existsSync(source)) return false;
-  if (dev) return isInstalled(configDir);
-
-  return readFileSync(hookDest).equals(readFileSync(source));
-}
-
 export function getHookBinarySourcePath(): string {
   // Dev: hooks/bin/<binary>
   const devPath = join(process.cwd(), 'hooks', 'bin', HOOK_BINARY_NAME);

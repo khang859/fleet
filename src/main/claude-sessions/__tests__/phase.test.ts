@@ -124,18 +124,6 @@ describe('reducePhase', () => {
     ).toBe('processing');
   });
 
-  it('keeps working on a request held for an answerer that takes it to the user', () => {
-    const delegated = { ...bash('tu-1'), delegated: true };
-    const state = run(input('UserPromptSubmit', 'processing'), delegated);
-    expect(state.phase).toBe('processing');
-    expect(state.pendingPermissions).toMatchObject([{ toolUseId: 'tu-1', delegated: true }]);
-    // One the user has to answer still makes the session wait.
-    expect(reducePhase(state, bash('tu-2')).phase).toBe('waitingForApproval');
-    expect(reducePhase(state, input('PreToolUse', 'running_tool', { tool: 'Read' })).phase).toBe(
-      'processing'
-    );
-  });
-
   it('clears leftover permissions at a turn boundary', () => {
     expect(run(bash('tu-1'), input('Stop', 'waiting_for_input')).pendingPermissions).toEqual([]);
   });
@@ -166,12 +154,6 @@ describe('resolvePermission', () => {
       phase: 'waitingForInput',
       waitingKind: 'prompt'
     });
-  });
-
-  it('goes back to processing when only delegated requests are left', () => {
-    const state = run(bash('tu-1'), { ...bash('tu-2'), delegated: true });
-    expect(state.phase).toBe('waitingForApproval');
-    expect(resolvePermission(state, 'tu-1').phase).toBe('processing');
   });
 
   it('returns the same state for an unknown id', () => {

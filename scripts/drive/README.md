@@ -145,9 +145,8 @@ npm run drive -- eval "(async () => { el.dispatchEvent(ev); await new Promise(r 
 ## Notes
 
 - Each checkout uses a stable per-checkout debug port (override: `FLEET_DEBUG_PORT`) and the renderer port after it.
-  Both sit below the 41000+ range that agency jobs hand out as crew ports.
 - Each checkout's dev app keeps all of its state in its own sandbox, `~/.fleet/dev/<id>/` (the `checkout` file in it names the checkout).
-  That holds its settings, saved panes, `agency.db`, sockets, logs and `fleet` CLI.
+  That holds its settings, saved panes, sockets, logs and `fleet` CLI.
   A new sandbox copies the installed app's settings and API keys once, and nothing else.
   So parallel dev worktrees, and the installed app, do not collide.
   Delete a sandbox folder to start that checkout fresh.

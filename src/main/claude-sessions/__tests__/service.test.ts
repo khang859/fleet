@@ -207,100 +207,12 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     });
   });
 
-  it('does not make a session wait for approval on a request an answerer delegates', async () => {
-    await service.start();
-    let crew = true;
-    service.addPermissionAnswerer((request) => crew && request.paneId === 'pane-1', {
-      delegates: true
-    });
-    service.addPermissionAnswerer();
-    void send(socketPath, permission('tu-1'));
-    await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
-    expect(service.registry.get('s1')).toMatchObject({
-      phase: 'processing',
-      pendingPermissions: [{ toolUseId: 'tu-1', delegated: true }]
-    });
-
-    // One only the other answerer takes waits on the user as before.
-    crew = false;
-    void send(socketPath, permission('tu-2'));
-    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
-    expect(service.registry.get('s1')?.phase).toBe('waitingForApproval');
-    service.respondToPermission('tu-2', 'allow');
-    expect(service.registry.get('s1')?.phase).toBe('processing');
-  });
-
-  it('releases a permission request at once when nothing can answer it', async () => {
-    await service.start();
-    // Resolves only because the service closed the connection unanswered.
-    expect(await send(socketPath, permission('tu-1'))).toBe('');
-    expect(service.broker.has('tu-1')).toBe(false);
-    // Still recorded: Claude Code is asking in the terminal instead.
-    expect(service.registry.get('s1')?.phase).toBe('waitingForApproval');
-  });
-
-  it('holds a request only while an answerer says it can answer', async () => {
-    await service.start();
-    let can = false;
-    service.addPermissionAnswerer(() => can);
-    expect(await send(socketPath, permission('tu-1'))).toBe('');
-    expect(service.broker.has('tu-1')).toBe(false);
-
-    can = true;
-    void send(socketPath, permission('tu-2'));
-    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
-  });
-
-  it('lets go of held requests when the last answerer leaves', async () => {
-    await service.start();
-    const first = service.addPermissionAnswerer();
-    const second = service.addPermissionAnswerer();
-    const reply = send(socketPath, permission('tu-1'));
-    await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
-
-    first();
-    first();
-    expect(service.broker.has('tu-1')).toBe(true);
-    second();
-    expect(await reply).toBe('');
-    expect(service.broker.has('tu-1')).toBe(false);
-  });
-
-  it('lets go of held requests when the answerers left cannot answer', async () => {
-    await service.start();
-    let can = true;
-    service.addPermissionAnswerer(() => can);
-    const copilot = service.addPermissionAnswerer();
-    const reply = send(socketPath, permission('tu-1'));
-    await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
-
-    service.releaseUnanswerable();
-    expect(service.broker.has('tu-1')).toBe(true);
-    can = false;
-    service.releaseUnanswerable();
-    expect(service.broker.has('tu-1')).toBe(true);
-    copilot();
-    expect(await reply).toBe('');
-    expect(service.broker.has('tu-1')).toBe(false);
-
-    can = true;
-    const second = send(socketPath, permission('tu-2'));
-    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
-    can = false;
-    service.releaseUnanswerable();
-    expect(await second).toBe('');
-  });
-
-  it('asks an answerer with the pane, and tells listeners what it held and how it ended', async () => {
+  it('asks an answerer with the pane, and keeps a request another answerer can answer', async () => {
     await service.start();
     const asked: unknown[] = [];
     service.addPermissionAnswerer((request) => {
       asked.push(request);
       return true;
-    });
-    const events: Array<{ kind: string; answer?: unknown }> = [];
-    const stop = service.onPermission((e) => {
-      events.push(e.kind === 'held' ? { kind: e.kind } : { kind: e.kind, answer: e.answer });
     });
 
     const reply = send(socketPath, permission('tu-1'));
@@ -308,22 +220,15 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     expect(asked).toEqual([{ sessionId: 's1', paneId: 'pane-1', toolUseId: 'tu-1' }]);
     service.respondToPermission('tu-1', 'deny', 'not in the plan');
     await reply;
-    expect(events).toEqual([
-      { kind: 'held' },
-      { kind: 'released', answer: { decision: 'deny', reason: 'not in the plan' } }
-    ]);
 
     const second = send(socketPath, permission('tu-2'));
     await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
-    stop();
     service.addPermissionAnswerer(() => false);
-    events.length = 0;
     // Still answerable by the first answerer, so it stays held.
     service.releaseUnanswerable();
     expect(service.broker.has('tu-2')).toBe(true);
     service.broker.letGo('tu-2');
     expect(await second).toBe('');
-    expect(events).toEqual([]);
   });
 
   it('answers nothing for a question dialog, which the hook does not wait on', async () => {

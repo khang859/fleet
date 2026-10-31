@@ -122,7 +122,7 @@ describe('PromptInput', () => {
 
   it('pastes the prompt into eva as one message, then submits it', async () => {
     current = session({ runtime: 'eva' });
-    const text = `[admiral] ${'Fix the login form. '.repeat(10)}\n- Keep it small.`;
+    const text = `[orchestrator] ${'Fix the login form. '.repeat(10)}\n- Keep it small.`;
     const result = await input.send('s1', text, 'orchestrator');
     expect(result).toEqual({ ok: true, confirmed: true, text });
     expect(writes).toEqual([`\x1b[200~${text}\x1b[201~`, '\r']);

@@ -6,8 +6,6 @@ export interface DriveSession {
   pid: number;
 }
 
-// Below the 41000+ range that agency jobs hand out as crew port blocks, so a
-// dev app started inside a job's worktree never takes a port a job owns.
 const PORT_BASE = 31000;
 const PORT_PAIRS = 4000;
 

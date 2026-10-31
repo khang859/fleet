@@ -137,7 +137,6 @@ beforeEach(async () => {
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
-      onQueuedTaken: listen(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       onTaskStart: listen(IPC_CHANNELS.AGENT_TASK_START),
@@ -277,7 +276,7 @@ describe('wakeups', () => {
     pullDigest.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
     setSessions(finished());
     await tick(2_000);
-    await agentStore.useAgentStore.getState().startNewSession(PANE, CWD);
+    agentStore.useAgentStore.getState().startNewSession(PANE, CWD);
     answer({ text: '- abcdef12 ended.', paused: false });
     await tick();
     expect(send).not.toHaveBeenCalled();

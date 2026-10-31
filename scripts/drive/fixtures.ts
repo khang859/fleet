@@ -328,117 +328,6 @@ const RELEASE_HISTORY = `(async () => {
              : \`; v\${version} is NOT in this build's changelog, so every row should be collapsed and none badged\`);
 })()`;
 
-/**
- * An Admiral with work under way: two jobs, questions open on the lobby and on
- * a job, and transcripts with the lines only an Admiral has.
- *
- * A job only exists once a model has opened one, and a question once the
- * Admiral has asked one, so a real run is the slow way to look at either. This
- * writes the agency mirror and the threads directly. Nothing is sent to main:
- * answering a card here is refused, which shows the refusal note. The next
- * agency change from main, or a reload, puts the real state back.
- */
-const ADMIRAL_WORK = `(() => {
-  const stores = __FLEET__.stores;
-  const panes = stores.admiralRuntime.getState().panes;
-  const paneId = Object.keys(panes).find((id) => panes[id].kind === 'ready');
-  if (paneId === undefined) return 'no Admiral attached - turn Agency on and open one first';
-  const repoId = Object.entries(stores.agency.getState().snapshots)[0]?.[0];
-  if (repoId === undefined) return 'the Admiral has no agency state yet';
-  const snap = stores.agency.getState().snapshots[repoId];
-
-  const now = Date.now();
-  const question = (id, jobId, extra) => ({
-    id, repoId, jobId, planVersion: null, step: null, kind: 'ask',
-    question: '', context: '', options: [], recommended: null, dependsOn: null,
-    status: 'open', answerOption: null, answerText: null, late: false,
-    withdrawnReason: null, createdAt: now, answeredAt: null, ...extra
-  });
-  const job = (id, extra) => ({
-    id, repoId, title: '', brief: '', state: 'briefing', sessionId: 'fixture-job-' + id,
-    handoffDone: true, budgetUsd: null, createdAt: now, updatedAt: now, ...extra
-  });
-  stores.agency.setState({
-    snapshots: {
-      ...stores.agency.getState().snapshots,
-      [repoId]: {
-        ...snap,
-        jobs: [
-          job(1, {
-            title: 'Fix tab drag onto itself',
-            brief: 'Dragging a tab onto its own drop zone removes it from the tab bar. It should snap back where it was, with no layout change.',
-            budgetUsd: 25
-          }),
-          job(2, { title: 'Speed up cold start', state: 'running', budgetUsd: 40 })
-        ],
-        questions: [
-          question(1, null, {
-            question: 'Which branch should new jobs start from?',
-            context: 'main is two commits behind origin/main.',
-            options: [{ label: 'origin/main', detail: 'fetch first' }, { label: 'main' }],
-            recommended: 0
-          }),
-          question(2, 1, {
-            question: 'Keep the drop animation?',
-            context: 'The fix is simpler if a self-drop skips the 150ms settle animation.',
-            options: [
-              { label: 'Skip it', detail: 'snap back at once' },
-              { label: 'Keep it' },
-              { label: 'Only on slow drags' }
-            ],
-            recommended: 0
-          }),
-          question(3, 1, {
-            question: 'Add an e2e test for split panes too?',
-            options: [{ label: 'Yes' }, { label: 'No' }],
-            recommended: 1,
-            status: 'withdrawn',
-            withdrawnReason: 'the existing split test already covers it'
-          }),
-          question(4, 2, {
-            kind: 'model_unreachable',
-            question: 'The Admiral cannot reach its model',
-            context: 'OpenRouter answered 401 Unauthorized four times. Check the key in an Agent pane\\'s Settings tab.',
-            options: [{ label: 'Retry' }],
-            recommended: 0
-          })
-        ]
-      }
-    }
-  });
-
-  const msg = (id, role, parts, meta) => ({
-    id, role, parts, reasoning: '', reasoningMs: 0, citations: [], createdAt: now,
-    ...(meta ? { meta } : {})
-  });
-  const text = (t) => [{ type: 'text', text: t }];
-  const agent = stores.agent;
-  const base = agent.getState().threads['admiral:' + paneId + ':lobby'];
-  const put = (key, messages) => {
-    agent.setState({
-      threads: { ...agent.getState().threads, [key]: { ...base, sessionId: 'fixture-' + key, messages } }
-    });
-  };
-  put('admiral:' + paneId + ':lobby', [
-    msg('l1', 'user', text('Dragging a tab onto itself makes it vanish. Can you get that fixed?')),
-    msg('l2', 'assistant', text('Yes. That is a contained fix, so I am opening a job for it and will plan it there.')),
-    msg('l3', 'fleet', text('j1: Fix tab drag onto itself - opened'), { kind: 'job-link', jobId: 1 })
-  ]);
-  put('admiral:' + paneId + ':j1', [
-    msg('j1', 'user', text('Dragging a tab onto itself makes it vanish. Can you get that fixed?')),
-    msg('j2', 'assistant', [
-      { type: 'text', text: 'I traced it to the drop handler, which removes the tab before checking where it lands. One thing to settle before I plan it:' },
-      { type: 'tool', call: {
-        id: 'c1', name: 'ask_client', args: JSON.stringify({ question: 'Keep the drop animation?' }),
-        result: 'q2 is up for the client.', error: null, summary: 'asked q2', image: null, todos: null, task: null
-      } }
-    ]),
-    msg('j3', 'fleet', text('Withdrew q3 · the existing split test already covers it\\n\\n<session-data session="q3">\\nAdd an e2e test for split panes too?\\n</session-data>'), { kind: 'event' })
-  ]);
-  stores.workspace.getState().setAdmiralActiveJob(paneId, 1);
-  return 'seeded j1 (open question, withdrawn question) and j2 (model unreachable), lobby q1; showing j1';
-})()`;
-
 export const FIXTURES: Record<string, Fixture> = {
   'agent-cleared-results': {
     describe:
@@ -474,11 +363,6 @@ export const FIXTURES: Record<string, Fixture> = {
     describe:
       'A staged update overtaken by a newer one whose download then fails, which deletes both installers. The pill should disappear rather than offer an install that would fail, and Settings should go back to offering Check for Updates.',
     source: UPDATE_SUPERSEDED
-  },
-  'admiral-work': {
-    describe:
-      'An Admiral with two job tabs, a question open on the lobby and on j1, a withdrawn question, and a model-unreachable card on j2. Shows j1: an ask_client card in the transcript, a withdrawal event line, and the sheet with WAITING ON YOU · 1. Needs Agency on and an Admiral open. Answers are refused, since main has no such questions.',
-    source: ADMIRAL_WORK
   }
 };
 

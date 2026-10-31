@@ -6,8 +6,6 @@ export type FleetEvent =
   | { type: 'pane-created'; paneId: string }
   | { type: 'pane-closed'; paneId: string }
   | { type: 'pty-exit'; paneId: string; exitCode: number }
-  /** What the user typed into a pane, as the renderer sent it. */
-  | { type: 'pane-input'; paneId: string; data: string }
   | {
       type: 'activity-state-change';
       paneId: string;

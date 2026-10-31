@@ -366,32 +366,12 @@ export async function readBriefDelta(
   return (await readBrief(host, cursors, session, 'last', cap)).text;
 }
 
-/**
- * A starting pane's screen, for a host that keeps one: its session has not
- * reported, so there is no transcript to read. Null when there is none.
- */
-async function readStartingScreen(host: FleetHost, ref: string): Promise<FleetToolOutput | null> {
-  const needle = ref.trim();
-  const spawn = host.starting().find((s) => s.ref === needle || s.paneId === needle);
-  const screen = spawn === undefined ? null : ((await host.screen?.(spawn.paneId)) ?? null);
-  if (spawn === undefined || screen === null) return null;
-  return {
-    text: [
-      `${spawn.label} has not reported a session yet, so this is what its pane shows now. You can read it, not type into it.`,
-      fence(spawn.ref, screen === '' ? '(blank screen)' : screen)
-    ].join('\n'),
-    summary: 'screen'
-  };
-}
-
 /** `fleet_read`. */
 export async function readSession(
   host: FleetHost,
   cursors: FleetCursors,
   args: FleetReadArgs
 ): Promise<FleetToolOutput> {
-  const screen = await readStartingScreen(host, args.session);
-  if (screen !== null) return screen;
   const session = resolveSession(host, args.session);
   const since = args.since ?? 'last';
   switch (args.level) {

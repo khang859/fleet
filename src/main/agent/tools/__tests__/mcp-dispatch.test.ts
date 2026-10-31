@@ -54,8 +54,7 @@ function ctx(output: McpToolOutput | null, threadId = randomUUID()): AgentToolCo
     findSkill: null,
     findMemory: null,
     schedule: null,
-    fleet: null,
-    agency: null
+    fleet: null
   };
 }
 

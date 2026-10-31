@@ -302,7 +302,6 @@ Manage files from the terminal.
 |---------|--------|
 | open | Open files, images, videos or audio in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
-| agency done | Report the end of your step, as an Admiral crew member. |
 
 ## Examples
 
@@ -369,33 +368,6 @@ screenshots. Results are written to a JSON file that agents can read.
 fleet annotate https://localhost:3000
 fleet annotate https://example.com --timeout 600
 fleet annotate
-\`\`\``,
-
-  agency: `# fleet agency done
-
-Report the end of your step to the Admiral, as a crew member in a Fleet pane.
-
-## When to use
-
-Run it once your step is done, when you are blocked, or when you need a decision.
-Ending a turn without it tells the Admiral you stopped early.
-
-## Usage
-
-  fleet agency done --summary <text> [--status done|blocked|question] [--deliver <path> ...]
-
-## Arguments
-
-  --summary   One line on what you did, why you are blocked, or your question.
-  --status    done (the default), blocked, or question.
-  --deliver   A file the step delivers. Repeat it for each file.
-
-## Examples
-
-\`\`\`bash
-fleet agency done --summary "Dark mode toggle built and tested"
-fleet agency done --status question --summary "Keep the old API? I recommend yes"
-fleet agency done --summary "Wrote the design" --deliver docs/design.md
 \`\`\``
 };
 
@@ -520,10 +492,6 @@ export async function runCLI(
     }
   }
 
-  if (group === 'agency') {
-    return agencyCommand(action, rest, sockPath, opts?.env ?? process.env);
-  }
-
   if (!group || !action) {
     return 'Usage: fleet <group> <action> [--key value ...]';
   }
@@ -615,49 +583,11 @@ export async function runCLI(
   return toStr(data);
 }
 
-// ── fleet agency done ────────────────────────────────────────────────────────
-
-const AGENCY_DONE_USAGE =
-  'Usage: fleet agency done --summary <text> [--status done|blocked|question] [--deliver <path> ...]';
-
-/**
- * A crew member's report of its step. The pane's own `FLEET_PANE_ID` names
- * the crew member, and Fleet checks it against the crew it hired. Deliverable
- * paths are made absolute here, where the crew member's folder is known.
- */
-async function agencyCommand(
-  action: string | undefined,
-  rest: string[],
-  sockPath: string,
-  env: NodeJS.ProcessEnv
-): Promise<string> {
-  if (action !== 'done') return AGENCY_DONE_USAGE;
-  const paneId = env.FLEET_PANE_ID;
-  if (paneId === undefined || paneId === '') {
-    return 'Error: fleet agency done works only in a Fleet crew pane (FLEET_PANE_ID is not set).';
-  }
-  const args = parseArgs(rest);
-  if (typeof args.summary !== 'string') {
-    return `Error: a report needs a --summary.\n${AGENCY_DONE_USAGE}`;
-  }
-  const deliver =
-    args.deliver === undefined ? [] : [args.deliver].flat().map((p) => resolve(toStr(p)));
-  const response = await new FleetCLI(sockPath).sendWithRetry('agency.done', {
-    paneId,
-    status: typeof args.status === 'string' ? args.status : 'done',
-    summary: args.summary,
-    deliver
-  });
-  if (!response.ok) return `Error: ${response.error ?? 'Unknown error'}`;
-  return toStr(response.data);
-}
-
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
 
 if (typeof process !== 'undefined' && /fleet-cli\.(mjs|[jt]s)$/.test(process.argv[1] ?? '')) {
   void runCLI(process.argv.slice(2), SOCKET_PATH, { retry: true }).then((output) => {
     if (output) process.stdout.write(output + '\n');
-    // A crew member's shell tool reads the exit code to tell a failed report from a sent one.
     if (output.startsWith('Error:')) process.exitCode = 1;
   });
 }

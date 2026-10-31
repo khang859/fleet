@@ -6,7 +6,6 @@ import { createLogger } from './logger';
 import { buildEnvSnapshot } from '../shared/shell-env-snapshot';
 import { claudeModEnv } from './claude-sessions/claude-mod';
 import { withFleetPaneEnv } from './fleet-pane-env';
-import { PaneScreen } from './pane-screen';
 import type { ShellProfile } from '../shared/shell-profiles';
 import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
 
@@ -38,9 +37,6 @@ export type PtyCreateOptions = {
   cols?: number;
   rows?: number;
   env?: Record<string, string | undefined>;
-  /** If true, the PTY exits when cmd finishes instead of falling back to a shell.
-   *  Used for crew PTYs where we need onExit to fire for cleanup. */
-  exitOnComplete?: boolean;
   /** For resolving per-workspace Claude config (e.g. CLAUDE_CONFIG_DIR). */
   workspaceId?: string;
   /** Optional resolved profile. When present, drives WSL arg construction. */
@@ -66,7 +62,6 @@ type PtyEntry = {
   exitDisposable: pty.IDisposable | null;
   snapshot: ShellEnvSnapshot | null;
   /** A copy of what the pane shows, for a pane `mirror` named. */
-  screen: PaneScreen | null;
 };
 
 const FLUSH_INTERVAL_MS = 16;
@@ -130,11 +125,7 @@ export class PtyManager {
   constructor(private readonly appVersion: string) {}
 
   private ptys = new Map<string, PtyEntry>();
-  /** PTYs that must not be killed by the renderer-driven GC. */
-  private protectedPtys = new Set<string>();
   private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
-  /** Panes whose screen is copied from the moment their PTY starts. */
-  private mirrored = new Set<string>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   create(opts: PtyCreateOptions): PtyCreateResult {
@@ -178,11 +169,7 @@ export class PtyManager {
     const args: string[] = [...baseArgs];
 
     if (opts.cmd) {
-      if (opts.exitOnComplete) {
-        args.push('-c', opts.cmd);
-      } else {
-        args.push('-c', `${opts.cmd}; exec ${shell}`);
-      }
+      args.push('-c', `${opts.cmd}; exec ${shell}`);
     }
 
     log.debug('spawning PTY', {
@@ -232,17 +219,13 @@ export class PtyManager {
         shellName: basename(shell),
         cwd: opts.cwd,
         spawnedAt: Date.now()
-      }),
-      screen: this.mirrored.has(opts.paneId)
-        ? new PaneScreen(opts.cols ?? 80, opts.rows ?? 24)
-        : null
+      })
     };
 
     // Register the internal buffering callback immediately at create time so
     // the IDisposable is captured and can be disposed during kill().
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
-      entry.screen?.write(data);
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
         log.debug('backpressure pause', {
           paneId: opts.paneId,
@@ -274,25 +257,7 @@ export class PtyManager {
     if (entry) {
       log.debug('resize', { paneId, cols, rows });
       entry.process.resize(cols, rows);
-      entry.screen?.resize(cols, rows);
     }
-  }
-
-  /**
-   * Copy what a pane shows from the moment its PTY starts, so `screen` can
-   * read it. Named before the pane opens, so its first screen is not missed.
-   */
-  mirror(paneId: string): void {
-    this.mirrored.add(paneId);
-  }
-
-  /** What a mirrored pane shows now, as text, or null for a pane not mirrored or gone. */
-  async screen(paneId: string): Promise<string | null> {
-    return (await this.ptys.get(paneId)?.screen?.text()) ?? null;
-  }
-
-  protect(paneId: string): void {
-    this.protectedPtys.add(paneId);
   }
 
   kill(paneId: string): void {
@@ -310,9 +275,6 @@ export class PtyManager {
   /** Drop a PTY that was killed or exited, and what was kept for it. */
   private forget(entry: PtyEntry): void {
     this.ptys.delete(entry.paneId);
-    this.protectedPtys.delete(entry.paneId);
-    this.mirrored.delete(entry.paneId);
-    entry.screen?.dispose();
     this.clearFlushTimerIfEmpty();
   }
 
@@ -360,11 +322,11 @@ export class PtyManager {
     return this.ptys.get(paneId)?.process.process;
   }
 
-  /** Kill any PTY whose paneId is not in the given set of active IDs (and not protected). */
+  /** Kill any PTY whose paneId is not in the given set of active IDs. */
   gc(activePaneIds: Set<string>): string[] {
     const killed: string[] = [];
     for (const paneId of this.ptys.keys()) {
-      if (!activePaneIds.has(paneId) && !this.protectedPtys.has(paneId)) {
+      if (!activePaneIds.has(paneId)) {
         this.kill(paneId);
         killed.push(paneId);
       }
