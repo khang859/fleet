@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.142.0
+
+- **Breaking: the Admiral is gone.**
+  Fleet no longer has the Admiral, crew, jobs, the Bridge, Settings > Agency or `fleet agency done`.
+  The copilot and the fleet-bridge mod work as before.
+  Open Admiral tabs close on load.
+- **Fleet deletes old Admiral data at the first start.**
+  It removes `~/.fleet/agency.db`, `~/.fleet/agency/`, `~/.fleet/crew/` and Admiral session files.
+  Job workspaces live in `~/.fleet/agency/jobs/`, so copy any uncommitted crew work out before you update.
+  Your repos can keep old worktree entries: run `git worktree prune` in them to clear these. Branches stay (#705).
+
 ## v2.141.1
 
 - **Log files are back.**
