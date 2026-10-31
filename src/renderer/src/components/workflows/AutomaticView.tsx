@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Pencil, Play, Trash2 } from 'lucide-react';
 import type { RuleTrigger, WorkflowLimits, WorkflowRule } from '../../../../shared/workflows';
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
-import { useToastStore } from '../../store/toast-store';
 import { AwayPanel } from './AwayPanel';
 import { Badge, Button, Empty, Field, FIELD_CLASS } from './parts';
 import { formatAgo } from './workflow-format';
 import { RuleForm } from './RuleForm';
+import { useRunRule } from './use-run-rule';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -22,12 +22,15 @@ function whenText(trigger: RuleTrigger): string {
   return `Every ${trigger.minutes} min, ${daysText(trigger.days)}${span}`;
 }
 
-function RuleRow({ rule, onEdit }: { rule: WorkflowRule; onEdit: () => void }): React.JSX.Element {
-  const runNow = async (): Promise<void> => {
-    const reply = await callWorkflows('runRule', rule.id);
-    if (!reply.ok) useToastStore.getState().show(reply.reason ?? 'The rule did not start.');
-  };
-
+function RuleRow({
+  rule,
+  onEdit,
+  onRun
+}: {
+  rule: WorkflowRule;
+  onEdit: () => void;
+  onRun: () => void;
+}): React.JSX.Element {
   return (
     <div className="group flex items-center gap-3 border-b border-fleet-border px-4 py-2.5 last:border-b-0">
       <input
@@ -59,7 +62,7 @@ function RuleRow({ rule, onEdit }: { rule: WorkflowRule; onEdit: () => void }): 
         >
           <Trash2 size={13} />
         </button>
-        <Button onClick={() => void runNow()}>
+        <Button onClick={onRun}>
           <Play size={11} /> Run now
         </Button>
       </div>
@@ -101,6 +104,7 @@ export function AutomaticView({ projectPath }: { projectPath: string }): React.J
   const limits = useWorkflowsStore((s) => s.state.limits);
   const refresh = useWorkflowsStore((s) => s.refresh);
   const [editing, setEditing] = useState<WorkflowRule | 'new' | null>(null);
+  const { runNow, sheet } = useRunRule();
   const rules = allRules.filter((rule) => rule.projectPath === projectPath);
 
   useEffect(() => {
@@ -134,11 +138,17 @@ export function AutomaticView({ projectPath }: { projectPath: string }): React.J
       ) : (
         <div className="rounded-md border border-fleet-border">
           {rules.map((rule) => (
-            <RuleRow key={rule.id} rule={rule} onEdit={() => setEditing(rule)} />
+            <RuleRow
+              key={rule.id}
+              rule={rule}
+              onEdit={() => setEditing(rule)}
+              onRun={() => runNow(rule.id)}
+            />
           ))}
         </div>
       )}
       <LimitsForm limits={limits} />
+      {sheet}
     </div>
   );
 }

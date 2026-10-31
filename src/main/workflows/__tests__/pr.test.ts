@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   fetchPr,
@@ -5,8 +9,10 @@ import {
   isTeamPr,
   itemMarker,
   listOpenPrs,
+  makePrWorktree,
   parsePrInput,
   repoRoot,
+  runProgram,
   type Exec,
   type PrWire
 } from '../pr';
@@ -25,6 +31,18 @@ function wirePr(fields: Partial<PrWire> = {}): PrWire {
     base: { repo: { full_name: 'acme/app' } },
     ...fields
   };
+}
+
+/** One line of `listOpenPrs`, as its `--jq` filter prints it. */
+function openLine(fields: Record<string, unknown>): string {
+  return JSON.stringify({
+    draft: false,
+    author_association: 'MEMBER',
+    type: 'User',
+    head: 'acme/app',
+    base: 'acme/app',
+    ...fields
+  });
 }
 
 describe('parsePrInput', () => {
@@ -101,15 +119,64 @@ describe('fetchPr', () => {
 
 describe('listOpenPrs', () => {
   it('flags drafts, bots and strangers', async () => {
-    const bot = wirePr({ number: 2, draft: true, user: { login: 'dep', type: 'Bot' } });
-    const stranger = wirePr({ number: 3, author_association: 'NONE' });
-    const exec: Exec = async () => Promise.resolve(JSON.stringify([wirePr(), bot, stranger]));
+    const lines = [
+      openLine({ number: 12 }),
+      openLine({ number: 2, draft: true, type: 'Bot' }),
+      openLine({ number: 3, author_association: 'NONE' }),
+      openLine({ number: 4, head: null })
+    ];
+    const exec: Exec = async () => Promise.resolve(`${lines.join('\n')}\n`);
 
     expect(await listOpenPrs(exec, '/repo')).toEqual([
       { number: 12, team: true, draft: false, bot: false },
       { number: 2, team: true, draft: true, bot: true },
-      { number: 3, team: false, draft: false, bot: false }
+      { number: 3, team: false, draft: false, bot: false },
+      { number: 4, team: false, draft: false, bot: false }
     ]);
+  });
+
+  it('asks GitHub for every page', async () => {
+    const exec = vi.fn<Exec>(async () => Promise.resolve(''));
+
+    expect(await listOpenPrs(exec, '/repo')).toEqual([]);
+
+    expect(exec.mock.calls[0][1]).toContain('--paginate');
+  });
+});
+
+describe('makePrWorktree', () => {
+  function git(cwd: string, ...args: string[]): string {
+    const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+    return execFileSync('git', [...identity, ...args], { cwd, encoding: 'utf8' }).trim();
+  }
+
+  function addPrCommit(repo: string, number: number): string {
+    writeFileSync(join(repo, 'file.txt'), `pr ${number}`);
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-m', `pr ${number}`);
+    const sha = git(repo, 'rev-parse', 'HEAD');
+    git(repo, 'update-ref', `refs/pull/${number}/head`, sha);
+    return sha;
+  }
+
+  it('gives each of many runs at once its own PR', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-wf-pr-'));
+    const origin = join(dir, 'origin');
+    const project = join(dir, 'project');
+    execFileSync('git', ['init', '-q', origin]);
+    const numbers = [1, 2, 3, 4, 5, 6];
+    const shas = numbers.map((number) => addPrCommit(origin, number));
+    execFileSync('git', ['clone', '-q', origin, project]);
+
+    const made = await Promise.all(
+      numbers.map(async (number) =>
+        makePrWorktree(runProgram, project, `run0000${number}`, number, join(dir, 'trees'))
+      )
+    );
+
+    expect(made.map((worktree) => worktree.sha)).toEqual(shas);
+    expect(git(project, 'for-each-ref', 'refs/fleet')).toBe('');
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

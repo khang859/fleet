@@ -39,12 +39,19 @@ export class WorkflowPosting {
     return run.board.filter((item) => item.mergedInto === undefined && item.post !== 'posted');
   }
 
-  /** After a crash, a `posting` item may have gone out. The PR itself says. */
-  private async settleInterrupted(run: WorkflowRun): Promise<void> {
-    const interrupted = run.board.filter((item) => item.post === 'posting');
-    if (interrupted.length === 0 || !run.pr) return;
-    const comments = await listCommentBodies(this.deps.exec, run.projectPath, run.pr.number);
-    for (const item of interrupted) {
+  private async commentsOf(run: WorkflowRun, prNumber: number): Promise<string> {
+    return listCommentBodies(this.deps.exec, run.projectPath, prNumber);
+  }
+
+  /**
+   * A crash can stop a `posting` item, and a timeout can hide that a `failed`
+   * item went out. Only the PR itself can say.
+   */
+  private async settleUnsure(run: WorkflowRun): Promise<void> {
+    const unsure = run.board.filter((item) => item.post === 'posting' || item.post === 'failed');
+    if (unsure.length === 0 || !run.pr) return;
+    const comments = await this.commentsOf(run, run.pr.number);
+    for (const item of unsure) {
       const posted = comments.includes(itemMarker(run.id, item.id));
       this.deps.runs.markPost(run.id, item.id, posted ? 'posted' : 'failed');
     }
@@ -54,7 +61,7 @@ export class WorkflowPosting {
   async start(runId: string): Promise<number> {
     const run = this.requireRun(runId);
     if (!run.pr) throw new ToolRefused('no-pr', 'This run has no pull request.');
-    await this.settleInterrupted(run);
+    await this.settleUnsure(run);
     const ids = this.remaining(run).map((item) => item.id);
     if (ids.length === 0) return 0;
     this.allowed.set(runId, new Set(ids));
@@ -86,9 +93,13 @@ export class WorkflowPosting {
     if (item.post === 'posted') return { posted: id };
     if (item.post === 'posting') throw new ToolRefused('posting', `Item ${id} is posting now.`);
 
+    const retry = item.post === 'failed';
     this.deps.runs.markPost(runId, id, 'posting');
     try {
-      await postComment(this.deps.exec, run.projectPath, run.pr.number, commentBody(run, item));
+      const comments = retry ? await this.commentsOf(run, run.pr.number) : '';
+      if (!comments.includes(itemMarker(runId, id))) {
+        await postComment(this.deps.exec, run.projectPath, run.pr.number, commentBody(run, item));
+      }
     } catch (err) {
       this.deps.runs.markPost(runId, id, 'failed');
       throw new ToolRefused('post-failed', `Item ${id} did not post: ${String(err)}`);

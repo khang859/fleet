@@ -227,6 +227,31 @@ describe('WorkflowRunManager', () => {
       expect(h.opened).toHaveLength(2);
     });
 
+    it('removes a worktree that finished after its run closed', async () => {
+      let finish: () => void = () => undefined;
+      const removed: Array<string | null> = [];
+      h = makeHarness(dir, {
+        makeWorktree: async () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ path: '/worktrees/run', sha: 'sha' });
+          }),
+        removeWorktree: async (run) => {
+          removed.push(run.worktreePath);
+          return Promise.resolve();
+        }
+      });
+      const run = await startRun(h, makePlan(prDef, { pr: SAMPLE_PR }));
+
+      h.manager.close(run.id, true);
+      finish();
+      await flush();
+
+      expect(removed).toEqual(['/worktrees/run']);
+      expect(run.worktreePath).toBeNull();
+      expect(run.cwd).toBe(run.projectPath);
+      expect(h.opened).toHaveLength(0);
+    });
+
     it('does not revive a run stopped during the worktree', async () => {
       let release: () => void = () => undefined;
       const blocked = new Promise<void>((resolve) => {

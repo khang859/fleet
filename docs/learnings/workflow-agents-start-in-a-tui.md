@@ -40,3 +40,22 @@ These are the mistakes that are easy to repeat.
 - A repo can ship a symlink at any path, so check the target before each write.
 - Name checks need lower case on macOS and Windows.
 - A person who confirms a post must see the text, not only a count.
+
+## Findings from the first PR review
+
+A run read the PR number from the repo-wide `FETCH_HEAD`.
+A second run could overwrite that file, so the first run reviewed the wrong commit.
+Each run now fetches into its own ref, `refs/fleet/runs/<runId>`, and removes the ref after.
+A test with real git and six runs at once showed the bug, as a fake `exec` cannot.
+
+An `await` gives a person time to change things.
+The scheduler held an old rule across the PR poll, so a deleted rule could still start a run.
+Read the rule again after each wait.
+The worktree had the same problem: it could finish after its run closed, so `prepareWorktree` now checks the run after the wait.
+
+A failed command does not always mean that nothing happened.
+A timeout can hide a comment that went out, so a retry looks for the item's hidden mark on the PR first.
+
+A partial list looks the same as a full list.
+With 50 PRs per read, an old PR looked new when it moved onto the first page.
+`listOpenPrs` now reads all pages and asks `--jq` for only the fields a rule needs.

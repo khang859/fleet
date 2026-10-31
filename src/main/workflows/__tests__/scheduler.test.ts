@@ -592,6 +592,7 @@ describe('WorkflowScheduler', () => {
 
   describe('new-PR rules', () => {
     const trigger = { kind: 'new-pr' as const, includeStrangers: false, includeDrafts: false };
+    let added: WorkflowRule;
 
     it('takes the first look as old PRs', async () => {
       scheduler = makeScheduler({ listPrs: async () => Promise.resolve([openPr(1), openPr(2)]) });
@@ -625,6 +626,80 @@ describe('WorkflowScheduler', () => {
       start.mockResolvedValue({ ok: false, busy: true, reason: 'A run is active.' });
 
       listPrs.mockResolvedValue([openPr(2), openPr(1)]);
+      now += POLL_MS;
+      await scheduler.tick();
+      await scheduler.tick();
+
+      expect(start).toHaveBeenCalledTimes(1);
+    });
+
+    /** One seen poll, then a second poll that waits until the test lets it answer. */
+    async function pollInFlight(): Promise<{ answer: () => void; done: Promise<void> }> {
+      let answer: () => void = () => undefined;
+      const late = new Promise<OpenPr[]>((resolve) => {
+        answer = () => resolve([openPr(2), openPr(1)]);
+      });
+      const listPrs = vi.fn<SchedulerDeps['listPrs']>(async () => Promise.resolve([openPr(1)]));
+      scheduler = makeScheduler({ listPrs });
+      added = addRule(scheduler, { trigger });
+      await scheduler.tick();
+      listPrs.mockReturnValue(late);
+      now += POLL_MS;
+      return { answer: () => answer(), done: scheduler.tick() };
+    }
+
+    it('starts nothing for a rule turned off during its poll', async () => {
+      const poll = await pollInFlight();
+
+      scheduler.setEnabled(added.id, false);
+      poll.answer();
+      await poll.done;
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('starts nothing for a rule deleted during its poll', async () => {
+      const poll = await pollInFlight();
+
+      scheduler.deleteRule(added.id);
+      poll.answer();
+      await poll.done;
+
+      expect(start).not.toHaveBeenCalled();
+      expect(makeFile().read().seen).toEqual({});
+      expect(makeFile().read().queue).toEqual({});
+    });
+
+    it('uses the rule as it is after the poll', async () => {
+      const poll = await pollInFlight();
+
+      scheduler.saveRule({ ...added, inputs: { task: 'new' } });
+      poll.answer();
+      await poll.done;
+
+      expect(start.mock.calls[0][0].inputs).toEqual({ task: 'new' });
+    });
+
+    it('does not take an old open PR as new in a very busy repo', async () => {
+      const open = Array.from({ length: 600 }, (_, index) => openPr(index + 1));
+      scheduler = makeScheduler({ listPrs: async () => Promise.resolve(open) });
+      addRule(scheduler, { trigger });
+
+      for (let poll = 0; poll < 3; poll++) {
+        await scheduler.tick();
+        now += POLL_MS;
+      }
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('queues a PR once when two pages both list it', async () => {
+      const listPrs = vi.fn(async () => Promise.resolve([openPr(1)]));
+      scheduler = makeScheduler({ listPrs });
+      addRule(scheduler, { trigger });
+      await scheduler.tick();
+
+      listPrs.mockResolvedValue([openPr(2), openPr(2), openPr(1)]);
       now += POLL_MS;
       await scheduler.tick();
       await scheduler.tick();

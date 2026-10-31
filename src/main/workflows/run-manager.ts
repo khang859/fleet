@@ -353,7 +353,10 @@ export class WorkflowRunManager {
       run.worktreePath = worktree.path;
       run.cwd = worktree.path;
       run.pr = { ...run.pr, headSha: worktree.sha };
-      return true;
+      // A person can stop or close the run during the wait. No agent used it, so it goes.
+      if (!isActive(run)) this.dropWorktree(run);
+      this.commit(run);
+      return isActive(run);
     } catch (err) {
       if (isActive(run)) {
         run.state = 'needs-you';

@@ -37,6 +37,20 @@ program = "pi"
 prompt = "Read it."
 `;
 
+const OPTIONAL_PR = `name = "Look"
+
+[[inputs]]
+name = "pr"
+label = "Pull request"
+type = "pr"
+required = false
+
+[[agents]]
+role = "Worker"
+program = "pi"
+prompt = "Look."
+`;
+
 const OPTIONS = { origin: 'manual' as const, ruleId: null, focus: true };
 
 function wirePr(fields: Partial<PrWire> = {}): PrWire {
@@ -304,6 +318,15 @@ describe('WorkflowStarts', () => {
       expect(run.slug).toBe('do-this');
       expect(run.target).toBe('["Do This"]');
       expect(run.locked).toBe(false);
+    });
+
+    it('starts with a blank optional PR', async () => {
+      saveApproved('look', OPTIONAL_PR);
+
+      const result = await makeStarts().start(request('look', { pr: ' ' }), OPTIONS);
+
+      expect(result.ok).toBe(true);
+      expect(h.manager.list()[0].pr).toBeNull();
     });
 
     it('uses another program when asked', async () => {

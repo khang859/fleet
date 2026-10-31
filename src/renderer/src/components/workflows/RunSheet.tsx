@@ -276,10 +276,12 @@ function fixChoice(fix: string): Partial<Choices> {
 export function RunSheet({
   projectPath,
   entry,
+  initialInputs,
   onClose
 }: {
   projectPath: string;
   entry: WorkflowEntry | null;
+  initialInputs?: Record<string, string>;
   onClose: () => void;
 }): React.JSX.Element {
   const refresh = useWorkflowsStore((s) => s.refresh);
@@ -290,10 +292,10 @@ export function RunSheet({
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
-    setValues({});
+    setValues(initialInputs ?? {});
     setChoices(NO_CHOICES);
     setProblem(null);
-  }, [entry]);
+  }, [entry, initialInputs]);
 
   const needsApproval = entry !== null && entry.approval !== 'approved';
   const request: StartRunRequest | null = entry

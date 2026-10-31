@@ -157,7 +157,14 @@ describe('parseWorkflow', () => {
   it('needs one PR input for a PR worktree', () => {
     const text = VALID.replace('shared =', 'workspace = "pr-worktree"\nshared =');
 
-    expect(errorOf(text)).toContain('exactly one input');
+    expect(errorOf(text)).toContain('exactly one required input');
+  });
+
+  it('needs the PR input of a PR worktree to be required', () => {
+    const input = '[[inputs]]\nname = "pr"\nlabel = "PR"\ntype = "pr"\nrequired = false\n\n';
+    const text = `workspace = "pr-worktree"\n${VALID}`.replace('[[agents]]', `${input}[[agents]]`);
+
+    expect(errorOf(text)).toContain('exactly one required input');
   });
 
   it('needs a PR worktree to post to a PR', () => {

@@ -258,7 +258,8 @@ export class WorkflowStarts {
     def: WorkflowDef
   ): Promise<{ resolved: ResolvedPr | null; locked: boolean } | Refusal> {
     const text = this.prInput(def, req.inputs);
-    if (text === null) return { resolved: null, locked: false };
+    // Only an optional input can be blank here.
+    if (text === null || text.trim() === '') return { resolved: null, locked: false };
     const resolved = await this.resolvePr(req.projectPath, text);
     if (isRefusal(resolved)) return resolved;
     if (!resolved.open && !req.allowClosedPr) {

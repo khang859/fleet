@@ -12,6 +12,7 @@ export const SHORTEST_REPEAT_MINUTES = 5;
 export const POLL_MS = 5 * 60_000;
 export const DEFAULT_DAILY_LIMIT = 100;
 const MAX_AWAY = 50;
+const MAX_CLOSED_SEEN = 500;
 const DEFAULT_MAX_AGENTS = 12;
 
 const Time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -334,7 +335,7 @@ export class WorkflowScheduler {
     this.ticking = true;
     try {
       const now = new Date(this.deps.now());
-      for (const rule of this.data.rules) await this.checkRule(rule, now);
+      for (const { id } of this.data.rules) await this.checkRule(id, now);
     } catch (err) {
       // A tick that throws must not stop every rule for the rest of the run.
       log.warn('workflow rule tick failed', { error: String(err) });
@@ -343,8 +344,15 @@ export class WorkflowScheduler {
     }
   }
 
-  private async checkRule(rule: WorkflowRule, now: Date): Promise<void> {
-    if (!rule.enabled || rule.pausedReason !== null) return;
+  /** The rule as it is now, if it may start. A person can change it during any wait. */
+  private live(id: string): WorkflowRule | null {
+    const rule = this.data.rules.find((candidate) => candidate.id === id);
+    return rule?.enabled && rule.pausedReason === null ? rule : null;
+  }
+
+  private async checkRule(id: string, now: Date): Promise<void> {
+    const rule = this.live(id);
+    if (!rule) return;
     if (rule.trigger.kind === 'new-pr') {
       await this.checkNewPrs(rule, now);
       return;
@@ -405,14 +413,20 @@ export class WorkflowScheduler {
 
   private async checkNewPrs(rule: WorkflowRule, now: Date): Promise<void> {
     await this.pollPrs(rule, now);
+    const current = this.live(rule.id);
+    if (!current) return;
     const queue = this.data.queue[rule.id] as number[] | undefined;
     const next = queue?.[0];
-    if (next === undefined || this.deps.busy(rule)) return;
+    if (next === undefined || this.deps.busy(current)) return;
     // Taken off the queue only when it started, so no PR is lost.
-    if (await this.fire(rule, next, now, false)) {
-      this.data.queue[rule.id] = (this.data.queue[rule.id] ?? []).filter((pr) => pr !== next);
-      this.save();
-    }
+    if (await this.fire(current, next, now, false)) this.dropFromQueue(rule.id, next);
+  }
+
+  private dropFromQueue(id: string, pr: number): void {
+    const queue = this.data.queue[id] as number[] | undefined;
+    if (!queue) return;
+    this.data.queue[id] = queue.filter((other) => other !== pr);
+    this.save();
   }
 
   private async pollPrs(rule: WorkflowRule, now: Date): Promise<void> {
@@ -428,6 +442,8 @@ export class WorkflowScheduler {
       log.warn('could not list PRs', { ruleId: rule.id, error: String(err) });
       return;
     }
+    const current = this.live(rule.id);
+    if (current?.trigger.kind !== 'new-pr') return;
     const known = this.data.seen[rule.id] as number[] | undefined;
     const numbers = open.map((pr) => pr.number);
     // The first check only records what exists.
@@ -436,10 +452,12 @@ export class WorkflowScheduler {
       this.save();
       return;
     }
-    const fresh = wantedPrs(rule.trigger, open)
-      .map((pr) => pr.number)
-      .filter((number) => !known.includes(number));
-    this.data.seen[rule.id] = [...new Set([...known, ...numbers])].slice(-500);
+    const wanted = wantedPrs(current.trigger, open).map((pr) => pr.number);
+    // Pages can repeat a PR when one opens during the read.
+    const fresh = [...new Set(wanted)].filter((number) => !known.includes(number));
+    // Only closed PRs can fall off the list, so an open one is never new twice.
+    const closed = known.filter((number) => !numbers.includes(number));
+    this.data.seen[rule.id] = [...closed.slice(-MAX_CLOSED_SEEN), ...new Set(numbers)];
     if (fresh.length > 0) {
       this.data.queue[rule.id] = [
         ...(this.data.queue[rule.id] ?? []),

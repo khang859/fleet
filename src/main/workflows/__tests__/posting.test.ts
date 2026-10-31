@@ -24,11 +24,14 @@ describe('WorkflowPosting', () => {
   let comments: Array<{ number: string; body: string | undefined }>;
   let existing: string;
   let failing: boolean;
+  let listFails: boolean;
   let posting: WorkflowPosting;
 
   /** Plays `gh`: it records each comment and lists what is on the PR. */
   const exec: Exec = async (_command, args, _cwd, input) => {
-    if (args[0] === 'api') return Promise.resolve(existing);
+    if (args[0] === 'api') {
+      return listFails ? Promise.reject(new Error('no answer')) : Promise.resolve(existing);
+    }
     if (failing) return Promise.reject(new Error('gh failed'));
     comments.push({ number: args[2], body: input });
     return Promise.resolve('');
@@ -51,6 +54,7 @@ describe('WorkflowPosting', () => {
     comments = [];
     existing = '';
     failing = false;
+    listFails = false;
     h = makeHarness(dir);
     const def = makeDef({ workspace: 'pr-worktree' });
     run = await startRun(h, makePlan(def, { pr: SAMPLE_PR }));
@@ -108,6 +112,16 @@ describe('WorkflowPosting', () => {
 
       expect(run.board.map((item) => item.post)).toEqual(['posted', 'failed']);
       expect(h.deps.store.loadBoard(run.id).map((item) => item.post)).toEqual(['posted', 'failed']);
+    });
+
+    it('settles a failed item before it offers the item again', async () => {
+      addItems('one');
+      h.manager.markPost(run.id, '1', 'failed');
+      existing = itemMarker(run.id, '1');
+
+      expect(await posting.start(run.id)).toBe(0);
+
+      expect(run.board[0].post).toBe('posted');
     });
 
     it('never offers a merged item', () => {
@@ -184,6 +198,34 @@ describe('WorkflowPosting', () => {
 
       expect(run.board[0].post).toBe('failed');
       expect(posting.remaining(run)).toHaveLength(1);
+    });
+
+    it('does not post again when a failed post went out', async () => {
+      addItems('one');
+      await posting.start(run.id);
+      failing = true;
+      await refusalOf(posting.postItem(run.id, '1'));
+      failing = false;
+      existing = itemMarker(run.id, '1');
+
+      expect(await posting.postItem(run.id, '1')).toEqual({ posted: '1' });
+
+      expect(comments).toHaveLength(0);
+      expect(run.board[0].post).toBe('posted');
+    });
+
+    it('stays failed when the PR cannot say', async () => {
+      addItems('one');
+      await posting.start(run.id);
+      failing = true;
+      await refusalOf(posting.postItem(run.id, '1'));
+      failing = false;
+      listFails = true;
+
+      expect(await refusalOf(posting.postItem(run.id, '1'))).toBe('post-failed');
+
+      expect(comments).toHaveLength(0);
+      expect(run.board[0].post).toBe('failed');
     });
 
     it('keeps the posted mark on disk', async () => {

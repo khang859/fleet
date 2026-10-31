@@ -100,9 +100,9 @@ function checkRules(def: WorkflowDef): string[] {
     if (!known.has(name)) problems.push(`The placeholder {{${name}}} has no matching input.`);
   }
 
-  const prInputs = def.inputs.filter((input) => input.type === 'pr').length;
-  if (def.workspace === 'pr-worktree' && prInputs !== 1) {
-    problems.push('workspace = "pr-worktree" needs exactly one input with type = "pr".');
+  const prInputs = def.inputs.filter((input) => input.type === 'pr');
+  if (def.workspace === 'pr-worktree' && (prInputs.length !== 1 || !prInputs[0].required)) {
+    problems.push('workspace = "pr-worktree" needs exactly one required input with type = "pr".');
   }
   if (def.finish?.action === 'post-pr' && def.workspace !== 'pr-worktree') {
     problems.push('action = "post-pr" needs workspace = "pr-worktree".');

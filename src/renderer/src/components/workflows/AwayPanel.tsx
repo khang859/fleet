@@ -1,17 +1,13 @@
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
-import { useToastStore } from '../../store/toast-store';
 import { Button } from './parts';
+import { useRunRule } from './use-run-rule';
 import { formatAgo } from './workflow-format';
 
 /** What Fleet did, or could not do, while nobody looked. */
 export function AwayPanel(): React.JSX.Element | null {
   const away = useWorkflowsStore((s) => s.state.away);
+  const { runNow, sheet } = useRunRule();
   if (away.length === 0) return null;
-
-  const runNow = async (ruleId: string): Promise<void> => {
-    const reply = await callWorkflows('runRule', ruleId);
-    if (!reply.ok) useToastStore.getState().show(reply.reason ?? 'The rule did not start.');
-  };
 
   return (
     <section className="rounded-md border border-fleet-border p-3">
@@ -29,11 +25,12 @@ export function AwayPanel(): React.JSX.Element | null {
               <span className="text-fleet-text-secondary">{entry.ruleName}</span> {entry.text}
             </span>
             {entry.canRun && entry.ruleId && (
-              <Button onClick={() => void runNow(entry.ruleId ?? '')}>Run now</Button>
+              <Button onClick={() => runNow(entry.ruleId ?? '')}>Run now</Button>
             )}
           </li>
         ))}
       </ul>
+      {sheet}
     </section>
   );
 }

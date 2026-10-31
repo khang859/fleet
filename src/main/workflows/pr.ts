@@ -59,10 +59,12 @@ export type PrWire = z.infer<typeof PR_WIRE>;
 const TEAM_ROLES = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 /** A team PR: the author belongs to the repo, and the branch is in the same repo. */
+function isTeam(role: string, headRepo: string | null | undefined, baseRepo: string): boolean {
+  return TEAM_ROLES.has(role) && headRepo === baseRepo;
+}
+
 export function isTeamPr(pr: PrWire): boolean {
-  return (
-    TEAM_ROLES.has(pr.author_association) && pr.head.repo?.full_name === pr.base.repo.full_name
-  );
+  return isTeam(pr.author_association, pr.head.repo?.full_name, pr.base.repo.full_name);
 }
 
 function infoOf(pr: PrWire): PrInfo {
@@ -120,20 +122,32 @@ export async function ghStatus(exec: Exec, cwd: string): Promise<{ ok: boolean; 
 
 export type OpenPr = { number: number; team: boolean; draft: boolean; bot: boolean };
 
+/** One line per PR with only what a rule reads, so a big repo stays small. */
+const OPEN_PR_FIELDS =
+  '.[] | {number, draft, author_association, type: .user.type, ' +
+  'head: .head.repo.full_name, base: .base.repo.full_name}';
+
+const OPEN_PR_LINE = z.object({
+  number: z.number(),
+  draft: z.boolean(),
+  author_association: z.string(),
+  type: z.string(),
+  head: z.string().nullable(),
+  base: z.string()
+});
+
+/** Every open PR, on all pages. A rule that sees only part of them finds false new ones. */
 export async function listOpenPrs(exec: Exec, cwd: string): Promise<OpenPr[]> {
-  const out = await exec(
-    'gh',
-    ['api', 'repos/{owner}/{repo}/pulls?state=open&per_page=50&sort=created&direction=desc'],
-    cwd
-  );
-  return z
-    .array(PR_WIRE)
-    .parse(JSON.parse(out))
+  const path = 'repos/{owner}/{repo}/pulls?state=open&per_page=100&sort=created&direction=desc';
+  const out = await exec('gh', ['api', '--paginate', path, '--jq', OPEN_PR_FIELDS], cwd);
+  const lines = out.split('\n').filter((line) => line !== '');
+  return lines
+    .map((line) => OPEN_PR_LINE.parse(JSON.parse(line)))
     .map((pr) => ({
       number: pr.number,
-      team: isTeamPr(pr),
-      draft: pr.draft === true,
-      bot: pr.user.type === 'Bot'
+      team: isTeam(pr.author_association, pr.head, pr.base),
+      draft: pr.draft,
+      bot: pr.type === 'Bot'
     }));
 }
 
@@ -153,10 +167,17 @@ export async function makePrWorktree(
   mkdirSync(folder, { recursive: true });
   const path = join(folder, `run-${runId.slice(0, 8)}`);
 
-  await exec('git', ['fetch', 'origin', `pull/${prNumber}/head`], projectPath);
-  const sha = (await exec('git', ['rev-parse', 'FETCH_HEAD'], projectPath)).trim();
-  await exec('git', ['worktree', 'add', '--detach', path, sha], projectPath);
-  return { path, sha };
+  // Not FETCH_HEAD: the repo has one, and a run next to this one can overwrite it.
+  const ref = `refs/fleet/runs/${runId}`;
+  await exec('git', ['fetch', 'origin', `+pull/${prNumber}/head:${ref}`], projectPath);
+  try {
+    const sha = (await exec('git', ['rev-parse', ref], projectPath)).trim();
+    await exec('git', ['worktree', 'add', '--detach', path, sha], projectPath);
+    return { path, sha };
+  } finally {
+    // A ref left behind does no harm, so this never fails the run.
+    await exec('git', ['update-ref', '-d', ref], projectPath).catch(() => undefined);
+  }
 }
 
 export async function removeWorktree(exec: Exec, projectPath: string, path: string): Promise<void> {
