@@ -44,7 +44,8 @@ export function agentOptions(customCommand: string): AgentOption[] {
 
 /**
  * The text to type into a new worktree's shell. The agent comes last, on its
- * own line, so the shell starts it once the setup is done, even a failed one.
+ * own line. Each line waits for the one before, so it starts once the setup is
+ * done, even a failed one.
  */
 export function worktreeStartText(setup: string, agentCommand: string): string | undefined {
   return [setup, agentCommand].filter((part) => part !== '').join('\n') || undefined;

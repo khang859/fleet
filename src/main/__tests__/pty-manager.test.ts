@@ -119,6 +119,25 @@ describe('PtyManager batching and cleanup', () => {
     vi.useRealTimers();
   });
 
+  it('drops the lines still to type when Ctrl+C is pressed', () => {
+    manager.create({
+      paneId: 'pane-1',
+      cwd: '/tmp',
+      shell: '/bin/zsh',
+      typeOnStart: 'setup\nagent'
+    });
+
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    const shellPrints = mockPty.onData.mock.calls[1][0];
+
+    shellPrints('prompt');
+    vi.advanceTimersByTime(400);
+    manager.write('pane-1', '\x03');
+    vi.advanceTimersByTime(20_000);
+
+    expect(mockPty.write.mock.calls).toEqual([['setup\r'], ['\x03']]);
+  });
+
   it('batches onData output and flushes after 16ms', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
 

@@ -6,12 +6,25 @@ vi.mock('../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
 }));
 
+type FakeShell = {
+  proc: IPty;
+  print: () => void;
+  exit: () => void;
+  /** Names the process in the foreground. */
+  run: (name: string) => void;
+  typed: string[];
+};
+
 /** A shell that prints when told to, and records what is typed into it. */
-function fakeShell(): { proc: IPty; print: () => void; exit: () => void; typed: string[] } {
+function fakeShell(): FakeShell {
   let onData: (() => void) | null = null;
   let onExit: (() => void) | null = null;
+  let foreground = 'zsh';
   const typed: string[] = [];
   const proc = {
+    get process() {
+      return foreground;
+    },
     onData: (cb: () => void) => {
       onData = cb;
       return { dispose: () => (onData = null) };
@@ -26,6 +39,7 @@ function fakeShell(): { proc: IPty; print: () => void; exit: () => void; typed: 
     proc: proc as unknown as IPty,
     print: () => onData?.(),
     exit: () => onExit?.(),
+    run: (name) => (foreground = name),
     typed
   };
 }
@@ -62,7 +76,49 @@ describe('typeWhenReady', () => {
     shell.print();
     vi.advanceTimersByTime(10_000);
 
-    expect(shell.typed).toEqual(['npm install\rnpm run build\r']);
+    expect(shell.typed).toEqual(['npm install\r', 'npm run build\r']);
+  });
+
+  it('holds the next line while the line before still runs, even with no output', () => {
+    const shell = fakeShell();
+    typeWhenReady(shell.proc, 'npm install\nclaude');
+
+    shell.print();
+    vi.advanceTimersByTime(400);
+    shell.run('node');
+    vi.advanceTimersByTime(60_000);
+    expect(shell.typed).toEqual(['npm install\r']);
+
+    shell.run('zsh');
+    vi.advanceTimersByTime(200);
+    expect(shell.typed).toEqual(['npm install\r', 'claude\r']);
+  });
+
+  it('types the next line after quiet alone when the foreground name never changes', () => {
+    const shell = fakeShell();
+    typeWhenReady(shell.proc, 'npm install\nclaude');
+
+    shell.print();
+    vi.advanceTimersByTime(400);
+    shell.print();
+    vi.advanceTimersByTime(300);
+    expect(shell.typed).toEqual(['npm install\r']);
+
+    vi.advanceTimersByTime(100);
+    expect(shell.typed).toEqual(['npm install\r', 'claude\r']);
+  });
+
+  it('drops the lines not typed yet when stopped', () => {
+    const shell = fakeShell();
+    const stop = typeWhenReady(shell.proc, 'npm install\nclaude');
+
+    shell.print();
+    vi.advanceTimersByTime(400);
+    stop();
+    shell.print();
+    vi.advanceTimersByTime(20_000);
+
+    expect(shell.typed).toEqual(['npm install\r']);
   });
 
   it('types anyway when the shell never goes quiet', () => {

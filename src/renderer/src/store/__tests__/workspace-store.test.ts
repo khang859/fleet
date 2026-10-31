@@ -423,6 +423,42 @@ describe('switchWorkspace', () => {
   });
 });
 
+describe('createWorktreeGroup', () => {
+  const wslTab = {
+    id: 'tab-wsl',
+    label: 'Repo',
+    labelIsCustom: false,
+    cwd: '/home/me/repo',
+    splitRoot: {
+      type: 'leaf' as const,
+      id: 'pane-wsl',
+      cwd: '/home/me/repo',
+      shellProfileId: 'wsl-ubuntu',
+      pathContext: { kind: 'wsl' as const, distro: 'Ubuntu' }
+    }
+  };
+
+  it('opens the worktree in the shell of the tab it was made from', () => {
+    useWorkspaceStore.setState({ workspace: { ...WS_A, tabs: [wslTab] } });
+
+    useWorkspaceStore
+      .getState()
+      .createWorktreeGroup('tab-wsl', '/home/me/wt', 'feature', '/home/me/repo', 'npm install');
+
+    const made = useWorkspaceStore.getState().workspace.tabs.find((t) => t.worktreePath);
+    expect(made).toMatchObject({
+      shellProfileId: 'wsl-ubuntu',
+      pathContext: { kind: 'wsl', distro: 'Ubuntu' },
+      splitRoot: {
+        cwd: '/home/me/wt',
+        shellProfileId: 'wsl-ubuntu',
+        pathContext: { kind: 'wsl', distro: 'Ubuntu' },
+        typeOnStart: 'npm install'
+      }
+    });
+  });
+});
+
 describe('loadBackgroundWorkspaces', () => {
   it('loads workspaces into background without affecting the active workspace', () => {
     useWorkspaceStore.getState().loadBackgroundWorkspaces([WS_B]);

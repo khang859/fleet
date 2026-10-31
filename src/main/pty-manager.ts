@@ -61,6 +61,8 @@ type PtyEntry = {
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
   snapshot: ShellEnvSnapshot | null;
+  /** Drops the `typeOnStart` lines not typed yet. */
+  stopTyping?: () => void;
   /** A copy of what the pane shows, for a pane `mirror` named. */
 };
 
@@ -92,32 +94,58 @@ const RESUME_WITHOUT_DRAIN_MS = 250;
 const READY_QUIET_MS = 400;
 /** Typed anyway after this long, for a shell that never goes quiet. */
 const READY_MAX_MS = 10_000;
+/** How often to look again while a typed line still runs. */
+const BUSY_POLL_MS = 200;
+/** What the terminal sends for Ctrl+C. */
+const CTRL_C = '\x03';
 
 /**
- * Type `text` into a new shell once it waits at its prompt: when its startup
- * output has gone quiet. Typed rather than run with `-c`, so the shell has
- * read its rc files (nvm, PATH) and Ctrl+C stops the command, not the shell.
+ * Type `text` into a new shell one line at a time. Typed rather than run with
+ * `-c`, so the shell has read its rc files (nvm, PATH) and Ctrl+C stops the
+ * command, not the shell.
+ *
+ * The first line waits for the prompt: startup output has gone quiet. Each next
+ * line waits for the one before to finish: the shell is back in the foreground
+ * and the output is quiet. So no line sits in the terminal's input, where a
+ * running command would read it as an answer. Windows and WSL report the same
+ * foreground name throughout, so there quiet alone decides.
+ *
+ * Returns a function that drops the lines not typed yet.
  */
-export function typeWhenReady(proc: pty.IPty, text: string): void {
+export function typeWhenReady(proc: pty.IPty, text: string): () => void {
+  const lines = text.split(/\r?\n/);
+  let shellName: string | null = null;
   let quiet: ReturnType<typeof setTimeout> | undefined;
+
   const stop = (): void => {
     clearTimeout(quiet);
     clearTimeout(cap);
     data.dispose();
     exit.dispose();
   };
-  const type = (): void => {
-    stop();
-    // Enter is a carriage return; each line runs in turn, as if pasted line by line.
-    proc.write(`${text.replace(/\r?\n/g, '\r')}\r`);
+
+  const typeNext = (): void => {
+    if (shellName !== null && proc.process !== shellName) {
+      quiet = setTimeout(typeNext, BUSY_POLL_MS);
+      return;
+    }
+
+    clearTimeout(cap);
+    shellName = proc.process;
+    proc.write(`${lines.shift()}\r`);
+
+    if (lines.length === 0) stop();
+    else quiet = setTimeout(typeNext, READY_QUIET_MS);
   };
 
-  const cap = setTimeout(type, READY_MAX_MS);
+  const cap = setTimeout(typeNext, READY_MAX_MS);
   const data = proc.onData(() => {
     clearTimeout(quiet);
-    quiet = setTimeout(type, READY_QUIET_MS);
+    quiet = setTimeout(typeNext, READY_QUIET_MS);
   });
   const exit = proc.onExit(stop);
+
+  return stop;
 }
 
 export class PtyManager {
@@ -238,7 +266,7 @@ export class PtyManager {
       }
     });
 
-    if (opts.typeOnStart) typeWhenReady(proc, opts.typeOnStart);
+    if (opts.typeOnStart) entry.stopTyping = typeWhenReady(proc, opts.typeOnStart);
 
     this.ptys.set(opts.paneId, entry);
 
@@ -248,6 +276,7 @@ export class PtyManager {
   write(paneId: string, data: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      if (data.includes(CTRL_C)) entry.stopTyping?.();
       entry.process.write(data);
     }
   }

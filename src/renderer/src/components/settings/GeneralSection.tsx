@@ -164,12 +164,14 @@ function DefaultAgentRows({ general }: { general: FleetSettings['general'] }): R
         }
       >
         <select
-          value={general.defaultAgent ?? 'none'}
+          value={general.defaultAgent ?? ''}
           onChange={(e) => {
             void updateSettings({ general: { defaultAgent: readAgentChoice(e.target.value) } });
           }}
           className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
         >
+          {/* Not the same as None: the first agent picked becomes the default. */}
+          {general.defaultAgent === null && <option value="">Not set</option>}
           <option value="none">None</option>
           {WORKTREE_AGENTS.map((agent) => (
             <option key={agent.id} value={agent.id}>

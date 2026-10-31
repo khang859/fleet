@@ -92,6 +92,16 @@ function createLeaf(cwd: string): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd };
 }
 
+/** The shell of a tab's first pane. A worktree made from the tab runs in the same one. */
+function firstPaneShell(tab: Tab | undefined): Pick<PaneLeaf, 'shellProfileId' | 'pathContext'> {
+  if (!tab) return {};
+  const leaf = findLeaf(tab.splitRoot, collectPaneIds(tab.splitRoot)[0]);
+  return {
+    shellProfileId: leaf?.shellProfileId ?? tab.shellProfileId,
+    pathContext: leaf?.pathContext ?? tab.pathContext
+  };
+}
+
 function resolveDefaultProfile(): { id: string | undefined; pathContext: PathContext } {
   const def = useShellProfilesStore.getState().defaultProfile;
   return {
@@ -830,7 +840,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   createWorktreeGroup: (tabId, worktreePath, branchName, repoPath, startText) => {
-    const leaf: PaneLeaf = { ...createLeaf(worktreePath), typeOnStart: startText };
+    const shell = firstPaneShell(get().workspace.tabs.find((t) => t.id === tabId));
+    const leaf: PaneLeaf = { ...createLeaf(worktreePath), ...shell, typeOnStart: startText };
     const newGroupId = generateId();
 
     set((state) => {
@@ -861,7 +872,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         groupRole: 'worktree',
         groupLabel,
         worktreeBranch: branchName,
-        worktreePath
+        worktreePath,
+        ...shell
       };
 
       // Insert worktree tab right after the last tab in this group
