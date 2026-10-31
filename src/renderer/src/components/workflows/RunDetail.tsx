@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import type { BoardItem, RunAgent, WorkflowRun } from '../../../../shared/workflows';
+import {
+  agentChatHandle,
+  type BoardItem,
+  type RunAgent,
+  type WorkflowRun
+} from '../../../../shared/workflows';
 import { callWorkflows, isRunActive, useWorkflowsStore } from '../../store/workflows-store';
 import { collectPaneIds, useWorkspaceStore } from '../../store/workspace-store';
 import { useToastStore } from '../../store/toast-store';
@@ -20,8 +25,25 @@ function openPane(paneId: string): void {
   ws.setActivePane(paneId);
 }
 
+async function openAgent(run: WorkflowRun, agent: RunAgent): Promise<void> {
+  const reply = await callWorkflows('openAgent', run.id, agent.id);
+  if (reply.ok) openPane(reply.paneId);
+  else useToastStore.getState().show(reply.reason);
+}
+
+function canOpenAgent(run: WorkflowRun, agent: RunAgent): boolean {
+  return !isRunActive(run) && run.state !== 'cut-off' && agentChatHandle(agent) !== null;
+}
+
+/** Whether a run still holds anything that Close run would close. */
+function holdsAnything(run: WorkflowRun): boolean {
+  const pane = run.postPaneId ?? run.agents.find((agent) => agent.paneId)?.paneId;
+  return pane != null || run.keptPanes.length > 0 || run.worktreePath !== null;
+}
+
 function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): React.JSX.Element {
-  const { pendingPermission, paneId, state, silent } = agent;
+  const { pendingPermission, state, silent } = agent;
+  const paneId = agent.paneId ?? agent.keptPaneId;
   const canAct = isRunActive(run);
   const stuck = state === 'failed' || agent.needsPerson || silent;
   return (
@@ -46,6 +68,9 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
         </>
       )}
       {paneId && <Button onClick={() => openPane(paneId)}>Open pane</Button>}
+      {!paneId && canOpenAgent(run, agent) && (
+        <Button onClick={() => void openAgent(run, agent)}>Open agent</Button>
+      )}
       {canAct && silent && (
         <Button onClick={() => void callWorkflows('keepWaiting', run.id, agent.id)}>
           Keep waiting
@@ -318,7 +343,7 @@ function RunHeader({
       ) : (
         <>
           <Button onClick={() => void rerun()}>Run again</Button>
-          {run.state !== 'closed' && <Button onClick={onClose}>Close run</Button>}
+          {holdsAnything(run) && <Button onClick={onClose}>Close run</Button>}
         </>
       )}
     </div>

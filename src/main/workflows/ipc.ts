@@ -74,6 +74,7 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     keepWaiting: (runId, agentId) => runs.keepWaiting(runId, agentId),
     addTime: (runId) => runs.addTime(runId),
     goOn: async (runId) => runs.goOn(runId),
+    openAgent: async (runId, agentId) => runs.openAgent(runId, agentId),
     retryPrepare: (runId) => runs.retryPrepare(runId),
     answerPermission: (toolUseId, decision) => service.answerPermission(toolUseId, decision),
     reportPath: (runId) => service.reportPath(runId),

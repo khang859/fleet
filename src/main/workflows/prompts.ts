@@ -4,6 +4,11 @@ import { toolNameFor } from './tools';
 
 /** The first message of a new agent. The brief itself is in its system prompt. */
 export const START_MESSAGE = 'Start now.';
+
+/** Added to a brief when a person opens an agent again after its run ended. */
+export const RUN_OVER_NOTE =
+  'This run is over and its report is done. Fleet tools no longer work here. ' +
+  'A person opened this chat to ask about your work, so answer them.';
 /** The first message of a retried agent, on its old transcript. */
 export const RETRY_MESSAGE =
   'Fleet restarted you. Read the shared board first, then go on with your work.';

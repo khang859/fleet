@@ -59,3 +59,10 @@ A timeout can hide a comment that went out, so a retry looks for the item's hidd
 A partial list looks the same as a full list.
 With 50 PRs per read, an old PR looked new when it moved onto the first page.
 `listOpenPrs` now reads all pages and asks `--jq` for only the fields a rule needs.
+
+## Terminal replies are not typing
+
+xterm sends its status replies through `term.onData`, the same stream as the keyboard.
+A Claude Code or Pi TUI asks for these replies when it starts, so every agent looked as if a person had typed in it.
+Fleet then kept all the panes open when a run finished, and only a live run showed this.
+`isPersonInput` now drops status, focus, mouse and title replies before Fleet counts a person.

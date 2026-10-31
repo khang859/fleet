@@ -161,7 +161,9 @@ export async function makePrWorktree(
   projectPath: string,
   runId: string,
   prNumber: number,
-  base: string = join(FLEET_HOME, 'worktrees')
+  base: string = join(FLEET_HOME, 'worktrees'),
+  /** The commit to use, when a person opens a finished run's agent again. */
+  pinnedSha?: string
 ): Promise<{ path: string; sha: string }> {
   const folder = join(base, basename(projectPath));
   mkdirSync(folder, { recursive: true });
@@ -171,7 +173,7 @@ export async function makePrWorktree(
   const ref = `refs/fleet/runs/${runId}`;
   await exec('git', ['fetch', 'origin', `+pull/${prNumber}/head:${ref}`], projectPath);
   try {
-    const sha = (await exec('git', ['rev-parse', ref], projectPath)).trim();
+    const sha = pinnedSha ?? (await exec('git', ['rev-parse', ref], projectPath)).trim();
     await exec('git', ['worktree', 'add', '--detach', path, sha], projectPath);
     return { path, sha };
   } finally {

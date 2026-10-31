@@ -1,26 +1,16 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { WorkflowNotice } from '../../../../shared/workflows';
-import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
-import { useWorkspaceStore } from '../../store/workspace-store';
+import {
+  callWorkflows,
+  showRun,
+  showWorkflowsPage,
+  useWorkflowsStore
+} from '../../store/workflows-store';
 import { Button } from './parts';
 
-function showPage(): void {
-  const ws = useWorkspaceStore.getState();
-  const page = ws.workspace.tabs.find((tab) => tab.type === 'workflows');
-  if (page) ws.setActiveTab(page.id);
-}
-
-function showRun(runId: string): void {
-  showPage();
-  const store = useWorkflowsStore.getState();
-  const run = store.state.runs.find((candidate) => candidate.id === runId);
-  if (run) void store.setProject(run.projectPath);
-  store.openRun(runId);
-}
-
 function showWorkflows(projectPath: string | null): void {
-  showPage();
+  showWorkflowsPage();
   const store = useWorkflowsStore.getState();
   store.setView('workflows');
   if (projectPath) void store.setProject(projectPath);

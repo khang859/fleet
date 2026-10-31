@@ -115,13 +115,14 @@ export class WorkflowsService implements BridgeHandler {
       killPane: deps.killPane,
       lastOutputAt: deps.lastOutputAt,
       sendPrompt: deps.sendPrompt,
-      makeWorktree: async (run) =>
+      makeWorktree: async (run, pinnedSha) =>
         makePrWorktree(
           this.exec,
           run.projectPath,
           run.id,
           run.pr?.number ?? 0,
-          join(deps.home, 'worktrees')
+          join(deps.home, 'worktrees'),
+          pinnedSha
         ),
       removeWorktree: async (run) =>
         removeWorktree(this.exec, run.projectPath, run.worktreePath ?? ''),

@@ -78,6 +78,11 @@ export const ACTIVE_RUN_STATES: readonly RunState[] = [
   'needs-you'
 ];
 
+/** What a stopped agent can go on from: a file for Pi, a session id for Claude Code. */
+export function agentChatHandle(agent: RunAgent): string | null {
+  return agent.program === 'pi' ? agent.transcriptPath : agent.sessionId;
+}
+
 export type RunAgent = {
   id: string;
   role: string;
@@ -97,6 +102,8 @@ export type RunAgent = {
   silent: boolean;
   /** A person typed in this pane, so it stays open after an automatic run. */
   personTyped: boolean;
+  /** The pane that stayed open, or opened again, after the run ended. */
+  keptPaneId: string | null;
   autoRetried: boolean;
   sessionId: string | null;
   transcriptPath: string | null;
@@ -339,6 +346,8 @@ export function runsPerDay(trigger: RuleTrigger): number {
 }
 
 /** Everything the page can ask of main, over one channel. */
+export type OpenAgentResult = { ok: true; paneId: string } | { ok: false; reason: string };
+
 export type WorkflowsApi = {
   state: () => WorkflowsState;
   tabs: () => RunTab[];
@@ -360,6 +369,7 @@ export type WorkflowsApi = {
   keepWaiting: (runId: string, agentId: string) => void;
   addTime: (runId: string) => void;
   goOn: (runId: string) => Promise<void>;
+  openAgent: (runId: string, agentId: string) => Promise<OpenAgentResult>;
   retryPrepare: (runId: string) => void;
   answerPermission: (toolUseId: string, decision: 'allow' | 'deny') => boolean;
   reportPath: (runId: string) => string | null;

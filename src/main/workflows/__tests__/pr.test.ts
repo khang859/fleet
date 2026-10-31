@@ -150,8 +150,8 @@ describe('makePrWorktree', () => {
     return execFileSync('git', [...identity, ...args], { cwd, encoding: 'utf8' }).trim();
   }
 
-  function addPrCommit(repo: string, number: number): string {
-    writeFileSync(join(repo, 'file.txt'), `pr ${number}`);
+  function addPrCommit(repo: string, number: number, text = `pr ${number}`): string {
+    writeFileSync(join(repo, 'file.txt'), text);
     git(repo, 'add', '.');
     git(repo, 'commit', '-m', `pr ${number}`);
     const sha = git(repo, 'rev-parse', 'HEAD');
@@ -176,6 +176,30 @@ describe('makePrWorktree', () => {
 
     expect(made.map((worktree) => worktree.sha)).toEqual(shas);
     expect(git(project, 'for-each-ref', 'refs/fleet')).toBe('');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('uses the pinned commit when the PR moved on', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-wf-pin-'));
+    const origin = join(dir, 'origin');
+    const project = join(dir, 'project');
+    execFileSync('git', ['init', '-q', origin]);
+    const first = addPrCommit(origin, 1);
+    execFileSync('git', ['clone', '-q', origin, project]);
+    await makePrWorktree(runProgram, project, 'runfirst', 1, join(dir, 'trees'));
+    addPrCommit(origin, 1, 'the PR moved on');
+
+    const again = await makePrWorktree(
+      runProgram,
+      project,
+      'runagain',
+      1,
+      join(dir, 'trees'),
+      first
+    );
+
+    expect(again.sha).toBe(first);
+    expect(git(again.path, 'rev-parse', 'HEAD')).toBe(first);
     rmSync(dir, { recursive: true, force: true });
   });
 });

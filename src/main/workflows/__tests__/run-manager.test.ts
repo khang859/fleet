@@ -927,7 +927,28 @@ describe('WorkflowRunManager', () => {
     });
   });
 
-  describe('automatic runs', () => {
+  describe('the end of a run', () => {
+    it('closes the panes of a run a person started', async () => {
+      const run = await workingRun(ONE_AGENT);
+
+      finishAll(run);
+
+      expect(run.state).toBe('finished');
+      expect(run.agents[0].paneId).toBeNull();
+      expect(h.killed).toHaveLength(1);
+    });
+
+    it('opens the post pane in the project after the worktree goes', async () => {
+      const run = await workingRun(makeDef({ workspace: 'pr-worktree' }), { pr: SAMPLE_PR });
+      finishAll(run);
+
+      await h.manager.openPostPane(run.id, 'post');
+
+      expect(run.worktreePath).toBeNull();
+      expect(h.opened.at(-1)?.cwd).toBe('/repo');
+      expect(run.postPaneId).not.toBeNull();
+    });
+
     it('closes panes but keeps one a person typed in', async () => {
       const removed: string[] = [];
       h = makeHarness(dir, {
@@ -944,13 +965,132 @@ describe('WorkflowRunManager', () => {
       finishAll(run);
 
       expect(run.keptPanes).toEqual([typed]);
+      expect(run.agents[0].keptPaneId).toBe(typed);
       expect(h.killed).toEqual([other]);
       expect(removed).toEqual([]);
 
       h.manager.onPaneClosed(typed, true);
 
       expect(run.keptPanes).toEqual([]);
+      expect(run.agents[0].keptPaneId).toBeNull();
       expect(removed).toEqual([run.id]);
+    });
+
+    it('does not take a terminal reply as a person typing', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.onPersonInput(paneOf(run, 0), '\x1b[?1;2c');
+
+      finishAll(run);
+
+      expect(run.agents[0].personTyped).toBe(false);
+      expect(run.keptPanes).toEqual([]);
+    });
+
+    it('forgets kept panes after a restart, as Fleet killed them', async () => {
+      const removed: string[] = [];
+      h = makeHarness(dir, {
+        removeWorktree: async (run) => {
+          removed.push(run.id);
+          return Promise.resolve();
+        }
+      });
+      const run = await workingRun(makeDef({ workspace: 'pr-worktree' }), { pr: SAMPLE_PR });
+      h.manager.onPersonInput(paneOf(run, 0), 'x');
+      finishAll(run);
+
+      const adopted = h.relaunch().get(run.id);
+
+      expect(adopted?.keptPanes).toEqual([]);
+      expect(adopted?.agents[0].keptPaneId).toBeNull();
+      expect(removed).toEqual([run.id]);
+    });
+  });
+
+  describe('openAgent', () => {
+    function hasChat(run: WorkflowRun): void {
+      h.manager.onSessionStart(paneOf(run, 0), { id: 'chat-1', transcriptPath: '/chat.jsonl' });
+    }
+
+    it('opens the old chat in a pane that waits for a person', async () => {
+      const run = await workingRun(ONE_AGENT);
+      hasChat(run);
+      finishAll(run);
+      const opened = h.opened.length;
+
+      const reply = await h.manager.openAgent(run.id, run.agents[0].id);
+
+      expect(reply.ok).toBe(true);
+      expect(run.state).toBe('finished');
+      expect(h.opened).toHaveLength(opened + 1);
+      const { line } = h.opened[opened];
+      expect(line).toContain('/chat.jsonl');
+      expect(line).not.toContain('Start now');
+      expect(run.keptPanes).toHaveLength(1);
+      expect(h.manager.identify(run.keptPanes[0])).toEqual({ kind: 'old-attempt' });
+    });
+
+    it('shows the pane it already has', async () => {
+      const run = await workingRun(ONE_AGENT);
+      hasChat(run);
+      finishAll(run);
+      const first = await h.manager.openAgent(run.id, run.agents[0].id);
+      const opened = h.opened.length;
+
+      expect(await h.manager.openAgent(run.id, run.agents[0].id)).toEqual(first);
+      expect(h.opened).toHaveLength(opened);
+    });
+
+    it('makes the worktree again on the same commit', async () => {
+      const pins: Array<string | undefined> = [];
+      h = makeHarness(dir, {
+        makeWorktree: async (_run, pinnedSha) => {
+          pins.push(pinnedSha);
+          return Promise.resolve({ path: '/worktrees/run', sha: 'first' });
+        }
+      });
+      const run = await workingRun(makeDef({ workspace: 'pr-worktree' }), { pr: SAMPLE_PR });
+      hasChat(run);
+      finishAll(run);
+      expect(run.worktreePath).toBeNull();
+
+      await h.manager.openAgent(run.id, run.agents[0].id);
+
+      expect(pins).toEqual([undefined, 'first']);
+      expect(run.worktreePath).toBe('/worktrees/run');
+      expect(run.pr?.headSha).toBe('first');
+    });
+
+    it('says why when the worktree cannot come back', async () => {
+      let calls = 0;
+      h = makeHarness(dir, {
+        makeWorktree: async () => {
+          calls += 1;
+          if (calls === 2) return Promise.reject(new Error('commit is gone'));
+          return Promise.resolve({ path: '/worktrees/run', sha: 'first' });
+        }
+      });
+      const run = await workingRun(makeDef({ workspace: 'pr-worktree' }), { pr: SAMPLE_PR });
+      hasChat(run);
+      finishAll(run);
+
+      expect(await h.manager.openAgent(run.id, run.agents[0].id)).toEqual({
+        ok: false,
+        reason: 'commit is gone'
+      });
+    });
+
+    it('refuses a live run and an agent with no chat', async () => {
+      const run = await workingRun(ONE_AGENT);
+
+      expect((await h.manager.openAgent(run.id, run.agents[0].id)).ok).toBe(false);
+
+      finishAll(run);
+      run.agents[0].transcriptPath = null;
+
+      expect(await h.manager.openAgent(run.id, run.agents[0].id)).toEqual({
+        ok: false,
+        reason: 'This agent has no chat to open.'
+      });
     });
   });
 
@@ -991,6 +1131,7 @@ describe('buildReport', () => {
     needsPerson: false,
     silent: false,
     personTyped: false,
+    keptPaneId: null,
     autoRetried: false,
     sessionId: null,
     transcriptPath: null,

@@ -43,6 +43,25 @@ export const callWorkflows = window.fleet.workflows.call;
 /** Every pane this window has shown. A run that names only these has no new work to show. */
 const seenPanes = new Set<string>();
 
+export function showWorkflowsPage(): void {
+  const ws = useWorkspaceStore.getState();
+  const page = ws.workspace.tabs.find((tab) => tab.type === 'workflows');
+  if (page) ws.setActiveTab(page.id);
+}
+
+export function showRun(runId: string): void {
+  showWorkflowsPage();
+  const store = useWorkflowsStore.getState();
+  const run = store.state.runs.find((candidate) => candidate.id === runId);
+  if (run) void store.setProject(run.projectPath);
+  store.openRun(runId);
+}
+
+function isShowingRun(runId: string): boolean {
+  const { workspace, activeTabId } = useWorkspaceStore.getState();
+  return workspace.tabs.find((tab) => tab.id === activeTabId)?.workflowRunId === runId;
+}
+
 function applyRunTab(tab: RunTab): void {
   const hasTab = hasRunTab(useWorkspaceStore.getState(), tab.runId);
   const isNew = tab.paneIds.some((paneId) => !seenPanes.has(paneId));
@@ -53,11 +72,16 @@ function applyRunTab(tab: RunTab): void {
     seenPanes.add(paneId);
     markPtyCreated(paneId);
   }
+  const wasShowing = isShowingRun(tab.runId);
   useWorkspaceStore.getState().syncRunTab(tab, tab.focus);
+  // The last pane closed under a person who was looking, so they get the report.
+  if (wasShowing && tab.paneIds.length === 0) showRun(tab.runId);
 }
 
 function dropClosedPanes(previous: WorkflowRun[], next: WorkflowRun[]): void {
-  const open = new Set(next.flatMap((run) => run.agents.map((agent) => agent.paneId)));
+  const open = new Set(
+    next.flatMap((run) => [...run.agents.map((agent) => agent.paneId), ...run.keptPanes])
+  );
   for (const run of previous) {
     for (const agent of run.agents) {
       if (agent.paneId && !open.has(agent.paneId)) clearCreatedPty(agent.paneId);

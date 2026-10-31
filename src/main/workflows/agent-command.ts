@@ -9,8 +9,8 @@ export type AgentCommand = {
   mode: AgentMode;
   /** The Fleet-made file with the whole brief. */
   briefPath: string;
-  /** Fixed words from Fleet. Never TOML or input text. */
-  message: string;
+  /** Fixed words from Fleet, never TOML or input text. Null waits for a person. */
+  message: string | null;
   /** A transcript to go on from: a file for Pi, a session id for Claude Code. */
   resume: string | null;
   /** A dev app does not install the Pi extension, so it names its own. */
@@ -57,7 +57,7 @@ export function agentCommandLine(
   platform: NodeJS.Platform = process.platform
 ): string {
   const args = cmd.program === 'pi' ? piArgs(cmd) : claudeArgs(cmd);
-  const words = [...args, cmd.message];
+  const words = cmd.message === null ? args : [...args, cmd.message];
   if (platform === 'win32') {
     return `${cmd.program} ${words.map(quotePowerShell).join(' ')}; exit`;
   }

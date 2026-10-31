@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
+  agentChatHandle,
+  type OpenAgentResult,
   ACTIVE_RUN_STATES,
   type BoardItem,
   type RunAgent,
@@ -14,7 +16,8 @@ import {
 import { createLogger } from '../logger';
 import { agentCommandLine, type AgentMode } from './agent-command';
 import { Board, boardText, type NewItem } from './board';
-import { agentBrief, reminderText, RETRY_MESSAGE, START_MESSAGE } from './prompts';
+import { isPersonInput } from './person-input';
+import { agentBrief, reminderText, RETRY_MESSAGE, RUN_OVER_NOTE, START_MESSAGE } from './prompts';
 import type { RunStore } from './run-store';
 import type { PaneKind } from './tools';
 
@@ -36,7 +39,7 @@ export type RunDeps = {
   killPane: (paneId: string) => void;
   lastOutputAt: (paneId: string) => number;
   sendPrompt: (sessionId: string, text: string) => Promise<void>;
-  makeWorktree: (run: WorkflowRun) => Promise<{ path: string; sha: string }>;
+  makeWorktree: (run: WorkflowRun, pinnedSha?: string) => Promise<{ path: string; sha: string }>;
   removeWorktree: (run: WorkflowRun) => Promise<void>;
   onRun: (run: WorkflowRun) => void;
   onTab: (tab: RunTab) => void;
@@ -111,6 +114,7 @@ function newAgent(role: string, program: WorkflowProgram, isLast: boolean): RunA
     needsPerson: false,
     silent: false,
     personTyped: false,
+    keptPaneId: null,
     autoRetried: false,
     sessionId: null,
     transcriptPath: null,
@@ -170,6 +174,8 @@ export class WorkflowRunManager {
   private readonly panes = new Map<string, { runId: string; agentId: string | null }>();
   /** Panes of older attempts. Their calls are refused. */
   private readonly oldPanes = new Set<string>();
+  /** Runs that are opening an agent again. Two at once would fight over the worktree. */
+  private readonly opening = new Set<string>();
   private readonly startedAt = new Map<string, number>();
   /** Agents whose current turn a person started, by agent id. */
   private readonly personTurns = new Set<string>();
@@ -189,6 +195,11 @@ export class WorkflowRunManager {
     if (isActive(run)) {
       run.state = 'cut-off';
       for (const agent of run.agents) this.releaseAgent(agent);
+      this.deps.store.save(run);
+    }
+    if (run.keptPanes.length > 0) {
+      this.forgetKeptPanes(run);
+      this.dropWorktree(run);
       this.deps.store.save(run);
     }
     this.runs.set(run.id, run);
@@ -380,17 +391,20 @@ export class WorkflowRunManager {
   }
 
   private briefPath(run: WorkflowRun, agent: RunAgent): string {
+    return this.deps.store.writePrompt(run.id, `${agent.id}.md`, this.briefOf(run, agent));
+  }
+
+  private briefOf(run: WorkflowRun, agent: RunAgent): string {
     const def = this.defOf(run);
     const source = agent.isLast
       ? def.judge
       : def.agents.find((candidate) => candidate.role === agent.role);
-    const brief = agentBrief(run, def, {
+    return agentBrief(run, def, {
       role: agent.role,
       program: agent.program,
       prompt: source?.prompt ?? '',
       isLast: agent.isLast
     });
-    return this.deps.store.writePrompt(run.id, `${agent.id}.md`, brief);
   }
 
   /** The workflow as approved. It comes from the run's own copy, never from the repo. */
@@ -420,7 +434,7 @@ export class WorkflowRunManager {
       mode: this.modeOf(run),
       briefPath: this.briefPath(run, agent),
       message: resume ? RETRY_MESSAGE : START_MESSAGE,
-      resume: resume ? this.resumeHandle(agent) : null,
+      resume: resume ? agentChatHandle(agent) : null,
       devExtension: agent.program === 'pi' ? this.deps.devExtension : null
     });
     try {
@@ -432,10 +446,6 @@ export class WorkflowRunManager {
       this.failAgent(run, agent, `The pane did not open: ${String(err)}`, false);
     }
     this.commit(run);
-  }
-
-  private resumeHandle(agent: RunAgent): string | null {
-    return agent.program === 'pi' ? agent.transcriptPath : agent.sessionId;
   }
 
   /** Stop counting an agent's old pane, and refuse anything it still sends. */
@@ -547,7 +557,7 @@ export class WorkflowRunManager {
   /** A person typed in a pane. Enter sends a turn, so that turn is theirs. */
   onPersonInput(paneId: string, data: string): void {
     const located = this.locate(paneId);
-    if (!located) return;
+    if (!located || !isPersonInput(data)) return;
     const { agent, run } = located;
     if (!agent.personTyped) {
       agent.personTyped = true;
@@ -597,6 +607,8 @@ export class WorkflowRunManager {
     const run = this.list().find((candidate) => candidate.keptPanes.includes(paneId));
     if (!run) return;
     run.keptPanes = run.keptPanes.filter((kept) => kept !== paneId);
+    const agent = run.agents.find((candidate) => candidate.keptPaneId === paneId);
+    if (agent) agent.keptPaneId = null;
     if (run.keptPanes.length === 0) this.dropWorktree(run);
     this.emitTab(run);
     this.commit(run);
@@ -680,7 +692,7 @@ export class WorkflowRunManager {
   async retry(runId: string, agentId: string): Promise<void> {
     const located = this.actionable(runId, agentId);
     if (!located) return;
-    await this.startAgent(located.run, located.agent, this.resumeHandle(located.agent) !== null);
+    await this.startAgent(located.run, located.agent, agentChatHandle(located.agent) !== null);
     this.settle(located.run);
   }
 
@@ -735,6 +747,69 @@ export class WorkflowRunManager {
     if (!OVER_STATES.has(agent.state) && agent.state !== 'pending') agent.state = 'failed';
   }
 
+  /** Its agent lives on, and it must not read as a pane outside any run. */
+  private keepPane(run: WorkflowRun, agent: RunAgent, paneId: string): void {
+    run.keptPanes.push(paneId);
+    agent.keptPaneId = paneId;
+    this.oldPanes.add(paneId);
+  }
+
+  /** Open a stopped agent again on its old chat. The run itself stays over. */
+  async openAgent(runId: string, agentId: string): Promise<OpenAgentResult> {
+    const found = this.located(runId, agentId);
+    if (!found || isActive(found.run) || found.run.state === 'cut-off') {
+      return { ok: false, reason: 'This run is not over yet.' };
+    }
+    const { run, agent } = found;
+    if (agent.keptPaneId) return { ok: true, paneId: agent.keptPaneId };
+    const resume = agentChatHandle(agent);
+    if (!resume) return { ok: false, reason: 'This agent has no chat to open.' };
+    if (this.opening.has(run.id)) return { ok: false, reason: 'Another agent is opening.' };
+
+    this.opening.add(run.id);
+    try {
+      this.restoreDef(run);
+      await this.restoreWorktree(run);
+      return { ok: true, paneId: await this.openKeptPane(run, agent, resume) };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    } finally {
+      this.opening.delete(run.id);
+    }
+  }
+
+  /** The chat needs its old folder, on the commit that the agent saw. */
+  private async restoreWorktree(run: WorkflowRun): Promise<void> {
+    if (!run.pr || run.worktreePath || this.defOf(run).workspace !== 'pr-worktree') return;
+    const worktree = await this.deps.makeWorktree(run, run.pr.headSha);
+    run.worktreePath = worktree.path;
+    run.cwd = worktree.path;
+  }
+
+  private async openKeptPane(run: WorkflowRun, agent: RunAgent, resume: string): Promise<string> {
+    const paneId = randomUUID();
+    const brief = `${this.briefOf(run, agent)}\n\n${RUN_OVER_NOTE}`;
+    const line = agentCommandLine({
+      program: agent.program,
+      mode: this.modeOf(run),
+      briefPath: this.deps.store.writePrompt(run.id, `${agent.id}-open.md`, brief),
+      message: null,
+      resume,
+      devExtension: agent.program === 'pi' ? this.deps.devExtension : null
+    });
+    this.keepPane(run, agent, paneId);
+    this.focus.set(run.id, true);
+    try {
+      await this.deps.openPane({ paneId, cwd: run.cwd, line });
+    } catch (err) {
+      this.onKeptPaneClosed(paneId);
+      throw err;
+    }
+    this.emitTab(run);
+    this.commit(run);
+    return paneId;
+  }
+
   /** Go on with a cut-off run: each unfinished agent starts again on its old transcript. */
   async goOn(runId: string): Promise<void> {
     const run = this.runs.get(runId);
@@ -765,12 +840,17 @@ export class WorkflowRunManager {
     if (isActive(run)) this.stop(runId);
     for (const agent of run.agents) this.stopAgent(agent);
     for (const paneId of run.keptPanes) this.deps.killPane(paneId);
-    run.keptPanes = [];
+    this.forgetKeptPanes(run);
     this.closePostPane(run);
     if (removeWorktree) this.dropWorktree(run);
     run.state = 'closed';
     this.emitTab(run);
     this.commit(run);
+  }
+
+  private forgetKeptPanes(run: WorkflowRun): void {
+    run.keptPanes = [];
+    for (const agent of run.agents) agent.keptPaneId = null;
   }
 
   private closePostPane(run: WorkflowRun): void {
@@ -988,7 +1068,7 @@ export class WorkflowRunManager {
     run.report = buildReport(run);
     run.state = 'finished';
     run.endedAt = this.deps.now();
-    if (run.origin === 'automatic') this.closeAutomatic(run);
+    this.closeIdlePanes(run);
     this.commit(run);
     this.deps.notify({
       kind: 'report-ready',
@@ -999,15 +1079,14 @@ export class WorkflowRunManager {
     this.deps.onEnded(run);
   }
 
-  /** An automatic run closes itself, but a pane that a person typed in stays. */
-  private closeAutomatic(run: WorkflowRun): void {
+  /** A finished run closes its panes, but a pane that a person typed in stays. */
+  private closeIdlePanes(run: WorkflowRun): void {
     for (const agent of run.agents) {
       if (agent.personTyped && agent.paneId !== null) {
-        run.keptPanes.push(agent.paneId);
-        // Its agent lives on, and it must not read as a pane outside any run.
-        this.panes.delete(agent.paneId);
-        this.oldPanes.add(agent.paneId);
+        const paneId = agent.paneId;
+        this.panes.delete(paneId);
         agent.paneId = null;
+        this.keepPane(run, agent, paneId);
       } else {
         this.stopAgent(agent);
       }
