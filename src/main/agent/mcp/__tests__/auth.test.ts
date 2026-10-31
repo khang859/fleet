@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { signIn, resolveAuth } from '../auth';
+import { McpManager } from '../manager';
 import { AgentMcpSecrets } from '../secrets';
 import { startFakeOAuthServer, approve, refuse, type FakeOAuthServer } from './fake-oauth-server';
 import type { McpServerConfig } from '../../../../shared/agent-mcp';
@@ -191,9 +192,7 @@ describe('signing in to an MCP server', () => {
 
 describe('what gets sent when connecting', () => {
   it('sends nothing for a server that asks for nothing', () => {
-    expect(
-      resolveAuth('demo', { url: server.mcpUrl, enabled: true }, { secrets, openExternal: opener })
-    ).toBeUndefined();
+    expect(resolveAuth('demo', { url: server.mcpUrl, enabled: true }, { secrets })).toBeUndefined();
   });
 
   it('sends a static token as a bearer header', () => {
@@ -201,7 +200,7 @@ describe('what gets sent when connecting', () => {
     const auth = resolveAuth(
       'demo',
       { url: server.mcpUrl, enabled: true, auth: { kind: 'bearer' } },
-      { secrets, openExternal: opener }
+      { secrets }
     );
 
     expect(auth?.headers).toEqual({ Authorization: 'Bearer sekrit' });
@@ -214,7 +213,7 @@ describe('what gets sent when connecting', () => {
     const auth = resolveAuth(
       'demo',
       { url: server.mcpUrl, enabled: true, auth: { kind: 'bearer' } },
-      { secrets, openExternal: opener }
+      { secrets }
     );
 
     expect(auth).toBeUndefined();
@@ -226,12 +225,49 @@ describe('what gets sent when connecting', () => {
     await approve(server, await ui.opened);
     await flow;
 
-    const auth = resolveAuth('demo', config(), { secrets, openExternal: opener });
+    const auth = resolveAuth('demo', config(), { secrets });
     expect(await auth?.authProvider?.tokens()).toMatchObject({ access_token: 'access-granted' });
   });
 });
 
-const opener = async (): Promise<void> => Promise.resolve();
+describe('connecting when nobody asked to sign in', () => {
+  /** The app starting up: the real SDK, connecting to the server on its own. */
+  async function launch(): Promise<string | undefined> {
+    const manager = new McpManager({
+      getConfig: () => ({ demo: config() }),
+      getAuth: (name, cfg) => resolveAuth(name, cfg, { secrets })
+    });
+
+    await manager.reload();
+    const state = manager.statuses()[0]?.state;
+    await manager.closeAll();
+    return state;
+  }
+
+  function holdTokens(tokens: { access_token: string; refresh_token: string }): void {
+    secrets.saveClient('demo', server.issuer, { client_id: 'client-1' });
+    secrets.saveTokens('demo', server.issuer, { ...tokens, token_type: 'Bearer' });
+  }
+
+  it('waits for the button when there are no tokens', async () => {
+    expect(await launch()).toBe('needs-auth');
+  });
+
+  it('waits for the button when the server refuses the refresh', async () => {
+    holdTokens({ access_token: 'expired', refresh_token: 'already-used' });
+    server.refuseRefresh = true;
+
+    expect(await launch()).toBe('needs-auth');
+    expect(server.tokenRequests[0].get('grant_type')).toBe('refresh_token');
+  });
+
+  it('still refreshes an expired token on its own', async () => {
+    holdTokens({ access_token: 'expired', refresh_token: 'rt-1' });
+
+    expect(await launch()).toBe('connected');
+    expect(secrets.tokens('demo')?.access_token).toBe('access-granted-refreshed');
+  });
+});
 
 /**
  * Catch the failure at the moment the flow starts, and hand back its message.

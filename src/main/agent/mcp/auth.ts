@@ -36,7 +36,7 @@ export type AuthDeps = {
 export function resolveAuth(
   server: string,
   cfg: McpServerConfig,
-  deps: AuthDeps
+  deps: Pick<AuthDeps, 'secrets'>
 ): TransportAuth | undefined {
   // Headers and environment values that were lifted out of the config when it
   // was imported. Separate from `auth`, and applying whatever that says: a
@@ -54,7 +54,11 @@ export function resolveAuth(
         // one the registration was made under, which is what the token endpoint
         // checks a refresh against.
         redirectUrl: DEFAULT_CALLBACK_URL,
-        openExternal: deps.openExternal
+        // When a token is missing or its refresh is refused, the SDK asks this
+        // to open the sign-in page. Nothing is listening for the way back, so
+        // the sign-in could never finish, and the next launch would open it
+        // again. Declining here leaves the server in `needs-auth` with a button.
+        openExternal: async () => Promise.resolve()
       })
     };
   }
@@ -74,7 +78,7 @@ export function resolveAuth(
  * from: `headers.X-Api-Key` becomes a header, `env.API_KEY` an environment
  * value.
  */
-function liftedFields(server: string, deps: AuthDeps): TransportAuth {
+function liftedFields(server: string, deps: Pick<AuthDeps, 'secrets'>): TransportAuth {
   const headers: Record<string, string> = {};
   const env: Record<string, string> = {};
 
