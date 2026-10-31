@@ -30,3 +30,12 @@ The rail passes positioning through `className` and nothing else, so there is no
 
 When adding a tab type or a section to `Sidebar.tsx`, open the collapsed rail in `App.tsx` in the same change - it renders the same tabs and will silently keep the old behavior.
 Verify by collapsing the sidebar in the dev window (`npm run drive -- screenshot --selector 'div.w-11'`), not by reading the JSX.
+
+## The same drift hit the header actions
+
+The sidebar header's New Tab button had no rail counterpart, so a collapsed sidebar left only Cmd+T.
+The rail also had no scroll region.
+With about 20 tabs its content grew past the window and pushed the workspace switcher and Settings out of reach, because the rail's height is fixed and its overflow is visible.
+
+The tab run now lives in `MiniRailTabList`, which scrolls by itself, and the rail has a New tab button under Show sidebar.
+Test the rail with a full tab list as well as a short one, since this failure does not show with a few tabs.

@@ -198,3 +198,9 @@ export function formatShortcut(def: ShortcutDef): string {
 export function getShortcut(id: string): ShortcutDef | undefined {
   return ALL_SHORTCUTS.find((s) => s.id === id);
 }
+
+/** The shortcut as a label suffix, e.g. " (⌘T)", or nothing when the id is unknown. */
+export function shortcutHint(id: string): string {
+  const def = getShortcut(id);
+  return def ? ` (${formatShortcut(def)})` : '';
+}

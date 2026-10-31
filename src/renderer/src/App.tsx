@@ -10,7 +10,8 @@ import {
   Bot,
   Server,
   MessageCirclePlus,
-  MessageCircle
+  MessageCircle,
+  Plus
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -76,6 +77,7 @@ import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars, useRootCssVars } from './hooks/use-app-theme';
 import { useSlideshow } from './hooks/use-slideshow';
 import { findPaneLocation } from './lib/palette-items';
+import { shortcutHint } from './lib/shortcuts';
 
 // The three tool tabs only render when a tab of their type is active, and each
 // one carries weight no terminal window needs - the sessions browser alone pulls
@@ -209,6 +211,47 @@ function MiniTabButton({
   );
 }
 
+/**
+ * The tab run in the collapsed rail. It scrolls on its own so a long run cannot
+ * push the rail's bottom buttons off the window. The negative margin keeps the
+ * rail's spacing while the padding leaves room for the corner status dots.
+ */
+function MiniRailTabList({
+  tabs,
+  activeTabId,
+  onSelect
+}: {
+  tabs: Tab[];
+  activeTabId: string | null;
+  onSelect: (tabId: string) => void;
+}): React.JSX.Element {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // A new tab lands at the end of the run, which may be below the fold.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(`[data-tab-id="${activeTabId}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activeTabId]);
+
+  return (
+    <div
+      ref={listRef}
+      className="no-scrollbar flex flex-col items-center gap-1 w-full min-h-0 -my-1 py-1 scroll-py-1 overflow-y-auto"
+    >
+      {tabs.map((tab) => (
+        <MiniTabButton
+          key={tab.id}
+          tab={tab}
+          isActive={tab.id === activeTabId}
+          onClick={() => onSelect(tab.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+const NEW_TAB_LABEL = `New tab${shortcutHint('new-tab')}`;
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
 
@@ -848,16 +891,23 @@ export function App(): React.JSX.Element {
                 </svg>
               </button>
             </MiniSidebarTooltip>
+            <MiniSidebarTooltip label={NEW_TAB_LABEL}>
+              <button
+                type="button"
+                aria-label="New tab"
+                onClick={() => addTab(undefined, window.fleet.homeDir)}
+                className="p-1.5 rounded text-fleet-text-subtle hover:text-fleet-text hover:bg-fleet-surface-2 transition-colors active:scale-90"
+              >
+                <Plus size={16} />
+              </button>
+            </MiniSidebarTooltip>
             <RailDivider />
             {/* File/terminal/image tab icons (agents and pinned tools run below) */}
-            {miniRailTabs.map((tab) => (
-              <MiniTabButton
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
+            <MiniRailTabList
+              tabs={miniRailTabs}
+              activeTabId={activeTabId}
+              onSelect={setActiveTab}
+            />
             <div className="flex-1" />
             {/* Pinned agents section (mirrors expanded sidebar: agents above tools) */}
             <RailDivider />

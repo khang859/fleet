@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { ALL_SHORTCUTS, matchesShortcut, getShortcut } from '../shortcuts';
+import {
+  ALL_SHORTCUTS,
+  formatShortcut,
+  matchesShortcut,
+  getShortcut,
+  shortcutHint
+} from '../shortcuts';
 
 function key(init: Partial<KeyboardEvent> & { key: string }): KeyboardEvent {
   return new KeyboardEvent('keydown', init);
@@ -39,5 +45,16 @@ describe('command-palette shortcut', () => {
     // touch matchesShortcut + key() so they are exercised by the suite
     expect(typeof matchesShortcut).toBe('function');
     expect(key({ key: 'k', metaKey: true }).key).toBe('k');
+  });
+});
+
+describe('shortcutHint', () => {
+  it('wraps the formatted shortcut for use after a label', () => {
+    const def = getShortcut('new-tab')!;
+    expect(shortcutHint('new-tab')).toBe(` (${formatShortcut(def)})`);
+  });
+
+  it('is empty for an unknown id', () => {
+    expect(shortcutHint('no-such-shortcut')).toBe('');
   });
 });
