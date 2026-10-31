@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.145.0
+
+- **Open a new tab when the sidebar is collapsed.**
+  The collapsed rail now has a plus button under Show sidebar.
+  It does the same thing as the plus in the sidebar.
+- **The collapsed rail stays on screen with many tabs.**
+  Tabs and agents now scroll in their own lists, so the workspace switcher and Settings are always in reach (#710).
+
 ## v2.144.0
 
 - **Fleet now tracks Pi like Claude Code.**
