@@ -33,8 +33,6 @@ extraResources:
     to: resources/commands/
   - from: resources/skills/
     to: resources/skills/
-  - from: resources/crew/
-    to: resources/crew/
   # Copied to ~/.fleet by src/main/claude-sessions/claude-mod.ts.
   - from: resources/claude-mod/
     to: resources/claude-mod/

@@ -16,7 +16,7 @@ import { shouldCheck, UPDATE_CHECK_INTERVAL_MS } from './update-scheduler';
 import { nextStaged } from './update-staging';
 import { loadReleaseHistory } from './release-notes-history';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { readFile, stat } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
@@ -62,7 +62,7 @@ import { WslService } from './wsl-service';
 import { parseFleetUrl } from './protocol-paths';
 import { toWslUncPath, isUncPath, FLEET_MEDIA_ORIGIN } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
-import type { HostContextPayload, PtyExitPayload } from '../shared/ipc-api';
+import type { HostContextPayload } from '../shared/ipc-api';
 import type {
   NotificationLevel,
   StagedUpdate,
@@ -93,21 +93,10 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
-import { createAgencyService, type AgencyService } from './agency';
-import { registerAgencyIpc } from './agency/agency-ipc';
-import {
-  checkRuntime,
-  claudeSignedIn,
-  evaTakesHooks,
-  paneRuntimeDeps
-} from './agency/crew/availability';
-import { evaModels, readEvaServer } from './agency/crew/eva-server';
-import { resolveClaudeConfig } from '../shared/claude-config';
 import { createFleetHost } from './agent/fleet/host';
 import { FleetLedgerStore } from './agent/fleet/ledger-store';
 import { ActLimiter } from './agent/fleet/limiter';
 import { lazyPrompter } from './agent/fleet/send';
-import { fleetHookCommand, fleetHookEntries } from './claude-sessions/hook-installer';
 import { RendererRpc } from './agent/fleet/renderer-rpc';
 import { FleetSpawns } from './agent/fleet/spawns';
 import { FleetAttention } from './agent/fleet/attention';
@@ -123,7 +112,8 @@ import { LocalEndpointConfigSchema, type LocalEndpointConfig } from '../shared/a
 import { registerAgentEndpointIpc } from './agent/endpoints/endpoint-ipc';
 import { AgentService } from './agent/agent-service';
 import { coalesceStreamDeltas } from './agent/stream-emit';
-import { AgentSessionStore } from './agent/session-store';
+import { AGENT_SESSIONS_DIR, AgentSessionStore } from './agent/session-store';
+import { removeAdmiralData } from './admiral-cleanup';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { classifyCommand } from './agent/permissions/classifier';
@@ -171,7 +161,6 @@ let learningsStore: LearningsStore | undefined;
 let learningsEmbedder: WorkerEmbedder | undefined;
 let learningsMcp: LearningsMcpServer | undefined;
 let agentService: AgentService | null = null;
-let agencyService: AgencyService | null = null;
 let agentMcp: AgentMcpManager | undefined;
 let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
@@ -213,9 +202,15 @@ ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) =>
 
 const ptyManager = new PtyManager(app.getVersion());
 const layoutStore = new LayoutStore();
-layoutStore.dropJobTabs();
 const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
+removeAdmiralData({
+  fleetHome: FLEET_HOME,
+  sessionsDir: AGENT_SESSIONS_DIR,
+  sessions: new AgentSessionStore(),
+  layouts: layoutStore,
+  settings: settingsStore
+}).catch((err) => log.warn('Admiral data cleanup failed', { error: String(err) }));
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
@@ -336,7 +331,6 @@ function hasRunningWork(endsProcess: boolean): boolean {
   if (!endsProcess) return false;
   if ((agentSubagents?.liveIds().length ?? 0) > 0) return true;
   if (listRunningBackgroundCommands().length > 0) return true;
-  if ((agencyService?.listRunning().length ?? 0) > 0) return true;
   return false;
 }
 
@@ -354,8 +348,7 @@ function mainOwnedWork(endsProcess: boolean): QuitWorkItem[] {
   if (!endsProcess) return [];
   return mainWorkItems({
     background: listRunningBackgroundCommands(),
-    subagents: agentSubagents?.describeLive() ?? [],
-    jobs: agencyService?.listRunning() ?? []
+    subagents: agentSubagents?.describeLive() ?? []
   });
 }
 
@@ -379,21 +372,6 @@ async function confirmClose(endsProcess: boolean): Promise<void> {
     return;
   }
   mainWindow?.close();
-}
-
-/**
- * A decision the client gave on the Bridge waits out its undo time in main.
- * Carry it out before anything is torn down, then close the way the close
- * came. True when this close waits on that.
- */
-function holdCloseForDecisions(event: Electron.Event): boolean {
-  if (agencyService?.hasHeld() !== true) return false;
-  event.preventDefault();
-  void agencyService.runHeld().then(() => {
-    if (quitRequested) app.quit();
-    else mainWindow?.close();
-  });
-  return true;
 }
 
 function createWindow(): void {
@@ -436,7 +414,6 @@ function createWindow(): void {
   });
 
   mainWindow.on('close', (event) => {
-    if (holdCloseForDecisions(event)) return;
     // Already confirmed - this is the close `confirmClose` asked for.
     if (quitConfirmed) {
       ptyManager.killAll();
@@ -897,12 +874,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  // The agency starts later; crew can report only once it is up.
-  socketSupervisor = new SocketSupervisor(
-    SOCKET_PATH,
-    annotateService,
-    () => agencyService?.crew ?? null
-  );
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, annotateService);
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -1638,206 +1610,6 @@ void app.whenReady().then(async () => {
   claudeSessions.addPermissionAnswerer(
     () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
   );
-  // Crew panes get Fleet's default Claude config folder, as a workspace without its own.
-  const crewClaudeConfigDir = (): string =>
-    resolveClaudeConfig({
-      defaultDir: settingsStore.get().copilot.claudeConfigDir,
-      homeDir: homedir()
-    }).path;
-  // The Admiral agency's durable state. Opened whether or not the user has
-  // turned Admiral on: jobs outlive the setting, and the quit guard asks.
-  agencyService = createAgencyService({
-    emit: (change) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.AGENCY_CHANGED, change);
-      }
-    },
-    hasModelKey: () => openRouterSecrets.hasKey() || localEndpoints().some((e) => e.enabled),
-    worktrees: worktreeService,
-    isOnline: () => net.isOnline(),
-    // A real folder in packaged builds: readdir cannot walk app.asar.
-    crewDirs: {
-      bundled: app.isPackaged
-        ? join(process.resourcesPath, 'resources', 'crew')
-        : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources', 'crew'),
-      // Crew the user wrote, not app state, so a dev build reads the same ones.
-      user: join(homedir(), '.fleet', 'crew')
-    },
-    checkRuntime: async (runtime, cwd, mode) =>
-      checkRuntime(runtime, cwd, mode, paneRuntimeDeps(crewClaudeConfigDir())),
-    evaServer: async (cwd) => readEvaServer(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell),
-    // A crew pane gets CLAUDE_CONFIG_DIR only for a folder set in Settings, as a terminal pane does.
-    claudeSignedIn: async (cwd) => {
-      const dir = settingsStore.get().copilot.claudeConfigDir;
-      const env: Record<string, string> = dir ? { CLAUDE_CONFIG_DIR: dir } : {};
-      return claudeSignedIn(cwd, env, paneRuntimeDeps(crewClaudeConfigDir()).shell);
-    },
-    evaModels: async (server) =>
-      evaModels(server, { openRouter: async () => (await agentCatalog.list()).models, fetch }),
-    // A terminal of its own that no pane shows: protected from the pane
-    // sweep, its output dropped, and its session forgotten once it ends.
-    runtimeTest: {
-      spawn: async ({ paneId, cwd, cmd, env }) => {
-        await enrichProcessEnv();
-        const dir = settingsStore.get().copilot.claudeConfigDir;
-        try {
-          ptyManager.create({
-            paneId,
-            cwd,
-            cmd,
-            exitOnComplete: true,
-            cols: 120,
-            rows: 40,
-            env: { ...process.env, ...(dir ? { CLAUDE_CONFIG_DIR: dir } : {}), ...env }
-          });
-        } catch (err) {
-          return `The terminal did not start: ${String(err)}`;
-        }
-        ptyManager.protect(paneId);
-        ptyManager.onData(paneId, () => {});
-        return null;
-      },
-      kill: (paneId) => {
-        ptyManager.kill(paneId);
-        claudeSessions?.registry.releasePane(paneId);
-      },
-      subscribe: (listener) =>
-        claudeSessions?.registry.subscribe(({ session, event }) => {
-          if (!session || !event) return;
-          listener({
-            paneId: session.paneId,
-            event: event.event,
-            transcriptPath: session.transcriptPath,
-            error: event.error
-          });
-        }) ?? (() => {}),
-      readable: async (path) => ((await stat(path).catch(() => null))?.size ?? 0) > 0,
-      hooks: () => fleetHookEntries(crewClaudeConfigDir()),
-      evaHook: async (cwd) =>
-        (await evaTakesHooks(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell))
-          ? fleetHookCommand(crewClaudeConfigDir())
-          : undefined,
-      now: () => Date.now(),
-      newId: () => randomUUID()
-    },
-    crewPanes: {
-      open: async (pane) => {
-        const { paneId, cwd, prompt, at, launch } = pane;
-        // Before the PTY starts, so the first screen, a login or trust prompt, is kept.
-        ptyManager.mirror(paneId);
-        fleetSpawns.add({ paneId, cwd, prompt, at, launch });
-        const error = await fleetTabs.openTab({
-          paneId,
-          cwd,
-          label: pane.label,
-          worktree: null,
-          job: pane.job
-        });
-        if (error !== null) fleetSpawns.settle(paneId);
-        return error;
-      },
-      write: (paneId, data) => ptyManager.write(paneId, data),
-      // Killing a PTY drops its exit listener, so the renderer is told here
-      // and closes the pane as it does for any process that ends.
-      kill: (paneId) => {
-        ptyManager.kill(paneId);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.PTY_EXIT, {
-            paneId,
-            exitCode: 0
-          } satisfies PtyExitPayload);
-        }
-      },
-      live: () => new Set(ptyManager.paneIds()),
-      notePaneInput: (paneId, text) =>
-        claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
-      prompter: lazyPrompter(() => claudeSessions),
-      hooks: () => fleetHookEntries(crewClaudeConfigDir()),
-      hookCommand: () => fleetHookCommand(crewClaudeConfigDir()),
-      evaHook: async (cwd) =>
-        (await evaTakesHooks(cwd, paneRuntimeDeps(crewClaudeConfigDir()).shell))
-          ? fleetHookCommand(crewClaudeConfigDir())
-          : undefined,
-      screen: async (paneId) => ptyManager.screen(paneId),
-      session: (sessionId) => claudeSessions?.registry.get(sessionId)
-    },
-    agencySettings: {
-      get: () => settingsStore.get().agency,
-      set: (agency) => settingsStore.set({ agency })
-    },
-    // Read your work: one call on the Admiral's model, the Agent's coding model when it has none.
-    admiralCompletion: async ({ system, user, maxTokens }) => {
-      const settings = settingsStore.get();
-      const resolved = resolveTarget(
-        settings.agency.admiral.model || settings.ai.agent.coding.model
-      );
-      if (!resolved.ok) throw new Error(resolved.message);
-      const out = await completeOnce({
-        target: resolved.target,
-        model: resolved.wireModelId,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        maxTokens,
-        temperature: 0,
-        reasoning: { effort: 'low' }
-      });
-      return {
-        text: out.text,
-        costUsd: out.usage?.costUsd ?? null,
-        cutOff: out.finishReason === 'length'
-      };
-    },
-    permissionHooks: {
-      respond: (toolUseId, decision, reason) =>
-        claudeSessions?.respondToPermission(toolUseId, decision, reason) ?? false,
-      pending: (sessionId, toolUseId) => {
-        const session = claudeSessions?.registry.get(sessionId);
-        const request = session?.pendingPermissions.find((p) => p.toolUseId === toolUseId);
-        return session === undefined || request === undefined
-          ? undefined
-          : { request, cwd: session.cwd };
-      }
-    }
-  });
-  // Before the Agent service, which runs Admiral turns against it.
-  const agency = agencyService;
-  // A working crew member's permission requests are held for its job's
-  // Admiral and the client, and every answer is written to the job. The
-  // agency puts them to the client on its own cards, so they delegate.
-  claudeSessions.addPermissionAnswerer((request) => agency.permissions.canAnswer(request.paneId), {
-    delegates: true
-  });
-  claudeSessions.onPermission((e) => {
-    if (e.kind === 'held') agency.permissions.held(e.session, e.request);
-    else agency.permissions.released(e.toolUseId, e.answer);
-  });
-  // A session reports only once Claude Code's folder trust prompt is answered.
-  claudeSessions.registry.subscribe(({ session, event }) => {
-    if (!session) return;
-    // An eva session says nothing of Claude Code's folder trust.
-    if (session.runtime === 'claude') agency.noteClaudeSession(session.cwd);
-    agency.crew.reported(session.paneId, session.sessionId);
-    if (event) agency.permissions.sessionEvent(session, event);
-    if (event?.event === 'Stop') agency.crew.turnEnded(session.sessionId);
-    if (event?.event === 'StopFailure') {
-      agency.crew.flags.turnFailed(
-        session.sessionId,
-        event.error ?? 'unknown',
-        event.message ?? ''
-      );
-    }
-  });
-  // A key the user presses in a working crew pane takes it over from the Admiral.
-  eventBus.on('pane-input', (event) => agency.crew.flags.userInput(event.paneId, event.data));
-  // A crew pane whose runtime ended, or that the user closed, ends its member.
-  eventBus.on('pty-exit', (event) => {
-    agency.crew.ended(event.paneId, { kind: 'exit', exitCode: event.exitCode });
-  });
-  eventBus.on('pane-closed', (event) => agency.crew.ended(event.paneId, { kind: 'closed' }));
-  // What crew sessions cost, from Claude Code's status line and eva's Stop.
-  claudeSessions.onSpend((spend) => agency.spend.usage(spend));
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1872,7 +1644,6 @@ void app.whenReady().then(async () => {
         }
       }
     },
-    admiral: { agency, settings: () => settingsStore.get().agency },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
@@ -1919,14 +1690,7 @@ void app.whenReady().then(async () => {
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
     resolveTarget,
-    secrets: openRouterSecrets,
-    sessionScope: (sessionId) => (agency.isAdmiralSession(sessionId) ? 'admiral' : null)
-  });
-
-  registerAgencyIpc(agencyService);
-  // After the IPC is up, so the change events it raises reach a listener.
-  void agency.startup().catch((err: unknown) => {
-    log.error('agency startup failed', { error: String(err) });
+    secrets: openRouterSecrets
   });
 
   // Cheap AI one-line pane summaries for the agent overview, throttled per pane
@@ -2068,7 +1832,6 @@ function shutdownAll(): void {
   void learningsMcp?.stop();
   void learningsEmbedder?.close();
   learningsStore?.close();
-  agencyService?.close();
 }
 
 app.on('window-all-closed', () => {

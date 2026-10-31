@@ -15,8 +15,6 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   ensureHooks,
-  fleetHookEntries,
-  hookBinaryCurrent,
   hookStatus,
   install,
   isInstalled,
@@ -252,31 +250,5 @@ describe('ensureHooks', () => {
     expect(isInstalled(configDir)).toBe(true);
     expect(isInstalled(other)).toBe(true);
     expect(readFileSync(join(broken, 'settings.json'), 'utf-8')).toBe('{ broken');
-  });
-});
-
-describe('crew job hooks', () => {
-  it('gives the entries an install writes, word for word, StopFailure included', () => {
-    install(configDir);
-    const written = readSettings().hooks;
-    expect(fleetHookEntries(configDir)).toEqual(written);
-    expect(Object.keys(written ?? {})).toContain('StopFailure');
-  });
-
-  it('tells a hook binary this Fleet ships from a missing or older one', () => {
-    expect(hookBinaryCurrent(configDir)).toBe(false);
-    install(configDir);
-    expect(hookBinaryCurrent(configDir)).toBe(true);
-    writeFileSync(join(configDir, 'hooks', BINARY), '#!/bin/sh\necho older\n');
-    expect(hookBinaryCurrent(configDir)).toBe(false);
-  });
-
-  it('takes the installed hook as current in a dev build, which hands off to its own', () => {
-    expect(hookBinaryCurrent(configDir, true)).toBe(false);
-    install(configDir);
-    writeFileSync(join(configDir, 'hooks', BINARY), '#!/bin/sh\necho release build\n');
-    expect(hookBinaryCurrent(configDir, true)).toBe(true);
-    writeFileSync(settingsPath, '{}');
-    expect(hookBinaryCurrent(configDir, true)).toBe(false);
   });
 });

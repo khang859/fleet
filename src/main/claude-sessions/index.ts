@@ -3,13 +3,9 @@ import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
 import type {
   ClaudeInputOrigin,
-  ClaudePendingPermission,
-  ClaudeSession,
   PermissionSuggestion,
-  PlanApprovalMode,
-  SessionRuntime
+  PlanApprovalMode
 } from '../../shared/claude-sessions';
-import type { UsageWindow } from '../../shared/agency-spend';
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
@@ -24,7 +20,7 @@ import * as hookInstaller from './hook-installer';
 import { BridgeServer } from './bridge-server';
 import { HookServer, SocketHold } from './hook-server';
 import { PermissionBridge } from './permission-bridge';
-import { PermissionBroker, type HeldRequest, type PermissionAnswer } from './permission-broker';
+import { PermissionBroker, type HeldRequest } from './permission-broker';
 import { PromptInput, type SendResult } from './input';
 import { PromptBridge } from './prompt-bridge';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
@@ -70,33 +66,7 @@ export type ClaudeSessionsDeps = {
 /** A permission request an answerer is asked about: whose it is, and which. */
 export type PermissionRequestContext = { sessionId: string; paneId: string; toolUseId: string };
 
-/**
- * A permission request Fleet started holding, or one that went away: with the
- * answer it got through Fleet, or null when it went without one.
- */
-export type PermissionHookEvent =
-  | { kind: 'held'; session: ClaudeSession; request: ClaudePendingPermission }
-  | { kind: 'released'; sessionId: string; toolUseId: string; answer: PermissionAnswer | null };
-
-/**
- * What a session's runtime reported of its spend: Claude Code's status line,
- * or eva's `Stop`. `costUsd` is the session's cost so far, null when it said
- * none; `rateLimits` are Claude Code's subscription windows, null on an API key.
- */
-export type SessionSpend = {
-  sessionId: string;
-  runtime: SessionRuntime;
-  costUsd: number | null;
-  rateLimits: { fiveHour: UsageWindow | null; sevenDay: UsageWindow | null } | null;
-};
-
 type CanAnswer = (request: PermissionRequestContext) => boolean;
-
-type Answerer = {
-  canAnswer: CanAnswer;
-  /** It takes the requests it answers to the user its own way. */
-  delegates: boolean;
-};
 
 type GitState = {
   summary: GitSummary | null;
@@ -144,9 +114,7 @@ export class ClaudeSessionsService {
   private tracking: boolean | null = null;
   private work: Promise<void> = Promise.resolve();
   /** The consumers that may answer a permission request, each saying whether it can answer one. */
-  private readonly answerers = new Set<Answerer>();
-  private readonly permissionListeners = new Set<(event: PermissionHookEvent) => void>();
-  private readonly spendListeners = new Set<(spend: SessionSpend) => void>();
+  private readonly answerers = new Set<{ canAnswer: CanAnswer }>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
   private readonly evaTranscripts = new EvaTranscripts();
@@ -182,10 +150,7 @@ export class ClaudeSessionsService {
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
-    // Told before the registry drops the request, so a listener sees the
-    // release before the session change it causes.
-    this.broker = new PermissionBroker((sessionId, toolUseId, answer) => {
-      this.emitPermission({ kind: 'released', sessionId, toolUseId, answer });
+    this.broker = new PermissionBroker((sessionId, toolUseId) => {
       this.registry.resolvePermission(sessionId, toolUseId);
     });
     this.server = new HookServer(
@@ -294,32 +259,14 @@ export class ClaudeSessionsService {
    * that can, the hook is released at once so the runtime shows its own
    * prompt: holding one nobody can answer would stall a background subagent,
    * whose dialog waits for the hook.
-   *
-   * An answerer that `delegates` takes the requests it can answer to the user
-   * its own way, so its sessions do not show as waiting for approval.
    */
-  addPermissionAnswerer(
-    canAnswer: CanAnswer = () => true,
-    options: { delegates?: boolean } = {}
-  ): () => void {
+  addPermissionAnswerer(canAnswer: CanAnswer = () => true): () => void {
     // Its own object, so one consumer registering twice counts twice.
-    const answerer: Answerer = { canAnswer, delegates: options.delegates === true };
+    const answerer = { canAnswer };
     this.answerers.add(answerer);
     return () => {
       if (this.answerers.delete(answerer)) this.releaseUnanswerable();
     };
-  }
-
-  /** Hear of each permission request Fleet holds and each one that goes away, until the returned function is called. */
-  onPermission(listener: (event: PermissionHookEvent) => void): () => void {
-    this.permissionListeners.add(listener);
-    return () => this.permissionListeners.delete(listener);
-  }
-
-  /** Hear of each spend a session in a Fleet pane reports, until the returned function is called. */
-  onSpend(listener: (spend: SessionSpend) => void): () => void {
-    this.spendListeners.add(listener);
-    return () => this.spendListeners.delete(listener);
   }
 
   /**
@@ -557,20 +504,7 @@ export class ClaudeSessionsService {
       log.debug('hook event from outside a Fleet pane dropped', { sessionId: event.sessionId });
       return false;
     }
-    // A status line tells of spend only; the session's state is the hooks'.
-    if (event.event === 'StatusLine') {
-      this.emitSpend(event);
-      return false;
-    }
-    // Before the turn's end is known, so its cost is in before what it held is let go.
-    if (event.runtime === 'eva' && event.event === 'Stop') this.emitSpend(event);
-    const recorded = this.registry.ingest(event, placement, (toolUseId) =>
-      [...this.answerers].some(
-        (a) =>
-          a.delegates &&
-          a.canAnswer({ sessionId: event.sessionId, paneId: placement.paneId, toolUseId })
-      )
-    );
+    const recorded = this.registry.ingest(event, placement);
     if (event.runtime === 'eva' && this.registry.get(event.sessionId)) {
       this.evaTranscripts.follow(event.sessionId, event.dbPath);
     }
@@ -583,37 +517,10 @@ export class ClaudeSessionsService {
       return false;
     }
     this.broker.hold(event.sessionId, toolUseId, open());
-    this.emitPermission({ kind: 'held', session, request });
     return true;
   }
 
   private canAnswer(request: PermissionRequestContext): boolean {
     return [...this.answerers].some((a) => a.canAnswer(request));
-  }
-
-  private emitSpend(event: HookEvent): void {
-    const spend: SessionSpend = {
-      sessionId: event.sessionId,
-      runtime: event.runtime,
-      costUsd: event.costUsd ?? null,
-      rateLimits: event.rateLimits ?? null
-    };
-    for (const listener of this.spendListeners) {
-      try {
-        listener(spend);
-      } catch (err) {
-        log.error('spend listener failed', { error: String(err) });
-      }
-    }
-  }
-
-  private emitPermission(event: PermissionHookEvent): void {
-    for (const listener of this.permissionListeners) {
-      try {
-        listener(event);
-      } catch (err) {
-        log.error('permission listener failed', { error: String(err) });
-      }
-    }
   }
 }

@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron';
-import { z } from 'zod';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import type {
   AgentAttachRequest,
@@ -13,13 +12,11 @@ import type {
   AgentTitleResult
 } from '../../shared/agent-types';
 import type { AgentTranscribeRequest, AgentTranscribeResult } from '../../shared/agent-voice';
-import {
-  AgentMessageSchema,
-  type AgentSessionAddSpend,
-  type AgentSessionAppend,
-  type AgentSessionListItem,
-  type AgentSessionReplay,
-  type AgentSessionScope
+import type {
+  AgentSessionAddSpend,
+  AgentSessionAppend,
+  AgentSessionListItem,
+  AgentSessionReplay
 } from '../../shared/agent-session';
 import type { AgentCatalogComposer } from './catalog-composer';
 import type { AgentService } from './agent-service';
@@ -56,11 +53,6 @@ import type { FleetDigestPull } from '../../shared/fleet-tools';
 import type { AgentScheduleRecord } from '../../shared/agent-schedule';
 import type { OpenRouterSecrets } from '../openrouter-secrets';
 import type { ResolvedTarget } from './model-routing';
-
-const AgentQueueRequestSchema = z.object({
-  streamId: z.string().min(1),
-  message: AgentMessageSchema
-});
 
 /**
  * Everything the Agent pane calls into main. Agent settings themselves ride on
@@ -99,8 +91,6 @@ export function registerAgentIpc(deps: {
   getApiKey: () => string | null;
   /** Where a call for one model goes, cloud or local. */
   resolveTarget: (modelId: string | null) => ResolvedTarget;
-  /** Which kind of session an id is, for a header the pane did not label. */
-  sessionScope?: (sessionId: string) => AgentSessionScope | null;
 }): void {
   registerAgentMcpIpc(deps.mcp);
   // No dependencies of its own: skills are folders on disk, read fresh, with no
@@ -139,14 +129,6 @@ export function registerAgentIpc(deps: {
     deps.service.cancel(streamId);
   });
 
-  // Only a client's own message is queued; anything else is refused, and the
-  // pane sends it as a turn of its own.
-  ipcMain.handle(IPC_CHANNELS.AGENT_QUEUE, (_e, req: unknown): boolean => {
-    const parsed = AgentQueueRequestSchema.safeParse(req);
-    if (!parsed.success || parsed.data.message.role !== 'user') return false;
-    return deps.service.queue(parsed.data);
-  });
-
   // The renderer relays a click; whether the command runs was decided in main.
   // A payload that does not parse is dropped, which leaves the request pending
   // and the command unrun - the gate settles it when the turn ends.
@@ -157,10 +139,7 @@ export function registerAgentIpc(deps: {
   });
 
   ipcMain.on(IPC_CHANNELS.AGENT_SESSION_APPEND, (_e, req: AgentSessionAppend) => {
-    // An Admiral session is labelled in its header so the Sessions tab can
-    // leave it out, whether or not the pane said so.
-    const scope = req.scope ?? deps.sessionScope?.(req.sessionId) ?? null;
-    deps.sessions.append(req.sessionId, req.cwd, req.event, scope);
+    deps.sessions.append(req.sessionId, req.cwd, req.event);
   });
 
   // Added here rather than sent as a total, for a session no pane is adding up.

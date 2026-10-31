@@ -219,7 +219,6 @@ beforeEach(async () => {
       onToolStart: listen(IPC_CHANNELS.AGENT_TOOL_START),
       onToolEnd: listen(IPC_CHANNELS.AGENT_TOOL_END),
       onImagePartial: listen(IPC_CHANNELS.AGENT_IMAGE_PARTIAL),
-      onQueuedTaken: listen(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN),
       onHandOff: listen(IPC_CHANNELS.AGENT_HAND_OFF),
       onPermissionAsk: listen(IPC_CHANNELS.AGENT_PERMISSION_ASK),
       onTaskStart: listen(IPC_CHANNELS.AGENT_TASK_START),
@@ -851,8 +850,7 @@ describe('session log', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND },
-      scope: null
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     await open();
@@ -1298,13 +1296,13 @@ describe('subagents', () => {
   // dispatch and the child's first command. There is no card to draw the
   // question on and no pane to draw it in, and a question left unanswered stops
   // that child for good - so it is refused here rather than dropped.
-  it('refuses a question that no pane is left to show', async () => {
+  it('refuses a question that no pane is left to show', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
     const streamId = dispatch('task-1');
     // The turn is over and the child is still going, which is the whole point
     // of a subagent - and is what lets the pane be switched out from under it.
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
 
     childAsks('task-1', 'req-9', 'sleep 45');
 
@@ -1317,13 +1315,13 @@ describe('subagents', () => {
   // question was on screen and answerable, and then the session it belonged to
   // was swapped out from under it. Taking the cards away has to take the
   // questions with them, which means answering them rather than forgetting them.
-  it('refuses a question already on screen when the pane moves to another session', async () => {
+  it('refuses a question already on screen when the pane moves to another session', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'look into it');
     const streamId = dispatch('task-1');
     childAsks('task-1', 'req-9', 'sleep 45');
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId, usage: null });
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
 
     expect(agentApi.decidePermission).toHaveBeenCalledWith({ requestId: 'req-9', outcome: 'no' });
     expect(thread().taskPermissions).toEqual({});
@@ -1661,7 +1659,7 @@ describe('switching sessions', () => {
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
     emit(IPC_CHANNELS.AGENT_STREAM_DONE, { streamId: liveStreamId(), usage: null });
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
 
     expect(thread().messages).toEqual([]);
     expect(thread().sessionId).not.toBe('session-1');
@@ -1682,7 +1680,7 @@ describe('switching sessions', () => {
     expect(firstCwd).toBe(`${root}/scratch-one`);
     expect(load).toHaveBeenCalledWith('scratch-one', true);
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, firstCwd);
+    agentStore.useAgentStore.getState().startNewSession(PANE, firstCwd);
     expect(thread().loading).toBe(true);
     agentStore.useAgentStore.getState().send(PANE, firstCwd, 'too early');
     expect(agentApi.send).not.toHaveBeenCalled();
@@ -1728,7 +1726,7 @@ describe('switching sessions', () => {
     await agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
 
     expect(thread().sessionId).toBe('session-1');
     expect(thread().messages).toHaveLength(2);
@@ -1747,8 +1745,7 @@ describe('switching sessions', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND },
-      scope: null
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     await agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
@@ -1784,13 +1781,12 @@ describe('switching sessions', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND },
-      scope: null
+      spend: { ...EMPTY_SESSION_SPEND }
     };
 
     const first = agentStore.useAgentStore.getState().resumeSession(PANE, '/repo', OTHER);
     // Arrives while the read above is still outstanding.
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
     await first;
 
     expect(thread().sessionId).not.toBe(OTHER);
@@ -1810,7 +1806,7 @@ describe('switching sessions', () => {
     });
     void agentStore.useAgentStore.getState().openSession(PANE, 'session-1', '/repo');
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
     agentStore.useAgentStore.getState().send(PANE, '/repo', 'hello');
 
     expect(thread().messages.map((m) => messageText(m))).toContain('hello');
@@ -1865,8 +1861,7 @@ describe('naming a session', () => {
       firstUserText: '',
       skipped: 0,
       todos: [],
-      spend: { ...EMPTY_SESSION_SPEND },
-      scope: null
+      spend: { ...EMPTY_SESSION_SPEND }
     };
     await open();
     turn('carry on');
@@ -1924,7 +1919,7 @@ describe('naming a session', () => {
     await open('session-1');
     turn('the first question');
 
-    await agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
+    agentStore.useAgentStore.getState().startNewSession(PANE, '/repo');
     const cleared = thread().sessionId;
     deliver({ title: 'First question', usage: null });
     await vi.waitFor(() => expect(titles()).toHaveLength(1));

@@ -69,7 +69,6 @@ const ctx = (cwd: string, definition: MemoryDefinition | null): AgentToolContext
   findMemory: definition === null ? null : (name) => (name === definition.name ? definition : null),
   schedule: null,
   fleet: null,
-  agency: null,
   todos: { list: () => [], save: () => {} }
 });
 

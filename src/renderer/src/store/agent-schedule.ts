@@ -201,8 +201,7 @@ function deliver(paneId: string, sessionId: string, records: AgentScheduleRecord
 }
 
 /**
- * Start a turn nobody typed: from schedule fires, from a fleet digest, from an
- * Admiral's wakeups, or to send what the client queued during the last turn.
+ * Start a turn nobody typed: from schedule fires or from a fleet digest.
  *
  * The opening messages are written down like any other, because a turn the
  * user did not ask for is exactly the kind they will want to find in the

@@ -14,8 +14,6 @@ import { EnvSyncSection } from './EnvSyncSection';
 import { LearningsSection } from './LearningsSection';
 import { RemoteHostsSection } from './RemoteHostsSection';
 import { DiagnosticsSection } from './DiagnosticsSection';
-import { AgencyAdmiralSection } from './AgencyAdmiralSection';
-import { AgencyCrewSection } from './crew/AgencyCrewSection';
 import { useSettingsNavStore } from '../../store/settings-nav-store';
 
 /**
@@ -43,13 +41,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType<SettingsSe
   envSync: EnvSyncSection,
   remoteHosts: RemoteHostsSection,
   learnings: LearningsSection,
-  agencyAdmiral: AgencyAdmiralSection,
-  agencyCrew: AgencyCrewSection,
   diagnostics: DiagnosticsSection
 };
-
-/** Pages with a list beside an editor, which need more than a column of rows. */
-const WIDE: ReadonlySet<SettingsSection> = new Set(['agencyCrew']);
 
 export function SettingsTab(): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SettingsSection>('general');
@@ -73,7 +66,7 @@ export function SettingsTab(): React.JSX.Element {
     <div className="flex h-full">
       <SettingsNav active={activeSection} onChange={(section) => navigate(section)} />
       <div className="flex-1 overflow-y-auto p-6">
-        <div className={`${WIDE.has(activeSection) ? 'max-w-[1040px]' : 'max-w-[640px]'} mx-auto`}>
+        <div className="max-w-[640px] mx-auto">
           <SectionComponent focusWorkspaceId={focusWorkspaceId} onNavigate={navigate} />
         </div>
       </div>

@@ -143,15 +143,7 @@ const CommonMessageFields = {
    * annotations were kept replays as one that cited nothing loose, which is
    * what it was.
    */
-  citations: z.array(CitationSchema).default([]),
-  /** An Admiral thread's mark on a message, new in version 9. Absent everywhere else. */
-  meta: z
-    .discriminatedUnion('kind', [
-      z.object({ kind: z.literal('event') }),
-      z.object({ kind: z.literal('job-link'), jobId: z.number().int() }),
-      z.object({ kind: z.literal('queued') })
-    ])
-    .optional()
+  citations: z.array(CitationSchema).default([])
 };
 
 const CurrentMessage = z.object({ ...CommonMessageFields, parts: z.array(PartSchema) });
@@ -178,17 +170,6 @@ const LegacyMessage = z
   );
 
 const MessageSchema = z.union([CurrentMessage, LegacyMessage]);
-
-/** One message as anything outside this process may hand one over, e.g. a queued client message. */
-export const AgentMessageSchema = MessageSchema;
-
-/**
- * Who a session belongs to, recorded in its header. Absent is an ordinary
- * Agent pane's; `admiral` is an Admiral lobby or job, which the Sessions list
- * leaves out because the Admiral pane is where those are opened.
- */
-export const AGENT_SESSION_SCOPES = ['admiral'] as const;
-export type AgentSessionScope = (typeof AGENT_SESSION_SCOPES)[number];
 
 /**
  * One task. `activeForm` is nullish rather than nullable for the same reason
@@ -230,9 +211,7 @@ const EventSchema = z.discriminatedUnion('t', [
     version: z.number(),
     id: z.string(),
     cwd: z.string(),
-    createdAt: z.string(),
-    /** New in version 9, and absent for an ordinary session. */
-    scope: z.enum(AGENT_SESSION_SCOPES).optional()
+    createdAt: z.string()
   }),
   /** One completed message, appended when it stops changing. */
   z.object({ t: z.literal('message'), message: MessageSchema }),
@@ -292,13 +271,7 @@ const EventSchema = z.discriminatedUnion('t', [
     status: z.enum(AGENT_TASK_STATUSES),
     report: z.string().nullable(),
     summary: z.string().nullable()
-  }),
-  /**
-   * A queued client message that a running Admiral turn took in, new in
-   * version 9. The message was written when it was sent, marked queued; this
-   * clears the mark on replay, the same way `task` patches a row in place.
-   */
-  z.object({ t: z.literal('unqueue'), id: z.string() })
+  })
 ]);
 
 export type AgentSessionEvent = z.infer<typeof EventSchema>;
@@ -311,8 +284,6 @@ export type AgentSessionAppend = {
   sessionId: string;
   cwd: string;
   event: AgentSessionEvent;
-  /** Recorded in the header, so only read when this append creates the file. */
-  scope?: AgentSessionScope;
 };
 
 /**
@@ -330,8 +301,6 @@ export type AgentSessionAddSpend = {
 
 export type AgentSessionReplay = {
   messages: AgentMessage[];
-  /** `null` for an ordinary Agent session. */
-  scope: AgentSessionScope | null;
   /** `null` when the log never recorded one, same as a thread that has not run a turn. */
   contextTokens: number | null;
   cwd: string | null;
@@ -374,7 +343,6 @@ export type AgentSessionReplay = {
 export function emptyReplay(): AgentSessionReplay {
   return {
     messages: [],
-    scope: null,
     contextTokens: null,
     cwd: null,
     todos: [],
@@ -385,20 +353,8 @@ export function emptyReplay(): AgentSessionReplay {
   };
 }
 
-export function sessionHeader(
-  id: string,
-  cwd: string,
-  createdAt: string,
-  scope: AgentSessionScope | null = null
-): AgentSessionEvent {
-  return {
-    t: 'session',
-    version: SESSION_LOG_VERSION,
-    id,
-    cwd,
-    createdAt,
-    ...(scope === null ? {} : { scope })
-  };
+export function sessionHeader(id: string, cwd: string, createdAt: string): AgentSessionEvent {
+  return { t: 'session', version: SESSION_LOG_VERSION, id, cwd, createdAt };
 }
 
 /** One event as the line that goes in the file. */
@@ -443,7 +399,6 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
   switch (event.t) {
     case 'session':
       replay.cwd = event.cwd;
-      replay.scope = event.scope ?? null;
       return;
     case 'message':
       if (replay.firstUserText === '' && event.message.role === 'user') {
@@ -484,18 +439,6 @@ function apply(replay: AgentSessionReplay, event: AgentSessionEvent): void {
       // Nothing found: the turn that dispatched it was compacted away while the
       // child was still running. The report has nowhere to go, and the model
       // will not be told about a call it can no longer see either.
-      return;
-    }
-    case 'unqueue': {
-      // Taken in where the turn was when it read the message, which is the
-      // end of the log so far: the reply it interrupted is written just before.
-      const at = replay.messages.findLastIndex((m) => m.id === event.id);
-      if (at === -1) return;
-      const message = replay.messages[at];
-      if (message.meta?.kind !== 'queued') return;
-      delete message.meta;
-      replay.messages.splice(at, 1);
-      replay.messages.push(message);
       return;
     }
   }

@@ -61,7 +61,6 @@ const ctx = (schedule: AgentScheduleCapability | null = capability()): AgentTool
   findMemory: null,
   schedule,
   fleet: null,
-  agency: null,
   todos: { list: () => [], save: () => {} }
 });
 

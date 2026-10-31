@@ -3,7 +3,6 @@ import { homedir } from 'node:os';
 import { createRequire } from 'node:module';
 import winston from 'winston';
 import { FLEET_HOME, IS_FLEET_DEV } from '../shared/constants';
-import { logRedactor } from './redactor';
 
 /**
  * Explicit, because the bare `require` comes from electron-vite's ESM shim. If
@@ -134,17 +133,8 @@ try {
   // DailyRotateFile not available — console-only logging
 }
 
-/** Masks env file values (see `maskInLogs`) before every transport's own format runs. */
-const redactFormat = winston.format((info) => {
-  const redactor = logRedactor();
-  if (redactor.empty) return info;
-  for (const key of Object.keys(info)) info[key] = redactor.redactDeep(info[key]);
-  return info;
-});
-
 export const logger = winston.createLogger({
   level,
-  format: redactFormat(),
   transports
 });
 

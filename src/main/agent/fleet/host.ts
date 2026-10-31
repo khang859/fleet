@@ -40,11 +40,6 @@ export type FleetHost = {
   inputsFor(sessionId: string): NotedInput[];
   git: GitRunner;
   now(): number;
-  /**
-   * What a starting pane shows, read only, for a host that keeps a copy of
-   * it: an Admiral's crew. Lets a read see a login or trust screen.
-   */
-  screen?(paneId: string): Promise<string | null>;
 };
 
 /** How many characters of a pane id make its ref. */

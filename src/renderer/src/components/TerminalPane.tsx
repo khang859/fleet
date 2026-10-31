@@ -78,7 +78,7 @@ export function TerminalPane({
     backgroundImageActive: hasBackgroundImage,
     workspaceId,
     shellProfileId,
-    ...(cmd !== undefined ? { cmd, exitOnComplete: false } : {}),
+    cmd,
     typeOnStart,
     onScrollStateChange: setIsScrolledUp
   });

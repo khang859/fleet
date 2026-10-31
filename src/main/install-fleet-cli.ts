@@ -65,7 +65,7 @@ fi
 // ── installFleetCLI ───────────────────────────────────────────────────────────
 //
 // Ensures the `fleet` CLI binary is available at ~/.fleet/bin/fleet.
-// The Admiral's Claude Code PTY needs this on its PATH to run `fleet` commands.
+// Fleet's panes need this on their PATH to run `fleet` commands.
 //
 // Directory layout:
 //   ~/.fleet/bin/fleet          — executable shell wrapper

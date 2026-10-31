@@ -119,8 +119,7 @@ describe('fleet_spawn', () => {
     expect(JSON.stringify(tabs)).not.toContain('parser');
     expect(deps.spawns.take(PANE)).toEqual({
       cmd: SPAWN_COMMAND,
-      env: { [SPAWN_PROMPT_ENV]: '[orchestrator] Add a test for the parser' },
-      exitOnComplete: false
+      env: { [SPAWN_PROMPT_ENV]: '[orchestrator] Add a test for the parser' }
     });
     expect(deps.spawns.take(PANE)).toBeNull();
     expect(noted).toEqual([[PANE, '[orchestrator] Add a test for the parser']]);
@@ -235,14 +234,6 @@ describe('FleetSpawns', () => {
     const spawns = new FleetSpawns();
     spawns.add({ paneId: 'p', cwd: '/w', prompt: 'hi', at: 1 });
     expect(new FleetSpawns().take('p')).toBeNull();
-  });
-
-  it('starts a pane with the launch it was given, ending with its command', () => {
-    const spawns = new FleetSpawns();
-    const launch = { cmd: 'claude "$P"', env: { P: 'hi' }, exitOnComplete: true };
-    spawns.add({ paneId: 'p', cwd: '/w', prompt: 'hi', at: 1, launch });
-    expect(spawns.take('p')).toEqual(launch);
-    expect(spawns.take('p')).toBeNull();
   });
 
   it('reports a pane as starting until its session reports or it closes', () => {

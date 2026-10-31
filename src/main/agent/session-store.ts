@@ -20,8 +20,7 @@ import {
   sessionHeader,
   type AgentSessionEvent,
   type AgentSessionListItem,
-  type AgentSessionReplay,
-  type AgentSessionScope
+  type AgentSessionReplay
 } from '../../shared/agent-session';
 import {
   addTurn,
@@ -81,16 +80,11 @@ export class AgentSessionStore {
   /**
    * Append one event, creating the session file on the first write.
    *
-   * `cwd` and `scope` are only used for that first write - they are what the
+   * `cwd` is only used for that first write - it is what the
    * header records. Deferring creation to the first event means a pane opened
    * and closed without a word leaves nothing behind.
    */
-  append(
-    sessionId: string,
-    cwd: string,
-    event: AgentSessionEvent,
-    scope: AgentSessionScope | null = null
-  ): void {
+  append(sessionId: string, cwd: string, event: AgentSessionEvent): void {
     const path = this.path(sessionId);
     if (path === null) return;
     try {
@@ -104,7 +98,7 @@ export class AgentSessionStore {
       if (!exists && event.t !== 'message') return;
       const header = exists
         ? ''
-        : encodeEvent(sessionHeader(sessionId, cwd, new Date().toISOString(), scope));
+        : encodeEvent(sessionHeader(sessionId, cwd, new Date().toISOString()));
       appendFileSync(path, header + encodeEvent(event), 'utf8');
     } catch (err) {
       // A session that cannot be written is not a reason to lose the turn that
@@ -185,10 +179,6 @@ export class AgentSessionStore {
   /**
    * The sessions started in `cwd`, most recently used first.
    *
-   * An Admiral's lobby and job sessions are left out: they belong to the
-   * Admiral pane, which opens them by job, and resumed in an Agent pane one
-   * would be an Admiral conversation without its records or its tools.
-   *
    * Every file has to be opened to know which folder it belongs to, since the
    * folder is recorded inside the file rather than in its name. That is the
    * price of the flat layout, and it buys a listing that cannot disagree with
@@ -215,7 +205,6 @@ export class AgentSessionStore {
         // in the folder stays out of the list.
         if (isScratchDir(cwd) ? !isScratchDir(replay.cwd ?? '') : replay.cwd !== cwd) continue;
         if (replay.cwd === null) continue;
-        if (replay.scope !== null) continue;
         items.push({
           id,
           cwd: replay.cwd,
@@ -348,7 +337,7 @@ function readSpend(path: string, size: number, head: AgentSessionReplay): AgentS
 }
 
 /** `length` bytes from `start`, as text, without reading the rest of the file. */
-function readWindow(path: string, start: number, length: number): string {
+export function readWindow(path: string, start: number, length: number): string {
   const fd = openSync(path, 'r');
   try {
     const buffer = Buffer.alloc(length);

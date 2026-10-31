@@ -50,7 +50,6 @@ const ctx = (threadId = 'thread-1'): AgentToolContext => ({
   findMemory: null,
   schedule: null,
   fleet: null,
-  agency: null,
   todos: { list: () => [], save: () => {} }
 });
 

@@ -45,14 +45,6 @@ import type {
   WslHomeDirResponse
 } from '../shared/ipc-api';
 import type { TerminalMenuAction } from '../shared/ipc-api';
-import type {
-  CrewCatalog,
-  CrewRuntime,
-  CrewRuntimeView,
-  RoleSave,
-  RoleSaveResult,
-  RuntimeTestResult
-} from '../shared/agency-crew';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
 import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
@@ -109,8 +101,6 @@ import type {
   AgentMentionMatch,
   AgentPermissionAsk,
   AgentPermissionDecision,
-  AgentQueueRequest,
-  AgentQueuedTaken,
   AgentSendRequest,
   AgentStreamDelta,
   AgentStreamDone,
@@ -174,53 +164,6 @@ import type {
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { QuitConfirmAsk } from '../shared/quit-confirm';
 import type { SessionSummary, SessionTranscript } from '../shared/sessions';
-import type {
-  AdmiralClaimResult,
-  AgencyAnswerRequest,
-  AgencyChanged,
-  AgencyPreflight,
-  AgencyQuestion,
-  AgencyRepoRef,
-  AgencySnapshot,
-  RepoResolution,
-  WakeupPull,
-  WakeupRelease
-} from '../shared/agency';
-import type {
-  AgencyProjectSummary,
-  BriefIdeas,
-  ClientFileView,
-  ClientLineChange,
-  ClientLineResult,
-  ClientLineInput,
-  ProjectFolder,
-  RuleCandidates,
-  ImportDiff,
-  SaveSetupRequest,
-  SetupScan
-} from '../shared/agency-projects';
-import type { MeetAnswer, MeetQuestionId } from '../shared/agency-meet';
-import type { AppliedCrewLesson, CrewLessonUndo } from '../shared/agency-lessons';
-import type {
-  ReadProposal,
-  ReadResult,
-  ReadSource,
-  ReadSourceId
-} from '../shared/agency-understanding';
-import type {
-  AgencyJobDetail,
-  JobControl,
-  JobControlResult,
-  LeftoverAction,
-  ResultOpen,
-  HoldRequest,
-  HoldResult,
-  PlanAction,
-  PlanActionResult,
-  StepSwapRequest
-} from '../shared/agency-jobs';
-import type { PermissionAnswerRequest, PermissionAnswerResult } from '../shared/agency-permissions';
-import type { AdmiralSettingMark, SettingsUndoOutcome } from '../shared/agency-settings';
 import type {
   Learning,
   CreateLearningInput,
@@ -727,15 +670,6 @@ const fleetApi = {
     send: (req: AgentSendRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_SEND, req),
     compact: (req: AgentCompactRequest): void => ipcRenderer.send(IPC_CHANNELS.AGENT_COMPACT, req),
     cancel: (streamId: string): void => ipcRenderer.send(IPC_CHANNELS.AGENT_CANCEL, streamId),
-    /**
-     * Hand a client message to a running Admiral turn. False when that turn
-     * can no longer take it in: send it as a turn of its own once it is done.
-     */
-    queue: async (req: AgentQueueRequest): Promise<boolean> =>
-      typedInvoke<boolean>(IPC_CHANNELS.AGENT_QUEUE, req),
-    /** Queued messages a running Admiral turn has just taken in. */
-    onQueuedTaken: (cb: (p: AgentQueuedTaken) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENT_STREAM_QUEUED_TAKEN, cb),
     onStreamChunk: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STREAM_CHUNK, cb),
     onStreamReasoning: (cb: (p: AgentStreamDelta) => void): Unsubscribe =>
@@ -1127,198 +1061,6 @@ const fleetApi = {
       typedInvoke<number>(IPC_CHANNELS.LEARNINGS_MODEL_CACHE_SIZE),
     clearModelCache: async (): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.LEARNINGS_CLEAR_MODEL_CACHE)
-  },
-  agency: {
-    /**
-     * The repository a folder belongs to, by its git common dir. `remote` says
-     * the folder is on another machine (an SSH pane), which is refused.
-     */
-    resolveRepo: async (
-      cwd: string,
-      opts?: { remote?: boolean; pathContext?: PathContext }
-    ): Promise<RepoResolution> => typedInvoke(IPC_CHANNELS.AGENCY_RESOLVE_REPO, cwd, opts),
-    /** Make a pane its repository's one Admiral, or learn which pane already is. */
-    claimAdmiral: async (args: { repoId: string; paneId: string }): Promise<AdmiralClaimResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_CLAIM, args),
-    releaseAdmiral: async (paneId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE, paneId),
-    /** The repository's lobby session id, minted the first time. */
-    ensureLobby: async (repo: AgencyRepoRef): Promise<string> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_ENSURE_LOBBY, repo),
-    snapshot: async (repoId: string): Promise<AgencySnapshot> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_SNAPSHOT, repoId),
-    /** Null when the question cannot take this answer (hidden, already answered, bad option). */
-    answerQuestion: async (req: AgencyAnswerRequest): Promise<AgencyQuestion | null> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_ANSWER, req),
-    /** Claim every wakeup due for one job (null: the lobby) as the text of one turn. */
-    pullWakeups: async (args: { repoId: string; jobId: number | null }): Promise<WakeupPull> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_PULL_WAKEUPS, args),
-    ackWakeups: async (ids: number[]): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_ACK_WAKEUPS, ids),
-    /** Hand claimed wakeups back after a failed turn, to retry after a backoff. */
-    releaseWakeups: async (args: { ids: number[]; error: string }): Promise<WakeupRelease> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_RELEASE_WAKEUPS, args),
-    /** Cancel the repository's running jobs. Resolves with the cancelled ids. */
-    cancelJobs: async (repoId: string): Promise<number[]> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_CANCEL_JOBS, repoId),
-    markHandoff: async (args: { jobId: number; lobbyMessageId: string }): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_MARK_HANDOFF, args),
-    /** `/clear`: a fresh session id for the lobby (`jobId` null) or a job. Null when there is no such conversation. */
-    clearConversation: async (args: {
-      repoId: string;
-      jobId: number | null;
-    }): Promise<string | null> => typedInvoke(IPC_CHANNELS.AGENCY_CLEAR_CONVERSATION, args),
-    /** The client wrote to a job's Admiral, which restarts its automatic-turn count. */
-    clientActivity: async (jobId: number): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_ACTIVITY, jobId),
-    /** A job's plan versions, steps and record, for its sheet and plan cards. */
-    jobDetail: async (jobId: number): Promise<AgencyJobDetail | null> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_JOB_DETAIL, jobId),
-    /** The client's approve, edit, change request or reject on a plan card. */
-    planAction: async (action: PlanAction): Promise<PlanActionResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_PLAN_ACTION, action),
-    /** Swap on a crew card: propose the approved plan with the step's role, runtime or model changed. */
-    swapStep: async (swap: StepSwapRequest): Promise<PlanActionResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_STEP_SWAP, swap),
-    /** The client cancels a job, or accepts its results; either way it closes and cleans up. */
-    jobControl: async (control: JobControl): Promise<JobControlResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_JOB_CONTROL, control),
-    /** The client allows or denies a crew member's permission request from its card. */
-    answerPermission: async (req: PermissionAnswerRequest): Promise<PermissionAnswerResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_PERMISSION_ANSWER, req),
-    /** Hold a plan or question decision from the Bridge for undo; settles once it ran, was refused or undone. */
-    hold: async (req: HoldRequest): Promise<HoldResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_HOLD, req),
-    /** Drop a held decision before it runs; false once it started. */
-    undo: async (holdId: number): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_UNDO, holdId),
-    /** The last lines a crew member's pane shows, env file values masked; null once its pane is gone. */
-    crewScreen: async (crewId: number): Promise<string | null> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_CREW_SCREEN, crewId),
-    /** Merge a delivered job's PRs one at a time in member order, each after its checks. */
-    mergePrs: async (jobId: number): Promise<JobControlResult> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_MERGE_PRS, jobId),
-    /** Retry or dismiss something a job's cleanup left behind. */
-    leftover: async (action: LeftoverAction): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_LEFTOVER, action),
-    /** Ask GitHub again about a job's PR results not asked in the last minute. */
-    refreshResults: async (jobId: number): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_RESULTS_REFRESH, jobId),
-    /** Hand a crew member back to the Admiral: one the client took over, or one held at a usage limit. */
-    handBackCrew: async (crewId: number): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_CREW_HAND_BACK, crewId),
-    /** Settings › Agency › Crew: a project's roles and playbooks, its runtimes, and saving a role. */
-    crew: {
-      list: async (repoId: string): Promise<CrewCatalog> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LIST, repoId),
-      runtimes: async (repoId: string): Promise<CrewRuntimeView[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIMES, repoId),
-      /** The Test button: start a runtime in a hidden terminal and say what reached Fleet. */
-      testRuntime: async (repoId: string, runtime: CrewRuntime): Promise<RuntimeTestResult> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_RUNTIME_TEST, { repoId, runtime }),
-      saveRole: async (input: RoleSave): Promise<RoleSaveResult> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_SAVE_ROLE, input)
-    },
-    /** Open a delivered file with the system's app for it; resolves with an error, or ''. */
-    openResult: async (open: ResultOpen): Promise<string> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_RESULT_OPEN, open),
-    /** Save an ended job's record as Markdown; resolves with the path, or null. */
-    exportJob: async (jobId: number): Promise<string | null> =>
-      typedInvoke(IPC_CHANNELS.AGENCY_JOB_EXPORT, jobId),
-    preflight: async (): Promise<AgencyPreflight> => typedInvoke(IPC_CHANNELS.AGENCY_PREFLIGHT),
-    /** The Admiral's settings cards: undo a change, and what it changed last. */
-    settings: {
-      undo: async (changeId: number): Promise<SettingsUndoOutcome> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_UNDO, changeId),
-      /** Agency settings when `repoId` is null, else the project's too. */
-      marks: async (repoId: string | null): Promise<AdmiralSettingMark[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SETTINGS_MARKS, repoId)
-    },
-    /** Onboarding: first run, the picker, setup, the client file and brief ideas. */
-    projects: {
-      firstRunDone: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.AGENCY_FIRST_RUN_DONE),
-      finishFirstRun: async (): Promise<void> => typedInvoke(IPC_CHANNELS.AGENCY_FINISH_FIRST_RUN),
-      /** What the picker shows for each folder: a repository and its state, or not one. */
-      probeFolders: async (paths: string[]): Promise<ProjectFolder[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_PROBE_FOLDERS, paths),
-      /** Make a workspace a project, less the members left out. Resolves with the project. */
-      chooseWorkspace: async (input: { path: string; leftOut: string[] }): Promise<AgencyRepoRef> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CHOOSE_WORKSPACE, input),
-      /** Check out a submodule setup found missing. */
-      checkOutMember: async (input: { repo: AgencyRepoRef; path: string }): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CHECK_OUT_MEMBER, input),
-      list: async (): Promise<AgencyProjectSummary[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_LIST_PROJECTS),
-      /** Setup's read-only scan, or the setup saved before. */
-      scan: async (repo: AgencyRepoRef): Promise<SetupScan> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SCAN_PROJECT, repo),
-      /** Save the setup; `finish` also marks it done. Resolves with the file's path. */
-      saveSetup: async (input: SaveSetupRequest & { finish: boolean }): Promise<string> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SAVE_SETUP, input),
-      /** Save, then copy into the repository's `.fleet/`. Resolves with what was written. */
-      shareSetup: async (input: SaveSetupRequest): Promise<string[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_SHARE_SETUP, input),
-      /** An imported file's project copy beside the repository's newer version. */
-      importDiff: async (input: { repo: AgencyRepoRef; path: string }): Promise<ImportDiff> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_IMPORT_DIFF, input),
-      /** One layer of the client's preferences: `you` or a project id. */
-      clientFile: async (layer: string): Promise<ClientFileView> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE, layer),
-      /** Save a whole layer from Settings: the client's edits win. */
-      writeClientFile: async (input: { layer: string; text: string }): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_WRITE, input),
-      /** Add, edit or remove one line of a layer. */
-      changeClientLine: async (input: {
-        layer: string;
-        change: ClientLineChange;
-      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_LINE, input),
-      /** Keep a change made to a layer outside Fleet. */
-      keepClientFile: async (layer: string): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_KEEP, layer),
-      /** Put a layer changed outside Fleet back to Fleet's last version. */
-      undoClientFile: async (layer: string): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CLIENT_FILE_UNDO, layer),
-      /** The crew lessons Fleet wrote into a project's roles, newest first. */
-      crewLessons: async (repoId: string): Promise<AppliedCrewLesson[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LESSONS, repoId),
-      /** Take a crew lesson out of its role again. */
-      undoCrewLesson: async (id: number): Promise<CrewLessonUndo> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_CREW_LESSON_UNDO, id),
-      ruleCandidates: async (repo: AgencyRepoRef): Promise<RuleCandidates[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_RULE_CANDIDATES, repo),
-      /** Save one Meet you answer to its layer. */
-      meetAnswer: async (input: {
-        repo: AgencyRepoRef;
-        id: MeetQuestionId;
-        answer: MeetAnswer;
-      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_MEET_ANSWER, input),
-      /** End Meet you, or finish later: write the picked rules and open the Bridge. */
-      meetFinish: async (input: { repo: AgencyRepoRef; rules: ClientLineInput[] }): Promise<void> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_MEET_FINISH, input),
-      briefIdeas: async (repo: AgencyRepoRef): Promise<BriefIdeas> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_BRIEF_IDEAS, repo),
-      /** Read your work: what each source holds, or why it cannot be read. */
-      readSources: async (repo: AgencyRepoRef): Promise<ReadSource[]> =>
-        typedInvoke(IPC_CHANNELS.AGENCY_READ_SOURCES, repo),
-      /** Read the ticked sources once with the Admiral's model, for lines to keep or drop. */
-      readWork: async (input: {
-        repo: AgencyRepoRef;
-        sources: ReadSourceId[];
-      }): Promise<ReadResult> => typedInvoke(IPC_CHANNELS.AGENCY_READ_WORK, input),
-      /** Save lines the client kept from a read. */
-      keepRead: async (input: {
-        repo: AgencyRepoRef;
-        lines: ReadProposal[];
-      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_READ_KEEP, input),
-      /** Pick the winner of a line's clash with a project rule. */
-      settleConflict: async (input: {
-        repoId: string;
-        layer: string;
-        id: number;
-        winner: 'line' | 'rule';
-      }): Promise<ClientLineResult> => typedInvoke(IPC_CHANNELS.AGENCY_CONFLICT_SETTLE, input)
-    },
-    onChanged: (callback: (change: AgencyChanged) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENCY_CHANGED, callback)
   }
 };
 

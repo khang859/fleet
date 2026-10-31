@@ -47,14 +47,10 @@ export type UseTerminalOptions = {
   scrollback?: number;
   /** Shell command to run instead of default shell (e.g. `claude --resume <id>`). */
   cmd?: string;
-  /** If true, PTY exits when cmd finishes instead of falling back to shell. */
-  exitOnComplete?: boolean;
   /** Typed into the shell once its prompt is up, like a worktree's setup. */
   typeOnStart?: string;
   serializedContent?: string;
   onScrollStateChange?: (isScrolledUp: boolean) => void;
-  /** If true, skip PTY creation (attach to an already-running PTY, e.g. Admiral). */
-  attachOnly?: boolean;
   /** If true, hide xterm's hardware cursor (for TUIs like Claude Code that draw their own). */
   cursorHidden?: boolean;
   /** Workspace ID for resolving per-workspace Claude config. */
@@ -157,11 +153,6 @@ function flushDraft(paneId: string): void {
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
   shellSpoke.delete(paneId);
-}
-
-/** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
-export function markPtyCreated(paneId: string): void {
-  createdPtys.add(paneId);
 }
 
 /**
@@ -437,13 +428,12 @@ function createTerminal(
   // correct regardless of whether rAF is running.
 
   // Create PTY only once per pane (survives StrictMode double-mount).
-  // Skip creation when attachOnly=true (e.g. Admiral PTY pre-created by main process).
   const isPreCreated = createdPtys.has(options.paneId);
 
-  // For pre-created PTYs (crew deployments), gate live data until attach()
+  // For a PTY that already exists, gate live data until attach()
   // resolves to prevent out-of-order writes. Data that arrives via PTY_DATA
   // before the attach round-trip completes is queued and flushed in order.
-  let attachResolved = !isPreCreated || options.attachOnly;
+  let attachResolved = !isPreCreated;
   const pendingLiveData: string[] = [];
 
   const writeToTerm = (data: string): void => {
@@ -668,30 +658,7 @@ function createTerminal(
   };
   container.addEventListener('contextmenu', contextMenuHandler);
 
-  if (options.attachOnly) {
-    // attachOnly mode: always call attach to drain any buffered output and resume a paused PTY.
-    // This is critical after hard refresh where the PTY may have accumulated
-    // output (and been paused due to buffer overflow) while the renderer was reloading.
-    void window.fleet.pty.attach(options.paneId).then(({ data }) => {
-      if (!term.element) return;
-      log.debug('pty.attach', { paneId: options.paneId, bufferedBytes: data.length });
-      if (data) writeToTerm(data);
-
-      // Force TUI redraw via the "resize trick" (same technique tmux/dtach use).
-      // The kernel suppresses SIGWINCH when ioctl(TIOCSWINSZ) is called with
-      // dimensions identical to the PTY's current size. After a hard refresh the
-      // xterm instance is new but the PTY retains its old size, so a same-size
-      // resize is silently ignored. Momentarily shrinking by one column guarantees
-      // two real SIGWINCH signals reach the child process, forcing Ink (Claude
-      // Code's TUI framework) to query the new dimensions and fully redraw.
-      const cols = term.cols;
-      const rows = term.rows;
-      window.fleet.pty.resize({ paneId: options.paneId, cols: Math.max(1, cols - 1), rows });
-      setTimeout(() => {
-        window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
-      }, 50);
-    });
-  } else if (!isPreCreated) {
+  if (!isPreCreated) {
     createdPtys.add(options.paneId);
     log.debug('pty.create', { paneId: options.paneId, cwd: options.cwd });
     void window.fleet.pty
@@ -700,14 +667,16 @@ function createTerminal(
         cwd: options.cwd,
         cmd: options.cmd,
         typeOnStart: options.typeOnStart,
-        exitOnComplete: options.exitOnComplete,
         workspaceId: options.workspaceId,
         shellProfileId: options.shellProfileId
       })
       .then(() => {
         // After hard refresh, createdPtys is reset so we hit this path even
         // though the PTY already exists in main (idempotent create). Apply the
-        // resize trick to force any running TUI to redraw, same as attachOnly.
+        // "resize trick" (same technique tmux/dtach use) to force any running
+        // TUI to redraw. The kernel suppresses SIGWINCH when ioctl(TIOCSWINSZ)
+        // is called with dimensions identical to the PTY's current size, so
+        // momentarily shrinking by one column guarantees two real signals.
         // Harmless on genuinely new PTYs since the shell hasn't drawn yet.
         if (!term.element) return;
         const cols = term.cols;
@@ -720,7 +689,7 @@ function createTerminal(
         }
       });
   } else {
-    // For pre-created PTYs (crew deployments), attach to get buffered output
+    // For a PTY that already exists, attach to get buffered output
     // and transition to live streaming. This closes the race where PTY data
     // arrives before the renderer mounts the terminal.
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {
@@ -731,7 +700,7 @@ function createTerminal(
       for (const chunk of pendingLiveData) writeToTerm(chunk);
       pendingLiveData.length = 0;
 
-      // Resize trick for pre-created PTYs (crew deployments) that may
+      // Resize trick for a PTY that may
       // have been running a TUI before the renderer remounted.
       const cols = term.cols;
       const rows = term.rows;

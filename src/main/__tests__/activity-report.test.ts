@@ -71,15 +71,6 @@ describe('routeActivityReport', () => {
     expect(h.raiseAlerts).toHaveBeenCalledTimes(1);
   });
 
-  it('raises a new question while another still waits, when the pane says it is new', () => {
-    const h = harness();
-
-    routeActivityReport({ paneId: 'admiral-1', state: 'needs_me' }, h.deps);
-    routeActivityReport({ paneId: 'admiral-1', state: 'needs_me', renotify: true }, h.deps);
-
-    expect(h.raiseAlerts).toHaveBeenCalledTimes(2);
-  });
-
   /*
    * The hand-off. The agent typed a command into a terminal and is waiting for
    * the user's Enter, and that terminal is a pane main already watches - so it

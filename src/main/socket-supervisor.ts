@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { SocketServer, type CrewReports } from './socket-server';
+import { SocketServer } from './socket-server';
 import type { AnnotateService } from './annotate-service';
 import { createLogger } from './logger';
 
@@ -19,8 +19,7 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private annotateService?: AnnotateService,
-    private crewReports?: () => CrewReports | null
+    private annotateService?: AnnotateService
   ) {
     super();
   }
@@ -86,7 +85,7 @@ export class SocketSupervisor extends EventEmitter {
   }
 
   private createServer(): SocketServer {
-    const server = new SocketServer(this.socketPath, this.annotateService, this.crewReports);
+    const server = new SocketServer(this.socketPath, this.annotateService);
 
     server.on('state-change', (...args: unknown[]) => {
       this.emit('state-change', ...args);

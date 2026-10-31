@@ -6,7 +6,6 @@ import type { UserGroupColor } from './group-colors';
 import type { AiSettings } from './agent-types';
 import type { RemoteHost } from './remote-ssh-types';
 import type { TeleprompterSettings } from './teleprompter';
-import type { AgencyRepoRef, AgencySettings } from './agency';
 import type {
   ClaudePendingPermission,
   ClaudeSession,
@@ -78,8 +77,6 @@ export type Tab = {
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */
   pathContext?: PathContext;
-  /** The Admiral job whose crew panes this tab holds. Such a tab is dropped at app start. */
-  agencyJobId?: number;
 };
 
 export type PaneNode = PaneSplit | PaneLeaf;
@@ -106,7 +103,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | OpenablePaneType | 'agent' | 'admiral' | 'ssh-browser';
+  paneType?: 'terminal' | OpenablePaneType | 'agent' | 'ssh-browser';
   filePath?: string;
   /**
    * Where to put the cursor when a `file` pane opens. Set when the path that
@@ -134,20 +131,6 @@ export type PaneLeaf = {
    * fleet tools. Persisted with the layout, so the mode survives a restart.
    */
   agentOrchestrator?: boolean;
-  /**
-   * The repository an `admiral` pane is bound to. Resolved in main from the git
-   * common dir when the pane opens, so a worktree of the same repository finds
-   * this pane rather than opening a second Admiral.
-   */
-  admiralRepo?: AgencyRepoRef;
-  /**
-   * The agent sessions an `admiral` pane's conversations are written to: one
-   * for the lobby, where briefs start, and one per job, keyed by job id. One
-   * session per job keeps wakeups and compaction from mixing jobs.
-   */
-  admiralSessions?: { lobby: string; jobs: Record<string, string> };
-  /** The job tab an `admiral` pane shows; null or absent is the lobby. */
-  admiralActiveJob?: number | null;
   isDirty?: boolean;
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */
@@ -354,7 +337,6 @@ export type FleetSettings = {
      */
     rcConsent: Record<string, 'installed' | 'declined'>;
   };
-  agency: AgencySettings;
 };
 
 export type FleetSettingsPatch = DeepPartial<FleetSettings>;

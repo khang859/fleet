@@ -14,9 +14,7 @@ export const ActivityReportSchema = z.object({
   paneId: z.string().min(1),
   state: z.enum(['working', 'idle', 'done', 'needs_me', 'error', 'gone']),
   /** What to call this pane when telling the user about it, if it knows. */
-  label: z.string().min(1).max(80).optional(),
-  /** Say it again though the state has not changed: a new question while one waits. */
-  renotify: z.boolean().optional()
+  label: z.string().min(1).max(80).optional()
 });
 
 /**

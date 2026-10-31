@@ -76,14 +76,9 @@ export type ClaudePendingPermission = {
   receivedAt: number;
   /** What Claude Code suggests allowing with it; only a request the fleet-bridge mod sent has any. */
   suggestions?: PermissionSuggestion[];
-  /**
-   * Fleet holds it for an answerer that takes it to the user its own way, as
-   * the agency's Admiral does, so the session does not wait on the user for it.
-   */
-  delegated?: boolean;
 };
 
-/** The program a tracked session runs: Claude Code, or eva crew. */
+/** The program a tracked session runs: Claude Code, or eva. */
 export type SessionRuntime = 'claude' | 'eva';
 
 export type ClaudeSession = {

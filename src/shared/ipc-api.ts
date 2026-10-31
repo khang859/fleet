@@ -10,8 +10,6 @@ export type PtyCreateRequest = {
   /** Typed into the shell once its prompt is up, as if the user typed it. */
   typeOnStart?: string;
   workspaceId?: string;
-  /** If true, PTY exits when cmd finishes instead of falling back to shell. */
-  exitOnComplete?: boolean;
   /** Resolved on the main side to a ShellProfile via ShellProfileRegistry. Optional for legacy callers. */
   shellProfileId?: string;
 };
@@ -99,8 +97,6 @@ export type ActivityReportPayload = {
   state: ActivityState | 'gone';
   /** What to call this pane in a desktop notification, where it has no glyph. */
   label?: string;
-  /** Say it again though the state has not changed: a new question while one waits. */
-  renotify?: boolean;
 };
 
 export type PaneFocusedPayload = {

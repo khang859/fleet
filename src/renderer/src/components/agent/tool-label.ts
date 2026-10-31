@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { AgentToolCall } from '../../../../shared/agent-tools';
 import { readMcpToolName } from '../../../../shared/agent-mcp-names';
-import { jobDisplayId } from '../../../../shared/agency';
 
 /**
  * What a tool call says about itself on one line.
@@ -35,29 +34,11 @@ const LabelArgs = z.object({
   url: z.string().optional(),
   background: z.boolean().optional(),
   session: z.string().optional(),
-  crew: z.string().optional(),
   sessions: z.array(z.string()).optional(),
   level: z.string().optional(),
   view: z.string().optional(),
-  decision: z.string().optional(),
-  question: z.string().optional(),
-  title: z.string().optional(),
-  summary: z.string().optional(),
-  step: z.string().optional(),
-  status: z.string().optional(),
-  kind: z.string().optional(),
-  branch: z.string().optional(),
-  reason: z.string().optional(),
-  request: z.string().optional(),
-  job: z.number().optional(),
-  result: z.number().optional()
+  decision: z.string().optional()
 });
-
-const PERMISSION_VERB: Record<string, string> = {
-  allow: 'Allow',
-  deny: 'Deny',
-  ask_client: 'Ask you about'
-};
 
 export function toolStatus(call: AgentToolCall): ToolStatus {
   if (call.error !== null) return 'failed';
@@ -174,49 +155,6 @@ export function toolLabel(call: AgentToolCall): ToolLabel {
         verb: args.decision === 'deny' ? 'Deny' : 'Allow',
         target: args.session ?? ''
       };
-    case 'ask_client':
-      return { verb: 'Ask you', target: args.question ?? '' };
-    case 'job_open':
-      return { verb: 'Open job', target: args.title ?? '' };
-    case 'job_list':
-      return { verb: 'List jobs', target: '' };
-    case 'job_results':
-      return {
-        verb: 'Read results of',
-        target: joinDetail(
-          args.job === undefined ? undefined : jobDisplayId(args.job),
-          args.result === undefined ? undefined : `result#${args.result}`,
-          ' '
-        )
-      };
-    case 'job_plan':
-      return { verb: 'Propose plan', target: args.summary ?? '' };
-    case 'job_update':
-      return { verb: args.status === undefined ? 'Note' : 'Update', target: args.step ?? '' };
-    case 'job_deliver':
-      return { verb: 'Deliver', target: args.title ?? args.url ?? args.branch ?? args.kind ?? '' };
-    case 'crew_hire':
-      return { verb: 'Hire', target: args.step ?? '' };
-    case 'crew_send':
-      return {
-        verb: 'Send',
-        target: joinDetail(args.crew, (args.prompt ?? '').replace(/\s*\n\s*/g, ' '), ': ')
-      };
-    case 'crew_interrupt':
-      return { verb: 'Interrupt', target: args.crew ?? '' };
-    case 'crew_stop':
-      return { verb: 'Stop', target: args.crew ?? '' };
-    case 'permission_answer':
-      return {
-        verb: PERMISSION_VERB[args.decision ?? ''] ?? 'Answer',
-        target: joinDetail(args.request, args.reason, ': ')
-      };
-    case 'client_file_propose':
-      return { verb: 'Remember', target: args.reason ?? '' };
-    case 'settings_read':
-      return { verb: 'Read settings', target: '' };
-    case 'settings_change':
-      return { verb: 'Change settings', target: args.reason ?? '' };
     default:
       return mcpLabel(call.name) ?? { verb: call.name, target: '' };
   }

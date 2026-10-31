@@ -139,12 +139,6 @@ export type FleetOpenTabRequest = {
   label: string;
   /** Set when the session runs in a worktree Fleet made for it. */
   worktree: { path: string; branch: string } | null;
-  /**
-   * Set for a crew pane: it opens as a split of its job's one tab, which the
-   * first crew pane of the job makes, labelled `label`, and `label` above
-   * names the pane.
-   */
-  job?: { jobId: number; label: string };
 };
 
 /** The renderer's answer: `error` is null once the tab is in the layout. */

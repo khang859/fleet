@@ -120,16 +120,12 @@ export class LayoutStore {
     return null;
   }
 
-  /**
-   * Removes every Admiral job tab. Crew processes end with Fleet, so a job
-   * tab saved at quit holds only dead panes; the job resumes its crew in a
-   * new tab.
-   */
+  /** Removes the job tabs an older Fleet saved. Their panes ended with it. */
   dropJobTabs(): void {
     const workspaces = this.store.get('workspaces', {});
     let dropped = 0;
     for (const ws of Object.values(workspaces)) {
-      const tabs = ws.tabs.filter((t) => t.agencyJobId === undefined);
+      const tabs = ws.tabs.filter((t) => !('agencyJobId' in t));
       dropped += ws.tabs.length - tabs.length;
       ws.tabs = tabs;
     }
