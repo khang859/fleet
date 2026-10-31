@@ -1,4 +1,4 @@
-import type { PaneLeaf, PaneNode } from '../../../shared/types';
+import type { PaneLeaf, PaneNode, PaneSplit } from '../../../shared/types';
 import type { RunTab } from '../../../shared/workflows';
 import { collectPaneIds } from './pane-tree';
 
@@ -11,16 +11,45 @@ function removeLeaf(node: PaneNode, id: string): PaneNode | null {
   return { ...node, children: [left, right] };
 }
 
-/** A new pane takes an even share, so a run's agents sit in equal columns. */
-function addLeaf(root: PaneNode | null, leaf: PaneLeaf): PaneNode {
-  if (!root) return leaf;
-  const count = collectPaneIds(root).length;
+/** A run's panes fill rows of this many, so many agents stay wide enough to read. */
+const PANES_IN_ROW = 3;
+
+function isRows(node: PaneNode): node is PaneSplit {
+  return node.type === 'split' && node.direction === 'vertical';
+}
+
+function rowCount(node: PaneNode): number {
+  return isRows(node) ? 1 + rowCount(node.children[0]) : 1;
+}
+
+/** A new pane takes an even share, so a row's panes sit in equal columns. */
+function addToRow(row: PaneNode, leaf: PaneLeaf): PaneSplit {
+  const count = collectPaneIds(row).length;
   return {
     type: 'split',
     direction: 'horizontal',
     ratio: count / (count + 1),
+    children: [row, leaf]
+  };
+}
+
+/** A new row takes an even share of the height. */
+function addRow(root: PaneNode, leaf: PaneLeaf): PaneSplit {
+  const count = rowCount(root);
+  return {
+    type: 'split',
+    direction: 'vertical',
+    ratio: count / (count + 1),
     children: [root, leaf]
   };
+}
+
+function addLeaf(root: PaneNode | null, leaf: PaneLeaf): PaneNode {
+  if (!root) return leaf;
+  const lastRow = isRows(root) ? root.children[1] : root;
+  if (collectPaneIds(lastRow).length >= PANES_IN_ROW) return addRow(root, leaf);
+  if (!isRows(root)) return addToRow(root, leaf);
+  return { ...root, children: [root.children[0], addToRow(lastRow, leaf)] };
 }
 
 /** The split tree for a run, keeping what a person already resized. */

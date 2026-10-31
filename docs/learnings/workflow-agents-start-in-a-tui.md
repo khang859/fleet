@@ -87,3 +87,9 @@ The report path check now also reads the real path.
 The app replaces PATH after it starts, so a fake `gh` on PATH or in the sandbox `bin` folder does not work.
 A local git remote named `<owner>/<repo>.git`, and a one-line local change in `runProgram` that points `gh` at a script, gave a full live test.
 Restart the dev app after you revert that line, or the app goes on with the fake `gh`.
+
+## Driving the workflows store in a test
+
+`addProject` takes no path, and it opens the macOS folder picker.
+A `fleet-drive eval` that awaits it hangs until a person closes the dialog, and the dialog looks like Finder.
+Use `setProject(path)` in a drive script.

@@ -13,6 +13,10 @@ function split(ratio: number, left: PaneNode, right: PaneNode): PaneSplit {
   return { type: 'split', direction: 'horizontal', ratio, children: [left, right] };
 }
 
+function rows(ratio: number, top: PaneNode, bottom: PaneNode): PaneSplit {
+  return { type: 'split', direction: 'vertical', ratio, children: [top, bottom] };
+}
+
 function tab(...paneIds: string[]): RunTab {
   return { runId: 'run-1', label: 'Review', cwd: CWD, projectPath: CWD, paneIds, focus: false };
 }
@@ -34,6 +38,45 @@ function expectEvenColumns(root: PaneNode | null, ids: string[]): void {
   for (const share of Object.values(shares)) expect(share).toBeCloseTo(1 / ids.length);
 }
 
+type Box = { left: number; top: number; width: number; height: number };
+
+/** Where each pane sits in the tab, from 0 to 1, as the panes draw it. */
+function boxes(
+  node: PaneNode,
+  box: Box = { left: 0, top: 0, width: 1, height: 1 }
+): Record<string, Box> {
+  if (node.type === 'leaf') return { [node.id]: box };
+  const { left, top, width, height } = box;
+  const [first, second] = node.children;
+  if (node.direction === 'horizontal') {
+    const split = width * node.ratio;
+    return {
+      ...boxes(first, { ...box, width: split }),
+      ...boxes(second, { ...box, left: left + split, width: width - split })
+    };
+  }
+  const split = height * node.ratio;
+  return {
+    ...boxes(first, { ...box, height: split }),
+    ...boxes(second, { ...box, top: top + split, height: height - split })
+  };
+}
+
+function expectGrid(root: PaneNode | null, grid: string[][]): void {
+  if (!root) throw new Error('The tab has no panes.');
+  const placed = boxes(root);
+
+  expect(Object.keys(placed)).toEqual(grid.flat());
+  grid.forEach((row, rowIndex) => {
+    row.forEach((id, column) => {
+      expect(placed[id].top).toBeCloseTo(rowIndex / grid.length);
+      expect(placed[id].height).toBeCloseTo(1 / grid.length);
+      expect(placed[id].left).toBeCloseTo(column / row.length);
+      expect(placed[id].width).toBeCloseTo(1 / row.length);
+    });
+  });
+}
+
 describe('runTabRoot', () => {
   it('gives null for a tab with no panes', () => {
     expect(runTabRoot(null, tab())).toBeNull();
@@ -43,8 +86,37 @@ describe('runTabRoot', () => {
     expect(runTabRoot(null, tab('a'))).toEqual(leaf('a'));
   });
 
-  it('makes even columns for a new tab', () => {
-    expectEvenColumns(runTabRoot(null, tab('a', 'b', 'c', 'd')), ['a', 'b', 'c', 'd']);
+  it('makes even columns for up to three panes', () => {
+    expectEvenColumns(runTabRoot(null, tab('a', 'b', 'c')), ['a', 'b', 'c']);
+  });
+
+  it('starts a second row with the fourth pane', () => {
+    expectGrid(runTabRoot(null, tab('a', 'b', 'c', 'd')), [['a', 'b', 'c'], ['d']]);
+  });
+
+  it('fills a row before it starts the next one', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+    expectGrid(runTabRoot(null, tab(...ids)), [ids.slice(0, 3), ids.slice(3, 6), ids.slice(6)]);
+  });
+
+  it('builds the same grid when panes open one at a time', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+    const root = ids.reduce<PaneNode | null>(
+      (current, _id, index) => runTabRoot(current, tab(...ids.slice(0, index + 1))),
+      null
+    );
+
+    expectGrid(root, [ids.slice(0, 3), ids.slice(3, 6), ids.slice(6)]);
+  });
+
+  it('keeps a row that a person resized when a pane joins the next row', () => {
+    const resized = rows(0.7, split(0.8, leaf('a'), split(0.5, leaf('b'), leaf('c'))), leaf('d'));
+
+    const root = runTabRoot(resized, tab('a', 'b', 'c', 'd', 'e'));
+
+    expect(root).toEqual(rows(0.7, resized.children[0], split(0.5, leaf('d'), leaf('e'))));
   });
 
   it('adds a new leaf to an even tree as an even column', () => {
@@ -73,12 +145,12 @@ describe('runTabRoot', () => {
     expect(root).toEqual(split(2 / 3, resized, leaf('c')));
   });
 
-  it('gives each of several new leaves its own column', () => {
+  it('gives each of several new leaves its own place', () => {
     const resized = split(0.8, leaf('a'), leaf('b'));
 
     const root = runTabRoot(resized, tab('a', 'b', 'c', 'd'));
 
-    expect(root).toEqual(split(3 / 4, split(2 / 3, resized, leaf('c')), leaf('d')));
+    expect(root).toEqual(rows(1 / 2, split(2 / 3, resized, leaf('c')), leaf('d')));
   });
 
   it('takes out a leaf that left the run and keeps the other ratios', () => {
