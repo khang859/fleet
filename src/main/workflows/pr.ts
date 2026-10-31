@@ -156,22 +156,44 @@ export async function listOpenPrs(exec: Exec, cwd: string): Promise<OpenPr[]> {
  * too, as GitHub keeps each PR's head under `pull/N/head`. It never copies
  * `.env` files.
  */
+export type PrWorktreeSpec = {
+  projectPath: string;
+  runId: string;
+  prNumber: number;
+  base?: string;
+  /** The commit to use, when a person opens a finished run's agent again. */
+  pinnedSha?: string;
+};
+
+function slugOfUrl(url: string): string | null {
+  return /[:/]([^/:]+\/[^/]+?)(?:\.git)?\/?$/.exec(url)?.[1].toLowerCase() ?? null;
+}
+
+/** The remote of the repo that `gh` reads. In a fork, that is not `origin`. */
+async function prRemote(exec: Exec, cwd: string): Promise<string> {
+  const slug = await repoSlug(exec, cwd);
+  const remotes = await exec('git', ['remote', '-v'], cwd);
+  for (const line of remotes.split('\n')) {
+    const [name, url] = line.split(/\s+/);
+    if (url && slugOfUrl(url) === slug.toLowerCase()) return name;
+  }
+  throw new Error(`No git remote points to ${slug}.`);
+}
+
 export async function makePrWorktree(
   exec: Exec,
-  projectPath: string,
-  runId: string,
-  prNumber: number,
-  base: string = join(FLEET_HOME, 'worktrees'),
-  /** The commit to use, when a person opens a finished run's agent again. */
-  pinnedSha?: string
+  spec: PrWorktreeSpec
 ): Promise<{ path: string; sha: string }> {
+  const { projectPath, runId, prNumber, pinnedSha } = spec;
+  const base = spec.base ?? join(FLEET_HOME, 'worktrees');
+  const remote = await prRemote(exec, projectPath);
   const folder = join(base, basename(projectPath));
   mkdirSync(folder, { recursive: true });
   const path = join(folder, `run-${runId.slice(0, 8)}`);
 
   // Not FETCH_HEAD: the repo has one, and a run next to this one can overwrite it.
   const ref = `refs/fleet/runs/${runId}`;
-  await exec('git', ['fetch', 'origin', `+pull/${prNumber}/head:${ref}`], projectPath);
+  await exec('git', ['fetch', remote, `+pull/${prNumber}/head:${ref}`], projectPath);
   try {
     const sha = pinnedSha ?? (await exec('git', ['rev-parse', ref], projectPath)).trim();
     await exec('git', ['worktree', 'add', '--detach', path, sha], projectPath);

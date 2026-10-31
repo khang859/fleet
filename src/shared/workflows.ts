@@ -78,6 +78,11 @@ export const ACTIVE_RUN_STATES: readonly RunState[] = [
   'needs-you'
 ];
 
+/** The findings a post would send. An item that was posted never goes again. */
+export function postsLeft(run: WorkflowRun): BoardItem[] {
+  return run.board.filter((item) => item.mergedInto === undefined && item.post !== 'posted');
+}
+
 /** What a stopped agent can go on from: a file for Pi, a session id for Claude Code. */
 export function agentChatHandle(agent: RunAgent): string | null {
   return agent.program === 'pi' ? agent.transcriptPath : agent.sessionId;

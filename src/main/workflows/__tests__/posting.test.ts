@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { WorkflowRun } from '../../../shared/workflows';
+import { postsLeft, type WorkflowRun } from '../../../shared/workflows';
 import { ToolRefused } from '../bridge-routes';
 import { itemMarker, type Exec } from '../pr';
 import { WorkflowPosting } from '../posting';
@@ -128,7 +128,7 @@ describe('WorkflowPosting', () => {
       addItems('one', 'two');
       h.manager.mergeFindings(run.id, run.agents[0].id, ['1', '2'], { kind: 'bug', text: 'both' });
 
-      expect(posting.remaining(run).map((item) => item.id)).toEqual(['3']);
+      expect(postsLeft(run).map((item) => item.id)).toEqual(['3']);
     });
   });
 
@@ -186,7 +186,7 @@ describe('WorkflowPosting', () => {
       await posting.start(run.id);
       await posting.postItem(run.id, '1');
 
-      expect(posting.remaining(run).map((item) => item.id)).toEqual(['2']);
+      expect(postsLeft(run).map((item) => item.id)).toEqual(['2']);
     });
 
     it('marks a failed post and offers it again', async () => {
@@ -197,7 +197,7 @@ describe('WorkflowPosting', () => {
       expect(await refusalOf(posting.postItem(run.id, '1'))).toBe('post-failed');
 
       expect(run.board[0].post).toBe('failed');
-      expect(posting.remaining(run)).toHaveLength(1);
+      expect(postsLeft(run)).toHaveLength(1);
     });
 
     it('does not post again when a failed post went out', async () => {
@@ -235,6 +235,64 @@ describe('WorkflowPosting', () => {
       await posting.postItem(run.id, '1');
 
       expect(h.deps.store.loadBoard(run.id)[0].post).toBe('posted');
+    });
+  });
+
+  describe('the post pane', () => {
+    async function openPane(...texts: string[]): Promise<string[]> {
+      addItems(...texts);
+      await posting.start(run.id);
+      return run.board.map((item) => item.id);
+    }
+
+    it('closes after the last confirmed finding posts', async () => {
+      const [first, second] = await openPane('one', 'two');
+      const paneId = run.postPaneId;
+
+      await posting.postItem(run.id, first);
+      expect(run.postPaneId).toBe(paneId);
+
+      await posting.postItem(run.id, second);
+      expect(run.postPaneId).toBeNull();
+      expect(h.killed).toContain(paneId);
+    });
+
+    it('stays open when a post fails, so a person can see why', async () => {
+      const [first] = await openPane('one');
+      failing = true;
+
+      await refusalOf(posting.postItem(run.id, first));
+
+      expect(run.postPaneId).not.toBeNull();
+    });
+
+    it('closes when a failed post works on the second try', async () => {
+      const [first] = await openPane('one');
+      failing = true;
+      await refusalOf(posting.postItem(run.id, first));
+      failing = false;
+
+      await posting.postItem(run.id, first);
+
+      expect(run.postPaneId).toBeNull();
+    });
+
+    it('stays open when a person typed in it', async () => {
+      const [first] = await openPane('one');
+      h.manager.onPersonInput(run.postPaneId ?? '', 'x');
+
+      await posting.postItem(run.id, first);
+
+      expect(run.postPaneId).not.toBeNull();
+    });
+
+    it('counts no terminal reply as a person typing', async () => {
+      const [first] = await openPane('one');
+      h.manager.onPersonInput(run.postPaneId ?? '', '\u001b[I');
+
+      await posting.postItem(run.id, first);
+
+      expect(run.postPaneId).toBeNull();
     });
   });
 });

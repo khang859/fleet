@@ -77,6 +77,18 @@ describe('report files', () => {
       expect(result).toEqual({ refused: 'docs/out.md leads outside the project.' });
     });
 
+    it('refuses a folder symlink into a protected folder', () => {
+      mkdirSync(join(project, '.github'));
+      mkdirSync(join(project, 'docs'));
+      symlinkSync(join(project, '.github'), join(project, 'docs', 'reports'));
+
+      const result = resolveReportPath(project, 'docs/reports/foo.md', {});
+
+      expect(result).toEqual({
+        refused: 'docs/reports/foo.md is a place that Fleet does not write reports to.'
+      });
+    });
+
     it('refuses a file symlink that leads outside', () => {
       const outside = join(dir, 'outside.md');
       writeFileSync(outside, 'mine');

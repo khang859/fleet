@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
   agentChatHandle,
+  postsLeft,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -192,7 +193,7 @@ function ReportSection({
             >
               {report.savedTo ? 'Save again' : 'Save report'}
             </Button>
-            {run.pr && (
+            {run.pr && postsLeft(run).length > 0 && (
               <Button tone={finish?.action === 'post-pr' ? 'primary' : 'plain'} onClick={onPost}>
                 Post
               </Button>
@@ -221,7 +222,7 @@ function ReportSection({
 
 /** What a post sends, word for word, so a person can read it first. */
 function PostPreview({ run }: { run: WorkflowRun }): React.JSX.Element {
-  const items = run.board.filter((item) => item.mergedInto === undefined && item.post !== 'posted');
+  const items = postsLeft(run);
   return (
     <ul className="mt-3 max-h-60 space-y-2 overflow-y-auto rounded border border-fleet-border p-2 text-[11px] text-fleet-text-secondary">
       {items.map((item) => (

@@ -16,6 +16,7 @@ import {
   wantedPrs,
   WorkflowScheduler,
   type SchedulerDeps,
+  startOutcome,
   type StartOutcome
 } from '../scheduler';
 
@@ -50,6 +51,26 @@ function rule(fields: Partial<WorkflowRule> = {}): WorkflowRule {
 function openPr(number: number, fields: Partial<OpenPr> = {}): OpenPr {
   return { number, team: true, draft: false, bot: false, ...fields };
 }
+
+const RUN_STARTED = { ok: true, runId: 'run' } as const;
+
+describe('startOutcome', () => {
+  const closed = { ok: false, code: 'pr-closed', message: 'PR 5 is closed.' } as const;
+
+  it('skips a closed PR that a rule took from its queue', () => {
+    expect(startOutcome(closed, 5)).toEqual({ ok: false, busy: true, reason: closed.message });
+  });
+
+  it('pauses a rule that names a closed PR itself', () => {
+    expect(startOutcome(closed, null)).toEqual({ ok: false, busy: false, reason: closed.message });
+  });
+
+  it('skips a duplicate', () => {
+    const duplicate = { ok: false, code: 'duplicate', message: 'A run is active.' } as const;
+
+    expect(startOutcome(duplicate, null)).toMatchObject({ busy: true });
+  });
+});
 
 describe('inWindow', () => {
   it('treats the same time twice as a whole day', () => {
@@ -752,6 +773,32 @@ describe('WorkflowScheduler', () => {
       await scheduler.tick();
 
       expect(start.mock.calls.map((call) => call[1])).toEqual([5]);
+    });
+
+    it('moves past a queued PR that closed', async () => {
+      const busy = vi.fn(() => true);
+      const listPrs = vi.fn(async (): Promise<OpenPr[]> => Promise.resolve([]));
+      scheduler = makeScheduler({ busy, listPrs });
+      const rule = addRule(scheduler, { trigger });
+      await scheduler.tick();
+      listPrs.mockResolvedValue([openPr(5), openPr(6)]);
+      now += POLL_MS;
+      await scheduler.tick();
+
+      busy.mockReturnValue(false);
+      start.mockImplementation(async (_rule, pr) =>
+        Promise.resolve(
+          startOutcome(
+            pr === 5 ? { ok: false, code: 'pr-closed', message: 'PR 5 is closed.' } : RUN_STARTED,
+            pr
+          )
+        )
+      );
+      await scheduler.tick();
+      await scheduler.tick();
+
+      expect(start.mock.calls.map((call) => call[1])).toEqual([5, 6]);
+      expect(scheduler.rules().find((one) => one.id === rule.id)?.pausedReason).toBeNull();
     });
 
     it('survives a failed poll', async () => {

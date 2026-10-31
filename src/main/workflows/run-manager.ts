@@ -176,6 +176,8 @@ export class WorkflowRunManager {
   private readonly oldPanes = new Set<string>();
   /** Runs that are opening an agent again. Two at once would fight over the worktree. */
   private readonly opening = new Set<string>();
+  /** Post panes a person typed in. These stay open after the last post. */
+  private readonly typedPostPanes = new Set<string>();
   private readonly startedAt = new Map<string, number>();
   /** Agents whose current turn a person started, by agent id. */
   private readonly personTurns = new Set<string>();
@@ -258,8 +260,10 @@ export class WorkflowRunManager {
   /** The agents that use room now, and those of a run that is opening them. */
   private activeAgents(): number {
     const count = (run: WorkflowRun): number => {
-      if (run.state === 'preparing') return run.agents.filter((a) => !a.isLast).length;
-      return run.agents.filter((agent) => LIVE_STATES.has(agent.state)).length;
+      const opening = run.state === 'preparing' || run.state === 'running';
+      const toOpen = (agent: RunAgent): boolean =>
+        opening && agent.state === 'pending' && !agent.isLast;
+      return run.agents.filter((agent) => LIVE_STATES.has(agent.state) || toOpen(agent)).length;
     };
     return this.list()
       .filter(isActive)
@@ -451,10 +455,13 @@ export class WorkflowRunManager {
   /** Stop counting an agent's old pane, and refuse anything it still sends. */
   private retirePane(agent: RunAgent): void {
     if (agent.paneId === null) return;
-    const paneId = agent.paneId;
-    this.panes.delete(paneId);
-    this.oldPanes.add(paneId);
+    this.oldPanes.add(agent.paneId);
+    this.dropPane(agent.paneId);
     agent.paneId = null;
+  }
+
+  private dropPane(paneId: string): void {
+    this.panes.delete(paneId);
     this.deps.killPane(paneId);
   }
 
@@ -556,8 +563,10 @@ export class WorkflowRunManager {
 
   /** A person typed in a pane. Enter sends a turn, so that turn is theirs. */
   onPersonInput(paneId: string, data: string): void {
+    if (!isPersonInput(data)) return;
+    if (this.panes.get(paneId)?.agentId === null) this.typedPostPanes.add(paneId);
     const located = this.locate(paneId);
-    if (!located || !isPersonInput(data)) return;
+    if (!located) return;
     const { agent, run } = located;
     if (!agent.personTyped) {
       agent.personTyped = true;
@@ -585,6 +594,7 @@ export class WorkflowRunManager {
     if (!run) return;
     if (run.postPaneId === paneId) {
       run.postPaneId = null;
+      this.typedPostPanes.delete(paneId);
       this.emitTab(run);
       this.commit(run);
       return;
@@ -821,6 +831,8 @@ export class WorkflowRunManager {
     // The cut can come before the worktree exists, or between two agents.
     if (!(await this.prepareWorktree(run))) return;
     for (const agent of run.agents) {
+      // A person can stop the run while a pane opens.
+      if (!isActive(run)) break;
       if (agent.state === 'failed') await this.startAgent(run, agent, true);
       if (agent.state === 'pending' && !agent.isLast) await this.startAgent(run, agent, false);
     }
@@ -855,8 +867,8 @@ export class WorkflowRunManager {
 
   private closePostPane(run: WorkflowRun): void {
     if (run.postPaneId === null) return;
-    this.panes.delete(run.postPaneId);
-    this.deps.killPane(run.postPaneId);
+    this.typedPostPanes.delete(run.postPaneId);
+    this.dropPane(run.postPaneId);
     run.postPaneId = null;
   }
 
@@ -878,6 +890,15 @@ export class WorkflowRunManager {
     run.postPaneId = paneId;
     this.panes.set(paneId, { runId, agentId: null });
     await this.deps.openPane({ paneId, cwd: run.cwd, line });
+    this.emitTab(run);
+    this.commit(run);
+  }
+
+  /** The last post went out, so the post pane is done, unless a person typed in it. */
+  finishPostPane(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run?.postPaneId || this.typedPostPanes.has(run.postPaneId)) return;
+    this.closePostPane(run);
     this.emitTab(run);
     this.commit(run);
   }

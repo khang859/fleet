@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { AwayEntry, WorkflowLimits, WorkflowRule } from '../../shared/workflows';
+import type {
+  AwayEntry,
+  StartRunResult,
+  WorkflowLimits,
+  WorkflowRule
+} from '../../shared/workflows';
 import { createLogger } from '../logger';
 import type { SignedFile } from './approval';
 import type { OpenPr } from './pr';
@@ -175,10 +180,20 @@ export function wantedPrs(
 
 export type StartOutcome =
   | { ok: true }
-  /** Busy with this target. Nothing is wrong, and the start is recorded as skipped. */
+  /** Busy with this target, or its PR closed. The start is recorded as skipped. */
   | { ok: false; busy: true; reason: string }
   /** The start cannot work unattended. Fleet records it once and pauses the rule. */
   | { ok: false; busy: false; reason: string };
+
+/**
+ * A PR can close while it waits on the queue, and that needs no person.
+ * A rule that names a closed PR itself would fail each time, so that pauses it.
+ */
+export function startOutcome(started: StartRunResult, pr: number | null): StartOutcome {
+  if (started.ok) return { ok: true };
+  const skipped = started.code === 'duplicate' || (started.code === 'pr-closed' && pr !== null);
+  return { ok: false, busy: skipped, reason: started.message };
+}
 
 export type SchedulerDeps = {
   file: SignedFile<RulesFile>;
@@ -403,7 +418,7 @@ export class WorkflowScheduler {
     }
     if (outcome.busy) {
       this.away(rule, `A start was skipped: ${outcome.reason}`, true);
-      // A PR with a run on it needs no second run, so it leaves the queue.
+      // A PR with a run on it, or a closed one, needs no run. It leaves the queue.
       return pr !== null;
     }
     this.pause(rule.id, outcome.reason);

@@ -18,6 +18,10 @@ const REFUSED_NAMES = new Set([
   'agents.md'
 ]);
 
+function hasRefusedName(path: string): boolean {
+  return path.split(/[\\/]/).some((part) => REFUSED_NAMES.has(part.toLowerCase()));
+}
+
 /** The deepest folder on the way to `path` that exists. */
 function deepestExisting(path: string): string {
   let dir = dirname(path);
@@ -39,6 +43,11 @@ export function unsafeTarget(root: string, path: string): string | null {
   return isInside ? null : `${relative(root, path)} leads outside the project.`;
 }
 
+/** A symlink inside the project can lead to a refused folder that `path` does not spell. */
+function landsOnRefusedName(root: string, path: string): boolean {
+  return hasRefusedName(relative(realpathSync(root), realpathSync(deepestExisting(path))));
+}
+
 /**
  * The file a workflow's `path` names in a project, or a reason it is refused.
  * Checked after the placeholders are filled, and on the real folder, so a
@@ -54,12 +63,12 @@ export function resolveReportPath(
   if (!parsed.success) return { refused: `${filled} is not a path inside the project.` };
   const rel = parsed.data;
   if (!rel.endsWith('.md')) return { refused: 'A report path must end in .md.' };
-  if (rel.split('/').some((part) => REFUSED_NAMES.has(part.toLowerCase()))) {
-    return { refused: `${rel} is a place that Fleet does not write reports to.` };
-  }
+  const placeRefused = `${rel} is a place that Fleet does not write reports to.`;
+  if (hasRefusedName(rel)) return { refused: placeRefused };
   const path = join(projectPath, rel);
   const unsafe = unsafeTarget(projectPath, path);
-  return unsafe ? { refused: unsafe } : { path };
+  if (unsafe) return { refused: unsafe };
+  return landsOnRefusedName(projectPath, path) ? { refused: placeRefused } : { path };
 }
 
 /** Write a report. A missing folder is made, and an existing file needs `replace`. */

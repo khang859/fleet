@@ -295,6 +295,45 @@ describe('WorkflowRunManager', () => {
       });
     });
 
+    it('holds room for agents it has yet to open', async () => {
+      h = makeHarness(dir, {
+        maxAgents: () => 2,
+        openPane: async () => new Promise<void>(() => undefined)
+      });
+      await startRun(h, makePlan(makeDef(), { target: 'first' }));
+
+      const second = await startRun(h, makePlan(ONE_AGENT, { target: 'second' }));
+
+      expect(second.state).toBe('queued');
+    });
+
+    it('stops a resumed run from opening the next pane', async () => {
+      let gate = Promise.resolve();
+      const opened: string[] = [];
+      h = makeHarness(dir, {
+        openPane: async (pane) => {
+          opened.push(pane.paneId);
+          await gate;
+        }
+      });
+      const run = await workingRun();
+      h.manager.markCutOff();
+      const manager = h.relaunch();
+      opened.length = 0;
+      gate = new Promise((resolve) => {
+        release = resolve;
+      });
+
+      const going = manager.goOn(run.id);
+      await flush();
+      manager.stop(run.id);
+      release();
+      await going;
+
+      expect(manager.get(run.id)?.state).toBe('stopped');
+      expect(opened).toHaveLength(1);
+    });
+
     it('does not open the next pane', async () => {
       const run = await startRun(h, makePlan(makeDef()));
 

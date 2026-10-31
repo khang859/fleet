@@ -2,18 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { ClaudeSessionChange } from '../../shared/claude-sessions';
-import type {
-  RunTab,
-  SaveReportResult,
-  StartRunRequest,
-  StartRunResult,
-  WorkflowDef,
-  WorkflowNotice,
-  WorkflowProgram,
-  WorkflowProject,
-  WorkflowRule,
-  WorkflowRun,
-  WorkflowsState
+import {
+  postsLeft,
+  type RunTab,
+  type SaveReportResult,
+  type StartRunRequest,
+  type StartRunResult,
+  type WorkflowDef,
+  type WorkflowNotice,
+  type WorkflowProgram,
+  type WorkflowProject,
+  type WorkflowRule,
+  type WorkflowRun,
+  type WorkflowsState
 } from '../../shared/workflows';
 import { createLogger } from '../logger';
 import { ApprovalStore, loadSigningKey, SignedFile, type KeyVault } from './approval';
@@ -36,7 +37,13 @@ import { resolveReportPath, writeReport } from './report';
 import { RunStore } from './run-store';
 import { placeholderValues } from './prompts';
 import { isActive, noticeIsCurrent, WorkflowRunManager, type PaneIdentity } from './run-manager';
-import { EMPTY_RULES, RULES_SCHEMA, WorkflowScheduler, type StartOutcome } from './scheduler';
+import {
+  EMPTY_RULES,
+  RULES_SCHEMA,
+  startOutcome,
+  WorkflowScheduler,
+  type StartOutcome
+} from './scheduler';
 import { BLANK_WORKFLOW, STARTERS } from './starters';
 import { WorkflowStarts } from './starts';
 import type { ToolName } from './tools';
@@ -116,14 +123,13 @@ export class WorkflowsService implements BridgeHandler {
       lastOutputAt: deps.lastOutputAt,
       sendPrompt: deps.sendPrompt,
       makeWorktree: async (run, pinnedSha) =>
-        makePrWorktree(
-          this.exec,
-          run.projectPath,
-          run.id,
-          run.pr?.number ?? 0,
-          join(deps.home, 'worktrees'),
+        makePrWorktree(this.exec, {
+          projectPath: run.projectPath,
+          runId: run.id,
+          prNumber: run.pr?.number ?? 0,
+          base: join(deps.home, 'worktrees'),
           pinnedSha
-        ),
+        }),
       removeWorktree: async (run) =>
         removeWorktree(this.exec, run.projectPath, run.worktreePath ?? ''),
       onRun: () => this.onRunChange(),
@@ -453,7 +459,7 @@ export class WorkflowsService implements BridgeHandler {
 
   remainingPosts(runId: string): number {
     const run = this.runs.get(runId);
-    return run ? this.posting.remaining(run).length : 0;
+    return run ? postsLeft(run).length : 0;
   }
 
   answerPermission(toolUseId: string, decision: 'allow' | 'deny'): boolean {
@@ -502,7 +508,6 @@ export class WorkflowsService implements BridgeHandler {
       { projectPath, workflowId, inputs },
       { origin: 'automatic', ruleId: rule.id, focus: false }
     );
-    if (started.ok) return { ok: true };
-    return { ok: false, busy: started.code === 'duplicate', reason: started.message };
+    return startOutcome(started, pr);
   }
 }

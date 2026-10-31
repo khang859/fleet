@@ -66,3 +66,24 @@ xterm sends its status replies through `term.onData`, the same stream as the key
 A Claude Code or Pi TUI asks for these replies when it starts, so every agent looked as if a person had typed in it.
 Fleet then kept all the panes open when a run finished, and only a live run showed this.
 `isPersonInput` now drops status, focus, mouse and title replies before Fleet counts a person.
+
+## Findings from the second PR review
+
+A resume loop must check the run state after each await, the same as the first start.
+A stop during a slow pane open otherwise lets the loop start the next agent.
+
+The agent limit must count agents that a run is about to open, not only those that started.
+Pending agents look like free room while panes open one at a time.
+
+`gh` and `origin` can name different repos in a fork, and each repo has its own PR numbers.
+Fleet now fetches from the remote of the repo that `gh` reads, and it refuses when no remote matches.
+
+A name check on the spelled path misses a symlink inside the project.
+The report path check now also reads the real path.
+`unsafeTarget` stays free of the name check, because workflow files live in `.fleet/`.
+
+## Testing Post without a real PR
+
+The app replaces PATH after it starts, so a fake `gh` on PATH or in the sandbox `bin` folder does not work.
+A local git remote named `<owner>/<repo>.git`, and a one-line local change in `runProgram` that points `gh` at a script, gave a full live test.
+Restart the dev app after you revert that line, or the app goes on with the fake `gh`.

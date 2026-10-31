@@ -1,4 +1,9 @@
-import type { BoardItem, WorkflowProgram, WorkflowRun } from '../../shared/workflows';
+import {
+  postsLeft,
+  type BoardItem,
+  type WorkflowProgram,
+  type WorkflowRun
+} from '../../shared/workflows';
 import { agentCommandLine } from './agent-command';
 import { itemMarker, listCommentBodies, postComment, type Exec } from './pr';
 import { postBrief, START_MESSAGE } from './prompts';
@@ -34,11 +39,6 @@ export class WorkflowPosting {
     return run;
   }
 
-  /** What still needs to go out. An item that was posted never goes again. */
-  remaining(run: WorkflowRun): BoardItem[] {
-    return run.board.filter((item) => item.mergedInto === undefined && item.post !== 'posted');
-  }
-
   private async commentsOf(run: WorkflowRun, prNumber: number): Promise<string> {
     return listCommentBodies(this.deps.exec, run.projectPath, prNumber);
   }
@@ -62,7 +62,7 @@ export class WorkflowPosting {
     const run = this.requireRun(runId);
     if (!run.pr) throw new ToolRefused('no-pr', 'This run has no pull request.');
     await this.settleUnsure(run);
-    const ids = this.remaining(run).map((item) => item.id);
+    const ids = postsLeft(run).map((item) => item.id);
     if (ids.length === 0) return 0;
     this.allowed.set(runId, new Set(ids));
 
@@ -105,6 +105,12 @@ export class WorkflowPosting {
       throw new ToolRefused('post-failed', `Item ${id} did not post: ${String(err)}`);
     }
     this.deps.runs.markPost(runId, id, 'posted');
+    if (this.allPosted(run)) this.deps.runs.finishPostPane(runId);
     return { posted: id };
+  }
+
+  private allPosted(run: WorkflowRun): boolean {
+    const ids = this.allowed.get(run.id);
+    return run.board.every((item) => !ids?.has(item.id) || item.post === 'posted');
   }
 }
