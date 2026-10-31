@@ -18,7 +18,7 @@ import {
 import { openSettings } from '../store/settings-nav-store';
 import { focusPane } from '../lib/focus-pane';
 import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../shared/claude-sessions';
-import { RUNTIMES, runtimesLabel } from '../../../shared/session-runtimes';
+import { RUNTIMES, hasMixedRuntimes, runtimesLabel } from '../../../shared/session-runtimes';
 import type { Workspace } from '../../../shared/types';
 
 /**
@@ -91,11 +91,14 @@ function SessionRow({
   session,
   place,
   isActive,
+  showRuntime,
   now
 }: {
   session: ClaudeSessionView;
   place: PanePlace | undefined;
   isActive: boolean;
+  /** Name the row's program, which the section title cannot do alone when several run. */
+  showRuntime: boolean;
   now: number;
 }): React.JSX.Element {
   const urgency = sessionUrgency(session);
@@ -141,6 +144,11 @@ function SessionRow({
         </span>
       </span>
       <span className="flex w-full items-baseline gap-1.5 min-w-0 pl-4 text-[11px] leading-tight text-fleet-text-muted">
+        {showRuntime && (
+          <span className="shrink-0 text-fleet-text-secondary">
+            {RUNTIMES[session.runtime].tag}
+          </span>
+        )}
         {place?.workspaceLabel && (
           <span className="shrink-0 max-w-[40%] truncate text-fleet-text-subtle">
             {place.workspaceLabel}
@@ -156,11 +164,8 @@ function SessionRow({
 }
 
 /** What a session has cost and how full its context is, when its program keeps a file to total. */
-function SessionUsage({ session }: { session: ClaudeSessionView }): React.JSX.Element {
-  const { label, transcript } = RUNTIMES[session.runtime];
-  if (transcript === null) {
-    return <span className="ml-auto shrink-0 text-fleet-text-subtle">{label}</span>;
-  }
+function SessionUsage({ session }: { session: ClaudeSessionView }): React.JSX.Element | null {
+  if (RUNTIMES[session.runtime].transcript === null) return null;
   const cost = session.usage.costUsd;
   const context = contextPercent(session);
   return (
@@ -254,6 +259,7 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
   const folded = useMemo(() => foldSessions(sessions), [sessions]);
   const [showRest, setShowRest] = useState(false);
   const now = useNow(!collapsed && sessions.length > 0);
+  const showRuntime = hasMixedRuntimes(sessions);
 
   const row = (session: ClaudeSessionView): React.JSX.Element => (
     <SessionRow
@@ -261,6 +267,7 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
       session={session}
       place={places.get(session.paneId)}
       isActive={session.paneId === activePaneId}
+      showRuntime={showRuntime}
       now={now}
     />
   );
