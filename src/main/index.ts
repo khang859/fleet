@@ -1505,8 +1505,7 @@ void app.whenReady().then(async () => {
   };
   agentMcp = new AgentMcpManager({
     getConfig: () => settingsStore.get().ai.agent.mcpServers,
-    getAuth: (name, cfg) =>
-      resolveAuth(name, cfg, { secrets: agentMcpSecrets, openExternal: openMcpSignIn }),
+    getAuth: (name, cfg) => resolveAuth(name, cfg, { secrets: agentMcpSecrets }),
     signIn: async (name, cfg, signal) =>
       signInToMcp(name, cfg, { secrets: agentMcpSecrets, openExternal: openMcpSignIn }, signal),
     onStatusChange: (statuses) => agentEmit(IPC_CHANNELS.AGENT_MCP_STATUS, statuses)

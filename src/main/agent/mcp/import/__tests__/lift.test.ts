@@ -34,8 +34,6 @@ beforeEach(() => {
   secrets = new AgentMcpSecrets({ store: store(), safeStorage });
 });
 
-const opener = async (): Promise<void> => Promise.resolve();
-
 describe('deciding what is a credential', () => {
   it('takes anything whose name says so', () => {
     expect(isSecret('CONTEXT7_API_KEY', 'short')).toBe(true);
@@ -74,7 +72,7 @@ describe('a lifted secret on the way back out', () => {
       secrets
     );
 
-    const auth = resolveAuth('docs', stored, { secrets, openExternal: opener });
+    const auth = resolveAuth('docs', stored, { secrets });
 
     expect(stored.headers).toEqual({ 'x-api-key': MCP_SECRET_REF });
     expect(auth?.headers).toEqual({ 'x-api-key': 'abc123' });
@@ -87,7 +85,7 @@ describe('a lifted secret on the way back out', () => {
       secrets
     );
 
-    const auth = resolveAuth('fs', stored, { secrets, openExternal: opener });
+    const auth = resolveAuth('fs', stored, { secrets });
 
     expect(stored.env).toEqual({ FS_ROOT: '/work', FS_TOKEN: MCP_SECRET_REF });
     // Only the lifted one: the rest is still in the config, where it belongs.
@@ -108,7 +106,7 @@ describe('a lifted secret on the way back out', () => {
       secrets
     );
 
-    const auth = resolveAuth('linear', stored, { secrets, openExternal: opener });
+    const auth = resolveAuth('linear', stored, { secrets });
 
     expect(auth?.authProvider).toBeDefined();
     expect(auth?.headers).toEqual({ 'x-api-key': 'abc123' });
@@ -117,6 +115,6 @@ describe('a lifted secret on the way back out', () => {
   it('asks for nothing at all when there was nothing to lift', () => {
     const stored = liftSecrets('plain', { url: 'https://example.com/mcp', enabled: true }, secrets);
 
-    expect(resolveAuth('plain', stored, { secrets, openExternal: opener })).toBeUndefined();
+    expect(resolveAuth('plain', stored, { secrets })).toBeUndefined();
   });
 });

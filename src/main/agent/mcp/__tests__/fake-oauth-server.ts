@@ -33,6 +33,8 @@ export type FakeOAuthServer = {
   accept: Set<string>;
   /** What the next code exchange mints. */
   nextAccessToken: string;
+  /** Answer every refresh with `invalid_grant`, as for a token already used. */
+  refuseRefresh: boolean;
   close: () => Promise<void>;
 };
 
@@ -45,6 +47,7 @@ export async function startFakeOAuthServer(): Promise<FakeOAuthServer> {
     tokenRequests: [],
     accept: new Set<string>(),
     nextAccessToken: 'access-granted',
+    refuseRefresh: false,
     close: async () => Promise.resolve()
   };
 
@@ -89,6 +92,10 @@ export async function startFakeOAuthServer(): Promise<FakeOAuthServer> {
     if (url.pathname === '/token') {
       const form = new URLSearchParams(await body(req));
       state.tokenRequests.push(form);
+      if (state.refuseRefresh && form.get('grant_type') === 'refresh_token') {
+        json(res, { error: 'invalid_grant' }, 400);
+        return;
+      }
       json(res, tokenFor(form, codes, state));
       return;
     }
