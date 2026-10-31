@@ -45,6 +45,43 @@ describe('contextLimitFor', () => {
   });
 });
 
+describe('SessionUsageTracker on a Pi session', () => {
+  it('takes cost and context from the file, with no price table', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-pi-usage-'));
+    const path = join(dir, 's.jsonl');
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        type: 'message',
+        id: 'a',
+        parentId: null,
+        message: {
+          role: 'assistant',
+          model: 'gpt-test',
+          content: [],
+          usage: { totalTokens: 500, cost: { total: 0.125 } }
+        }
+      })}\n`
+    );
+    const changed = new Promise<void>((resolve) => {
+      const tracker = new SessionUsageTracker({
+        priceTable: () => TABLE,
+        onChange: () => {
+          expect(tracker.get('s')).toEqual({
+            costUsd: 0.125,
+            contextTokens: 500,
+            contextLimit: null
+          });
+          resolve();
+        }
+      });
+      tracker.refresh('s', path, true, 'pi');
+    });
+    await changed;
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('SessionUsageTracker', () => {
   let dir: string;
   let transcript: string;

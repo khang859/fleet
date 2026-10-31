@@ -178,11 +178,11 @@ export function WorkspacesSection({
             onChange={(e) => void setTracking(e.target.checked)}
             className="fleet-accent-input"
           />
-          Track Claude Code sessions
+          Track Claude Code and Pi sessions
         </label>
         <p className="text-xs text-fleet-text-subtle mt-1">
           {HOOKS_SUPPORTED
-            ? 'Fleet installs its hooks in every config folder below to follow the Claude Code sessions in its panes. Turning this off removes them.'
+            ? 'Fleet installs its hooks in every config folder below, and an extension in Pi, to follow the sessions in its panes. Turning this off removes them.'
             : 'Session tracking is not available on Windows yet.'}
         </p>
       </div>

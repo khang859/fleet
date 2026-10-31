@@ -4,10 +4,18 @@ import type { SessionSummary } from '../../../shared/sessions';
 const source = vi.hoisted(() => ({
   list: vi.fn<() => Promise<SessionSummary[]>>()
 }));
+const pi = vi.hoisted(() => ({
+  list: vi.fn<() => Promise<SessionSummary[]>>()
+}));
 vi.mock('../claude-source', () => ({
   claudeProjectsDir: () => '/nonexistent',
   listClaudeSessions: source.list,
   readClaudeSession: vi.fn()
+}));
+vi.mock('../pi-source', () => ({
+  piSessionsDir: () => '/nonexistent',
+  listPiSessions: pi.list,
+  readPiSession: vi.fn()
 }));
 vi.mock('../pricing-source', () => ({ ensurePricesFresh: vi.fn() }));
 
@@ -17,6 +25,7 @@ let service: SessionsService;
 
 beforeEach(() => {
   source.list.mockReset();
+  pi.list.mockReset().mockResolvedValue([]);
   service = new SessionsService();
 });
 

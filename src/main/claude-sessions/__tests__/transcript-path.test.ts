@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cwdToProjectDir, transcriptPathFor } from '../transcript-path';
+import { cwdToProjectDir, sessionFilePath, transcriptPathFor } from '../transcript-path';
 
 describe('cwdToProjectDir', () => {
   it.each([
@@ -8,6 +8,27 @@ describe('cwdToProjectDir', () => {
     ['/tmp/probe dir_x.y', '-tmp-probe-dir-x-y']
   ])('%s -> %s', (cwd, dir) => {
     expect(cwdToProjectDir(cwd)).toBe(dir);
+  });
+});
+
+describe('sessionFilePath', () => {
+  const session = { sessionId: 's1', cwd: '/repo', transcriptPath: null, configDir: null };
+
+  it('works out a Claude Code path', () => {
+    expect(sessionFilePath({ ...session, runtime: 'claude' }, '/home/u')).toBe(
+      '/home/u/.claude/projects/-repo/s1.jsonl'
+    );
+  });
+
+  it('uses only the path Pi reported, because its name holds a time', () => {
+    expect(sessionFilePath({ ...session, runtime: 'pi' })).toBeNull();
+    expect(sessionFilePath({ ...session, runtime: 'pi', transcriptPath: '/x/t_s1.jsonl' })).toBe(
+      '/x/t_s1.jsonl'
+    );
+  });
+
+  it('has none for eva', () => {
+    expect(sessionFilePath({ ...session, runtime: 'eva', transcriptPath: '/x' })).toBeNull();
   });
 });
 

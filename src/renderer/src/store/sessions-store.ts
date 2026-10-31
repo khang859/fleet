@@ -1,13 +1,11 @@
 // src/renderer/src/store/sessions-store.ts
 import { create } from 'zustand';
-import type { SessionSummary, SessionTranscript } from '../../../shared/sessions';
-
-type SelectedKey = { id: string; cwd: string };
+import type { SessionKey, SessionSummary, SessionTranscript } from '../../../shared/sessions';
 
 type SessionsStoreState = {
   sessions: SessionSummary[];
   isLoaded: boolean;
-  selected: SelectedKey | null;
+  selected: SessionKey | null;
   transcript: SessionTranscript | null;
   isLoadingTranscript: boolean;
   transcriptError: string | null;
@@ -43,7 +41,7 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   },
 
   select: async (s) => {
-    const selected = { id: s.id, cwd: s.cwd };
+    const selected = { id: s.id, cwd: s.cwd, source: s.source };
     set({
       selected,
       isLoadingTranscript: true,

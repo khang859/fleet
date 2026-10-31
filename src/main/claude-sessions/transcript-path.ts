@@ -2,6 +2,7 @@ import { readdir } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { ClaudeSession } from '../../shared/claude-sessions';
+import { RUNTIMES } from '../../shared/session-runtimes';
 
 /**
  * The folder name Claude Code files a project's transcripts under: the cwd with
@@ -23,6 +24,21 @@ export function transcriptPathFor(
   if (session.transcriptPath) return session.transcriptPath;
   const configDir = session.configDir ?? join(homeDir, '.claude');
   return join(configDir, 'projects', cwdToProjectDir(session.cwd), `${session.sessionId}.jsonl`);
+}
+
+/** The session's file, in the format its runtime writes, or null when it has none. */
+export function sessionFilePath(
+  session: Pick<ClaudeSession, 'runtime' | 'sessionId' | 'cwd' | 'transcriptPath' | 'configDir'>,
+  homeDir: string = homedir()
+): string | null {
+  switch (RUNTIMES[session.runtime].transcript) {
+    case 'claude':
+      return transcriptPathFor(session, homeDir);
+    case 'pi':
+      return session.transcriptPath;
+    case null:
+      return null;
+  }
 }
 
 /**

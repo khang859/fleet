@@ -3,6 +3,8 @@
 // Learnings live in Fleet's own store (NOT in any repo) and are exported by the
 // user into their own projects as they please.
 
+import type { SessionKey } from './sessions';
+
 export type Learning = {
   id: string;
   title: string;
@@ -11,7 +13,7 @@ export type Learning = {
   /**
    * Provenance: which agent produced the session this was distilled from. Null for
    * hand-written entries. Free-form because historical rows predate agents that
-   * Fleet no longer supports; new distills always record 'claude'.
+   * Fleet no longer supports; new distills record 'claude' or 'pi'.
    */
   sourceAgent: string | null;
   sourceSessionId: string | null;
@@ -93,10 +95,7 @@ export function slugifyTitle(title: string): string {
 }
 
 /** Which session to distill a learning from (a headless one-shot agent run). */
-export type DistillRequest = {
-  id: string;
-  cwd: string;
-};
+export type DistillRequest = SessionKey;
 
 /** A tag and how many learnings carry it, for vocabulary suggestions. */
 export type TagCount = { tag: string; count: number };

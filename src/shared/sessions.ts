@@ -22,8 +22,13 @@ export type ClaudeUsage = {
   cacheWrite1h: number;
 };
 
+/** The programs whose past sessions Fleet lists. */
+export type SessionSource = 'claude' | 'pi';
+
 export type SessionSummary = {
   id: string;
+  /** Which program wrote it; Claude Code when absent. */
+  source?: SessionSource;
   title: string;
   project: string; // display name for the cwd group
   cwd: string;
@@ -38,6 +43,14 @@ export type SessionSummary = {
   startedAt?: number; // epoch ms of first timestamped entry
   endedAt?: number; // epoch ms of last timestamped entry
 };
+
+/** What picks out one past session. */
+export type SessionKey = Pick<SessionSummary, 'id' | 'cwd' | 'source'>;
+
+/** The command that continues a past session in a terminal. */
+export function resumeCommand(s: Pick<SessionSummary, 'id' | 'source'>): string {
+  return s.source === 'pi' ? `pi --session ${s.id}` : `claude --resume ${s.id}`;
+}
 
 export type SessionTranscript = {
   summary: SessionSummary;

@@ -65,6 +65,19 @@ describe('parseHookEvent', () => {
     ).toBeUndefined();
   });
 
+  it('reads the context window of a Pi event, and keeps its tool names in Fleet form', () => {
+    const event = parseHookEvent(
+      JSON.stringify({
+        ...v1,
+        runtime: 'pi',
+        context_window: 272_000,
+        tool: 'find',
+        tool_input: { pattern: '*.ts' }
+      })
+    );
+    expect(event).toMatchObject({ runtime: 'pi', contextWindow: 272_000, tool: 'Glob' });
+  });
+
   it('reads the runtime and database of a protocol 4 eva event', () => {
     const event = parseHookEvent(
       JSON.stringify({

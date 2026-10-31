@@ -116,7 +116,7 @@ export function DistillModal({
       setSimilar([]);
       setMergeTarget(null);
       const [res, tagVocab] = await Promise.all([
-        window.fleet.learnings.distill({ id: s.id, cwd: s.cwd }),
+        window.fleet.learnings.distill({ id: s.id, cwd: s.cwd, source: s.source }),
         window.fleet.learnings.tags()
       ]);
       if (token !== runToken.current) return;
@@ -164,7 +164,7 @@ export function DistillModal({
           title: title.trim(),
           body: body.trim(),
           tags: draftTags,
-          sourceAgent: 'claude',
+          sourceAgent: shown.source ?? 'claude',
           sourceSessionId: shown.id,
           sourceCwd: shown.cwd,
           sourceProject: shown.project,

@@ -5,6 +5,7 @@ import type {
   SessionRuntime
 } from '../../shared/claude-sessions';
 import { evaToolInput, evaToolName } from './eva-tools';
+import { piToolName } from './pi-tools';
 
 /**
  * The wire format the Go hook (`hooks/fleet-copilot-go`) sends for each Claude
@@ -16,6 +17,9 @@ import { evaToolInput, evaToolName } from './eva-tools';
  * reads now; protocol 6 adds `permission_mode`. Every version up to `HOOK_PROTOCOL` is
  * accepted, because a Claude session started before Fleet updated its hook binary
  * keeps running the old one.
+ *
+ * Pi has no hook binary: Fleet's extension (resources/pi-extensions/fleet.js)
+ * sends these events itself.
  */
 
 /** The newest protocol this Fleet reads; the hook server ignores a newer one. */
@@ -52,8 +56,9 @@ const WireHookEvent = z.object({
   error: lenient(nonEmpty),
   error_details: lenient(z.string()),
   prompt_sha256: lenient(z.string().regex(/^[0-9a-f]{64}$/)),
-  runtime: lenient(z.enum(['claude', 'eva'])),
+  runtime: lenient(z.enum(['claude', 'eva', 'pi'])),
   permission_mode: permissionMode,
+  context_window: lenient(z.number().int().positive()),
   protocol: lenient(z.number().int().positive())
 });
 
@@ -89,8 +94,24 @@ export type HookEvent = {
   permissionSuggestions?: PermissionSuggestion[];
   /** From protocol 6: the session's mode as the event found it. */
   permissionMode?: ClaudePermissionMode;
+  /** Pi only: the context window of the session's model. */
+  contextWindow?: number;
   /** 1 for binaries that predate the field. */
   protocol: number;
+};
+
+/** How a runtime's tools become Claude Code's, so Fleet describes them all alike. */
+const TOOL_NAMING: Partial<
+  Record<
+    SessionRuntime,
+    {
+      name: (tool: string) => string;
+      input: (input: Record<string, unknown>) => Record<string, unknown>;
+    }
+  >
+> = {
+  eva: { name: evaToolName, input: evaToolInput },
+  pi: { name: piToolName, input: evaToolInput }
 };
 
 /** Parse one hook message, or return null when it is not a hook event. */
@@ -104,17 +125,18 @@ export function parseHookEvent(text: string): HookEvent | null {
   const parsed = WireHookEvent.safeParse(data);
   if (!parsed.success) return null;
   const w = parsed.data;
-  const eva = w.runtime === 'eva';
+  const runtime = w.runtime ?? 'claude';
+  const naming = TOOL_NAMING[runtime];
   return {
     sessionId: w.session_id,
     cwd: w.cwd,
     event: w.event,
-    runtime: w.runtime ?? 'claude',
+    runtime,
     status: w.status,
     pid: w.pid,
     tty: w.tty,
-    tool: eva && w.tool ? evaToolName(w.tool) : w.tool,
-    toolInput: eva && w.tool_input ? evaToolInput(w.tool_input) : w.tool_input,
+    tool: naming && w.tool ? naming.name(w.tool) : w.tool,
+    toolInput: naming && w.tool_input ? naming.input(w.tool_input) : w.tool_input,
     toolUseId: w.tool_use_id,
     notificationType: w.notification_type,
     message: w.message,
@@ -126,6 +148,7 @@ export function parseHookEvent(text: string): HookEvent | null {
     errorDetails: w.error_details,
     promptHash: w.prompt_sha256,
     permissionMode: w.permission_mode,
+    contextWindow: w.context_window,
     protocol: w.protocol ?? 1
   };
 }

@@ -31,6 +31,7 @@ type CopilotStoreState = {
   settings: CopilotSettings | null;
   hookInstalled: boolean;
   claudeDetected: boolean;
+  piDetected: boolean;
   activeWorkspaceId: string | null;
   activeWorkspaceName: string | null;
   showAllWorkspaces: boolean;
@@ -86,6 +87,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   settings: null,
   hookInstalled: false,
   claudeDetected: true, // optimistic default
+  piDetected: false,
   activeWorkspaceId: null,
   activeWorkspaceName: null,
   showAllWorkspaces: false,
@@ -158,9 +160,11 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
     const settings = await window.copilot.getSettings();
     const hookInstalled = await window.copilot.hookStatus();
     let claudeDetected = true;
+    let piDetected = false;
     try {
       const status = await window.copilot.serviceStatus();
       claudeDetected = status.claudeDetected;
+      piDetected = status.piDetected;
     } catch {
       // serviceStatus not available (older preload), assume true
     }
@@ -169,6 +173,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
       settings,
       hookInstalled,
       claudeDetected,
+      piDetected,
       showAllWorkspaces: settings.showAllWorkspaces
     });
   },

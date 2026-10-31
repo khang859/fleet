@@ -1,5 +1,6 @@
 // src/renderer/src/components/sessions/TranscriptView.tsx
 import { useState } from 'react';
+import { resumeCommand } from '../../../../shared/sessions';
 import type {
   SessionSummary,
   TranscriptBlock,
@@ -8,10 +9,6 @@ import type {
 import { useSessionsStore } from '../../store/sessions-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { DistillModal } from './DistillModal';
-
-function resumeCommand(s: SessionSummary): string {
-  return `claude --resume ${s.id}`;
-}
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -61,6 +58,16 @@ function MetaRow({
   );
 }
 
+/** Where a session's cost comes from, or why it has none. */
+function costNote(s: SessionSummary): string {
+  if (s.source === 'pi') {
+    return s.costUsd === undefined ? 'Pi reported no cost' : 'Priced by Pi, message by message';
+  }
+  return s.costUsd === undefined
+    ? 'A model in this session is not in the pricing table'
+    : 'Estimated from token counts × public per-model pricing';
+}
+
 /**
  * Labeled key→value metadata for a Claude session. Every value carries a visible
  * label (NN/G: idiosyncratic icons need text); breakdowns live in tooltips so the
@@ -80,11 +87,7 @@ function ClaudeMetaPanel({
       <MetaRow
         label="Cost"
         value={s.costUsd === undefined ? 'Unavailable' : formatCost(s.costUsd)}
-        title={
-          s.costUsd === undefined
-            ? 'A model in this session is not in the pricing table'
-            : 'Estimated from token counts × public per-model pricing'
-        }
+        title={costNote(s)}
       />
       {s.models && s.models.length > 0 && <MetaRow label="Model" value={s.models.join(', ')} />}
       <MetaRow label="Messages" value={String(messageCount)} />

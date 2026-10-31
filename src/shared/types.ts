@@ -310,8 +310,9 @@ export type FleetSettings = {
   copilot: CopilotSettings;
   claudeSessions: {
     /**
-     * Track the Claude Code sessions running in Fleet panes. On by default; turning
-     * it off removes Fleet's hook entries from every Claude config folder Fleet uses.
+     * Track the Claude Code and Pi sessions running in Fleet panes. On by default; turning
+     * it off removes Fleet's hook entries from every Claude config folder Fleet uses,
+     * and its extension from Pi.
      */
     trackSessions: boolean;
   };

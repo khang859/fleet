@@ -1,5 +1,5 @@
 // src/main/sessions/claude-source.ts
-import { readdir, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
@@ -18,6 +18,7 @@ import type {
 import { estimateSessionCostUsd } from '../../shared/claude-pricing';
 import { serialQueue } from '../../shared/serial-queue';
 import { getPriceTable } from './pricing-source';
+import { jsonlFilesIn, TailCache, type FileState } from './session-files';
 
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
 
@@ -35,8 +36,6 @@ function lineCwd(line: string): string {
     return ''; // malformed line
   }
 }
-
-type FileState = { mtimeMs: number; size: number };
 
 /**
  * A transcript's summary, kept current by reading only the lines its files
@@ -130,7 +129,7 @@ class SummaryTail {
 }
 
 /** One per transcript path, so a refresh only reads the files that grew. */
-const summaryTails = new Map<string, SummaryTail>();
+const summaryTails = new TailCache((path) => new SummaryTail(path));
 
 /** The transcript open in the Sessions tab, so a refresh of it reads only what it gained. */
 let openTranscript: { path: string; tail: MessageTail } | null = null;
@@ -147,25 +146,13 @@ export function __clearClaudeSummaryCache(): void {
   openTranscript = null;
 }
 
-/** The summary tail for a transcript, brought up to date with the file. */
-async function summaryTailAt(path: string, st: FileState): Promise<SummaryTail> {
-  let tail = summaryTails.get(path);
-  if (tail?.readAt.mtimeMs === st.mtimeMs && tail.readAt.size === st.size) return tail;
-  if (!tail) {
-    tail = new SummaryTail(path);
-    summaryTails.set(path, tail);
-  }
-  await tail.update(st);
-  return tail;
-}
-
 export async function listClaudeSessions(): Promise<SessionSummary[]> {
   return inTurn(async () => {
-    const paths = await transcriptPaths();
+    const paths = await jsonlFilesIn(claudeProjectsDir());
     const out: SessionSummary[] = [];
     for (const path of paths) {
       try {
-        const tail = await summaryTailAt(path, await stat(path));
+        const tail = await summaryTails.at(path, await stat(path));
         // A transcript with no cwd is not a real session.
         const summary = tail.cwd ? tail.summary(basename(path, '.jsonl'), tail.cwd) : null;
         if (summary) out.push(summary);
@@ -173,35 +160,9 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
         // skip malformed/unreadable file
       }
     }
-    // Drop the tails of transcripts that no longer exist.
-    const seen = new Set(paths);
-    for (const key of summaryTails.keys()) {
-      if (!seen.has(key)) summaryTails.delete(key);
-    }
+    summaryTails.keepOnly(paths);
     return out;
   });
-}
-
-/** Every transcript in every project dir. */
-async function transcriptPaths(): Promise<string[]> {
-  const root = claudeProjectsDir();
-  let projectDirs: string[];
-  try {
-    projectDirs = await readdir(root);
-  } catch {
-    return [];
-  }
-  const paths: string[] = [];
-  for (const projectDir of projectDirs) {
-    const dirPath = join(root, projectDir);
-    try {
-      for (const f of await readdir(dirPath))
-        if (f.endsWith('.jsonl')) paths.push(join(dirPath, f));
-    } catch {
-      // not a dir, or unreadable
-    }
-  }
-  return paths;
 }
 
 export async function readClaudeSession(
@@ -221,7 +182,7 @@ export async function readClaudeSession(
       return null; // file missing or unreadable
     }
     const messages = await openMessages(full);
-    const summary = (await summaryTailAt(full, st)).summary(id, cwd);
+    const summary = (await summaryTails.at(full, st)).summary(id, cwd);
     if (messages.length === 0 || !summary) return null;
     return { summary, messages: claudeMessagesToTranscriptMessages(messages) };
   });
@@ -252,7 +213,7 @@ export function claudeMessagesToTranscriptMessages(
 }
 
 /** A user message's first text, trimmed, or null for any other message. */
-function userText(m: CopilotChatMessage): string | null {
+export function userText(m: CopilotChatMessage): string | null {
   if (m.role !== 'user') return null;
   const block = m.blocks.find((b) => b.type === 'text');
   return block?.type === 'text' ? block.text.trim() : null;

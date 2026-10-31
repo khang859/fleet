@@ -3,8 +3,7 @@ import type { ClaudeSession, ClaudeSessionChange } from '../../../shared/claude-
 import {
   ACK_TIMEOUT_MS,
   cleanPrompt,
-  EVA_PASTE_MAX_BYTES,
-  PROMPT_MISMATCH,
+  promptMismatch,
   PromptInput,
   QUIET_MS,
   SUBMIT_DELAY_MS,
@@ -126,12 +125,19 @@ describe('PromptInput', () => {
     expect(sleeps).toEqual([SUBMIT_DELAY_MS]);
 
     writes = [];
-    const long = await input.send('s1', 'x'.repeat(EVA_PASTE_MAX_BYTES + 1));
+    const long = await input.send('s1', 'x'.repeat(1_000_001));
     expect(long).toEqual({
       ok: false,
       reason: 'Not sent: the prompt is longer than eva takes in one message.'
     });
     expect(writes).toEqual([]);
+  });
+
+  it('pastes the prompt into Pi as one message, with no size limit', async () => {
+    current = session({ runtime: 'pi' });
+    const text = `line one\nline two ${'x'.repeat(1_000_001)}`;
+    expect(await input.send('s1', text)).toEqual({ ok: true, confirmed: true, text });
+    expect(writes).toEqual([`\x1b[200~${text}\x1b[201~`, '\r']);
   });
 
   it('types the prompt, submits it, and reports the acknowledgement', async () => {
@@ -212,7 +218,7 @@ describe('PromptInput', () => {
     submitHash = () => hashPrompt('Run the test');
     const pending = input.send('s1', 'Run the tests');
     await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
-    expect(await pending).toEqual({ ok: false, reason: PROMPT_MISMATCH });
+    expect(await pending).toEqual({ ok: false, reason: promptMismatch('Claude Code') });
     expect(writes).toEqual(['Run the tests', '\r']);
     expect(listeners.size).toBe(1);
   });

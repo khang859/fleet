@@ -27,6 +27,8 @@ export type PromptSource =
 type LineInfo = {
   /** The line's `uuid`; null on lines that are not conversation messages. */
   uuid: string | null;
+  /** The line this one follows, in a transcript that branches. */
+  parentUuid?: string | null;
   timestamp: string | null;
   /** Whose message the line is; null on lines that are not conversation messages. */
   role: 'user' | 'assistant' | null;
@@ -339,6 +341,8 @@ export type TranscriptTailOptions = {
   onLine?: (line: TailLine) => void;
   /** Called when the transcript was replaced by a shorter file and is read again from the start. */
   onReset?: () => void;
+  /** Reads a line of the transcript's format; Claude Code's when not given. */
+  normalize?: (line: string) => TranscriptEvent[];
 };
 
 const NEWLINE = 0x0a;
@@ -428,7 +432,7 @@ export class TranscriptTail {
       this.opts.onLine?.({
         start,
         end: this.offset,
-        events: normalizeLine(bytes.toString('utf8'))
+        events: (this.opts.normalize ?? normalizeLine)(bytes.toString('utf8'))
       });
     }
   }

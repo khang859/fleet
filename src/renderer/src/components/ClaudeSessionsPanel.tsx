@@ -18,6 +18,7 @@ import {
 import { openSettings } from '../store/settings-nav-store';
 import { focusPane } from '../lib/focus-pane';
 import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../shared/claude-sessions';
+import { RUNTIMES, runtimesLabel } from '../../../shared/session-runtimes';
 import type { Workspace } from '../../../shared/types';
 
 /**
@@ -154,10 +155,11 @@ function SessionRow({
   );
 }
 
-/** What a session has cost and how full its context is; eva tells Fleet neither. */
+/** What a session has cost and how full its context is, when its program keeps a file to total. */
 function SessionUsage({ session }: { session: ClaudeSessionView }): React.JSX.Element {
-  if (session.runtime === 'eva') {
-    return <span className="ml-auto shrink-0 text-fleet-text-subtle">eva</span>;
+  const { label, transcript } = RUNTIMES[session.runtime];
+  if (transcript === null) {
+    return <span className="ml-auto shrink-0 text-fleet-text-subtle">{label}</span>;
   }
   const cost = session.usage.costUsd;
   const context = contextPercent(session);
@@ -274,7 +276,7 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
   return (
     <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
       <SectionHeader
-        label={sessions.some((s) => s.runtime === 'eva') ? 'Claude Code · eva' : 'Claude Code'}
+        label={runtimesLabel(sessions)}
         collapsed={collapsed}
         onToggle={() => toggle('claude')}
       >
