@@ -212,18 +212,20 @@ function MiniTabButton({
 }
 
 /**
- * The tab run in the collapsed rail. It scrolls on its own so a long run cannot
+ * A run of tabs in the collapsed rail. It scrolls on its own so a long run cannot
  * push the rail's bottom buttons off the window. The negative margin keeps the
  * rail's spacing while the padding leaves room for the corner status dots.
  */
 function MiniRailTabList({
   tabs,
   activeTabId,
-  onSelect
+  onSelect,
+  className = ''
 }: {
   tabs: Tab[];
   activeTabId: string | null;
   onSelect: (tabId: string) => void;
+  className?: string;
 }): React.JSX.Element {
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -237,7 +239,7 @@ function MiniRailTabList({
   return (
     <div
       ref={listRef}
-      className="no-scrollbar flex flex-col items-center gap-1 w-full min-h-0 -my-1 py-1 scroll-py-1 overflow-y-auto"
+      className={`no-scrollbar flex flex-col items-center gap-1 w-full min-h-0 -my-1 py-1 scroll-py-1 overflow-y-auto ${className}`}
     >
       {tabs.map((tab) => (
         <MiniTabButton
@@ -921,14 +923,13 @@ export function App(): React.JSX.Element {
                 <MessageCirclePlus size={16} />
               </button>
             </MiniSidebarTooltip>
-            {miniRailAgentTabs.map((tab) => (
-              <MiniTabButton
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
+            {/* Holds its size until the cap, so the regular tabs give up room first */}
+            <MiniRailTabList
+              tabs={miniRailAgentTabs}
+              activeTabId={activeTabId}
+              onSelect={setActiveTab}
+              className="shrink-0 max-h-[33%]"
+            />
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
             {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
               <RailDivider />

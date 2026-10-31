@@ -37,5 +37,7 @@ The sidebar header's New Tab button had no rail counterpart, so a collapsed side
 The rail also had no scroll region.
 With about 20 tabs its content grew past the window and pushed the workspace switcher and Settings out of reach, because the rail's height is fixed and its overflow is visible.
 
-The tab run now lives in `MiniRailTabList`, which scrolls by itself, and the rail has a New tab button under Show sidebar.
-Test the rail with a full tab list as well as a short one, since this failure does not show with a few tabs.
+The tab run and the agent run now each use `MiniRailTabList`, which scrolls by itself, and the rail has a New tab button under Show sidebar.
+The agent run keeps its size up to a third of the rail, so the regular tabs give up room first.
+Test the rail with many tabs and with many agents as well as a short list, since this failure does not show with a few of either.
+The first fix covered only regular tabs, and PR review found that agents still pushed Settings off the window.
