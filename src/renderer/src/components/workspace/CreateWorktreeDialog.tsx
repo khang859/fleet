@@ -10,7 +10,8 @@ import { useToastStore } from '../../store/toast-store';
 import type {
   WorktreeCreateResponse,
   WorktreePrepareResponse,
-  WorktreeSetup
+  WorktreeSetup,
+  WorktreeSetupInfo
 } from '../../../../shared/ipc-api';
 import type { PathContext } from '../../../../shared/shell-profiles';
 
@@ -47,8 +48,9 @@ function openWorktree(
 
 /**
  * Names a new worktree and picks what it starts from, then makes it. The
- * repository's `.fleet/worktree.toml` setup can be read here before it runs,
- * so a command from a freshly cloned repository never runs unseen.
+ * repository's `.fleet/worktree.toml` setup, or what Fleet detects without one,
+ * can be read here before it runs, so a command from a freshly cloned
+ * repository never runs unseen.
  */
 export function CreateWorktreeDialog({
   target,
@@ -141,12 +143,16 @@ export function CreateWorktreeDialog({
 
         <StartFromPicker info={info} value={startFrom} onChange={setStartFrom} />
 
-        {info !== null && (
+        {target !== null && info !== null && (
           <SetupRow
+            target={target}
             setup={info.setup}
             setupError={info.setupError}
+            detected={info.detected}
             runSetup={runSetup}
             onRunSetupChange={setRunSetup}
+            onSaved={(saved) => setInfo({ ...info, ...saved })}
+            onSaveError={setError}
           />
         )}
 
@@ -268,6 +274,38 @@ function RefItem({
   );
 }
 
+/** Writes what Fleet detected to the repository's setup file, and says so. */
+function SaveSetupButton({
+  target,
+  onSaved,
+  onError
+}: {
+  target: WorktreeTarget;
+  onSaved: (saved: WorktreeSetupInfo) => void;
+  onError: (message: string) => void;
+}): React.JSX.Element {
+  const save = async (): Promise<void> => {
+    try {
+      const { repoPath, pathContext } = target;
+      onSaved(await window.fleet.worktree.saveSetup({ repoPath, pathContext }));
+      useToastStore.getState().show('Saved .fleet/worktree.toml. Commit it to share it.');
+    } catch (err) {
+      onError(cleanIpcError(String(err)));
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      title="Write this setup to .fleet/worktree.toml"
+      onClick={() => void save()}
+      className="text-xs text-fleet-text-muted hover:text-fleet-text shrink-0 rounded focus-ring"
+    >
+      Save to repo
+    </button>
+  );
+}
+
 /** "3 commands · copies 2 files": what the setup does, in a few words. */
 function setupSummary(setup: WorktreeSetup): string {
   const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -282,15 +320,23 @@ function setupSummary(setup: WorktreeSetup): string {
 
 /** What `.fleet/worktree.toml` does to the new worktree as one row, its details behind Show. */
 function SetupRow({
+  target,
   setup,
   setupError,
+  detected,
   runSetup,
-  onRunSetupChange
+  onRunSetupChange,
+  onSaved,
+  onSaveError
 }: {
+  target: WorktreeTarget;
   setup: WorktreeSetup | null;
   setupError: string | null;
+  detected: boolean;
   runSetup: boolean;
   onRunSetupChange: (run: boolean) => void;
+  onSaved: (saved: WorktreeSetupInfo) => void;
+  onSaveError: (message: string) => void;
 }): React.JSX.Element {
   const [shown, setShown] = useState(false);
 
@@ -344,6 +390,12 @@ function SetupRow({
               <span className="font-mono text-fleet-text-secondary">{setup.copy.join(', ')}</span>
             </p>
           )}
+        </div>
+      )}
+      {detected && (
+        <div className="flex items-center justify-between border-t border-fleet-border px-2 py-1.5">
+          <span className="text-xs text-fleet-text-subtle">Fleet detected this setup.</span>
+          <SaveSetupButton target={target} onSaved={onSaved} onError={onSaveError} />
         </div>
       )}
     </div>

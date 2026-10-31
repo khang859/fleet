@@ -94,10 +94,136 @@ describe('WorktreeService.prepare', () => {
     expect(info.setup).toBeNull();
     expect(info.setupError).toContain('.fleet/worktree.toml');
     expect(info.setupError).toContain('setpu');
+    expect(info.detected).toBe(false);
+  });
+
+  it('says a setup file is not detected', async () => {
+    commitFiles({
+      '.fleet/worktree.toml': 'setup = "make"\n',
+      '.gitignore': '.env\n',
+      'package-lock.json': '{}'
+    });
+    write('.env', 'SECRET=1');
+
+    const info = await new WorktreeService().prepare(repo);
+
+    expect(info.setup).toEqual({ setup: 'make', copy: [] });
+    expect(info.detected).toBe(false);
+  });
+
+  it('detects the install command and ignored .env files without a setup file', async () => {
+    commitFiles({
+      '.gitignore': '.env\n.env.*\n!.env.example\nnode_modules/\n',
+      '.env.example': 'SECRET=',
+      'pnpm-lock.yaml': '',
+      'package-lock.json': '{}'
+    });
+    write('.env', 'SECRET=1');
+    write('.env.local', 'SECRET=2');
+    write('apps/web/.env', 'WEB=1');
+    write('apps/café/.env', 'CAFE=1');
+    write('node_modules/dep/.env', 'DEP=1');
+
+    const info = await new WorktreeService().prepare(repo);
+
+    expect(info.detected).toBe(true);
+    expect(info.setup?.setup).toBe('pnpm install');
+    expect(info.setup?.copy.sort()).toEqual([
+      '.env',
+      '.env.local',
+      'apps/café/.env',
+      'apps/web/.env'
+    ]);
+  });
+
+  it('does not take an ignored folder named .env, like a Python virtualenv, for a file', async () => {
+    commitFiles({ '.gitignore': '.env/\n' });
+    write('.env/bin/activate', 'x');
+
+    const info = await new WorktreeService().prepare(repo);
+
+    expect(info.setup).toBeNull();
+    expect(info.detected).toBe(false);
+  });
+});
+
+describe('WorktreeService.saveSetup', () => {
+  it('writes what it detected as a setup file that reads back the same', async () => {
+    commitFiles({ '.gitignore': '.env\n', 'package-lock.json': '{}' });
+    write('.env', 'SECRET=1');
+
+    const saved = await new WorktreeService().saveSetup(repo);
+
+    expect(saved).toEqual({
+      setup: { setup: 'npm install', copy: ['.env'] },
+      setupError: null,
+      detected: false
+    });
+    expect(readFileSync(join(repo, '.fleet/worktree.toml'), 'utf8')).toBe(
+      [
+        "# Typed into each new worktree's terminal once its prompt is up.",
+        'setup = "npm install"',
+        '',
+        '# Git-ignored files and folders, copied from the main checkout.',
+        'copy = [ ".env" ]',
+        ''
+      ].join('\n')
+    );
+  });
+
+  it('never overwrites a setup file made after the dialog opened', async () => {
+    commitFiles({ 'package-lock.json': '{}' });
+    const service = new WorktreeService();
+    await service.saveSetup(repo);
+    write('.fleet/worktree.toml', 'setup = "make"\n');
+
+    await expect(service.saveSetup(repo)).rejects.toThrow(/already exists/);
+
+    expect(readFileSync(join(repo, '.fleet/worktree.toml'), 'utf8')).toBe('setup = "make"\n');
+  });
+
+  it('refuses to write a setup file that Fleet could not read back', async () => {
+    commitFiles({ '.gitignore': '.env*\n' });
+    for (let i = 0; i <= 100; i++) write(`.env.${i}`, 'x');
+
+    await expect(new WorktreeService().saveSetup(repo)).rejects.toThrow();
+
+    expect(existsSync(join(repo, '.fleet/worktree.toml'))).toBe(false);
+  });
+
+  it('refuses to write a setup file with nothing in it', async () => {
+    commitFiles({ 'a.txt': 'a' });
+
+    await expect(new WorktreeService().saveSetup(repo)).rejects.toThrow(/nothing/i);
+
+    expect(existsSync(join(repo, '.fleet/worktree.toml'))).toBe(false);
   });
 });
 
 describe('WorktreeService.copyFromMain', () => {
+  it('copies detected .env files when the repository has no setup file', async () => {
+    commitFiles({ '.gitignore': '.env\n' });
+    write('.env', 'SECRET=1');
+
+    const service = new WorktreeService();
+    const made = await service.create(repo);
+    const result = await service.copyFromMain(repo, made.worktreePath);
+
+    expect(result).toEqual({ copied: ['.env'], skipped: [] });
+    expect(readFileSync(join(made.worktreePath, '.env'), 'utf8')).toBe('SECRET=1');
+  });
+
+  it('copies nothing from a broken setup file, not even what it would detect', async () => {
+    commitFiles({ '.gitignore': '.env\n', '.fleet/worktree.toml': 'setpu = "x"\n' });
+    write('.env', 'SECRET=1');
+
+    const service = new WorktreeService();
+    const made = await service.create(repo);
+    const result = await service.copyFromMain(repo, made.worktreePath);
+
+    expect(result).toEqual({ copied: [], skipped: [] });
+  });
+
   it('copies ignored files and folders, and skips what git tracks or does not ignore', async () => {
     commitFiles({
       '.gitignore': '.env\n.cache/\n',

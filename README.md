@@ -129,6 +129,9 @@ npm install
 copy = [".env", "apps/web/.env"]
 ```
 
+Without this file, Fleet detects a setup: the install command for the lockfile at the repository's root, and the git-ignored `.env` files.
+Save to repo in the dialog writes what Fleet detected to `.fleet/worktree.toml`, so you can edit it and commit it.
+
 The dialog shows the setup before it runs, and you can turn it off for one worktree.
 Fleet copies only paths git ignores, and never overwrites a file the worktree already has.
 
