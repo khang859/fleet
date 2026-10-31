@@ -38,6 +38,7 @@ import type {
   WorktreeCreateResponse,
   WorktreePrepareRequest,
   WorktreePrepareResponse,
+  WorktreeSetupInfo,
   WorktreeRemoveRequest,
   ShellProfilesListResponse,
   WslStatusResponse,
@@ -352,6 +353,8 @@ const fleetApi = {
   worktree: {
     prepare: async (req: WorktreePrepareRequest): Promise<WorktreePrepareResponse> =>
       typedInvoke(IPC_CHANNELS.WORKTREE_PREPARE, req),
+    saveSetup: async (req: WorktreePrepareRequest): Promise<WorktreeSetupInfo> =>
+      typedInvoke(IPC_CHANNELS.WORKTREE_SAVE_SETUP, req),
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
       typedInvoke(IPC_CHANNELS.WORKTREE_CREATE, req),
     remove: async (req: WorktreeRemoveRequest): Promise<void> =>

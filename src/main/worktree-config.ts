@@ -1,7 +1,7 @@
-import { join, posix as posixPath } from 'path';
+import { dirname, join, posix as posixPath } from 'path';
 import { existsSync, constants } from 'fs';
-import { cp, readFile } from 'fs/promises';
-import { parse } from 'smol-toml';
+import { cp, mkdir, readFile, writeFile } from 'fs/promises';
+import { parse, stringify } from 'smol-toml';
 import { z } from 'zod';
 import { toWindowsAccessiblePath } from '../shared/path-platform';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
@@ -12,6 +12,22 @@ import type { WorktreeSetup } from '../shared/ipc-api';
  * so everyone who makes a worktree of the repository gets the same setup.
  */
 export const WORKTREE_SETUP_FILE = '.fleet/worktree.toml';
+
+/** Git pathspecs for `.env` files at any depth, when a repository has no setup file. */
+export const ENV_PATHSPECS = [':(glob)**/.env', ':(glob)**/.env.*'];
+
+/** Lockfiles at a repository's root and what installs from them. The first one found wins. */
+const INSTALL_COMMANDS = [
+  ['pnpm-lock.yaml', 'pnpm install'],
+  ['bun.lock', 'bun install'],
+  ['bun.lockb', 'bun install'],
+  ['yarn.lock', 'yarn install'],
+  ['package-lock.json', 'npm install'],
+  ['uv.lock', 'uv sync'],
+  ['poetry.lock', 'poetry install'],
+  ['Gemfile.lock', 'bundle install'],
+  ['composer.lock', 'composer install']
+] as const;
 
 /** A path inside the repository, `/`-separated, that cannot climb out of it or reach into `.git`. */
 const RepoPath = z
@@ -78,6 +94,43 @@ export async function readWorktreeSetup(
     if (missing) return { setup: null, setupError: null };
     const why = err instanceof Error ? err.message : String(err);
     return { setup: null, setupError: `${WORKTREE_SETUP_FILE}: ${why}` };
+  }
+}
+
+/** The install command for the repository's lockfile; empty when it has none Fleet knows. */
+export function detectInstallCommand(repoPath: string, ctx?: PathContext): string {
+  const found = INSTALL_COMMANDS.find(([lockfile]) =>
+    existsSync(localPath(ctx, pathJoin(ctx, repoPath, lockfile)))
+  );
+  return found?.[1] ?? '';
+}
+
+/** A setup as the text of a setup file. */
+export function formatWorktreeSetup({ setup, copy }: WorktreeSetup): string {
+  return [
+    "# Typed into each new worktree's terminal once its prompt is up.",
+    stringify({ setup }),
+    '# Git-ignored files and folders, copied from the main checkout.',
+    stringify({ copy })
+  ].join('\n');
+}
+
+/** Write the repository's setup file. Throws rather than overwrite one, or write one that is broken. */
+export async function writeWorktreeSetup(
+  repoPath: string,
+  setup: WorktreeSetup,
+  ctx?: PathContext
+): Promise<void> {
+  const text = formatWorktreeSetup(setup);
+  parseWorktreeSetup(text);
+
+  const file = localPath(ctx, pathJoin(ctx, repoPath, WORKTREE_SETUP_FILE));
+  await mkdir(dirname(file), { recursive: true });
+  try {
+    await writeFile(file, text, { flag: 'wx' });
+  } catch (err) {
+    const exists = err instanceof Error && 'code' in err && err.code === 'EEXIST';
+    throw exists ? new Error(`${WORKTREE_SETUP_FILE} already exists.`) : err;
   }
 }
 

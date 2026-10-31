@@ -275,16 +275,22 @@ export type WorktreePrepareRequest = {
   pathContext?: PathContext;
 };
 
+/** The setup a new worktree of a repository gets. */
+export type WorktreeSetupInfo = {
+  /** Null when the setup file is broken, or when there is none and Fleet detects nothing. */
+  setup: WorktreeSetup | null;
+  /** Why the setup file could not be read; null when it was, or there is none. */
+  setupError: string | null;
+  /** True when `setup` is what Fleet detected, as the repository has no setup file. */
+  detected: boolean;
+};
+
 /** What the new-worktree dialog offers, read from the repository. */
-export type WorktreePrepareResponse = {
+export type WorktreePrepareResponse = WorktreeSetupInfo & {
   /** The main checkout's branch; null when its HEAD is detached. */
   current: string | null;
   /** Local branches, then remote ones like `origin/main`, most recent commit first. */
   refs: string[];
-  /** Null when the repository has no setup file, or when it is broken. */
-  setup: WorktreeSetup | null;
-  /** Why the setup file could not be read; null when it was, or there is none. */
-  setupError: string | null;
 };
 
 export type WorktreeCreateRequest = {
@@ -297,13 +303,13 @@ export type WorktreeCreateRequest = {
   startPoint?: string;
 };
 
-/** A path from the setup file that was not copied, and why. */
+/** A path from the setup that was not copied, and why. */
 export type WorktreeCopySkip = { path: string; reason: string };
 
 export type WorktreeCreateResponse = {
   worktreePath: string;
   branchName: string;
-  /** Paths copied from the main checkout, as the setup file lists them. */
+  /** Paths copied from the main checkout, as the setup lists them. */
   copied: string[];
   skipped: WorktreeCopySkip[];
 };

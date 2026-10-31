@@ -7,8 +7,20 @@ import { toWindowsAccessiblePath } from '../shared/path-platform';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { WslService } from './wsl-service';
 import { FLEET_HOME } from '../shared/constants';
-import type { WorktreeCopySkip, WorktreePrepareResponse } from '../shared/ipc-api';
-import { copyIgnoredPath, localPath, readWorktreeSetup } from './worktree-config';
+import type {
+  WorktreeCopySkip,
+  WorktreePrepareResponse,
+  WorktreeSetup,
+  WorktreeSetupInfo
+} from '../shared/ipc-api';
+import {
+  copyIgnoredPath,
+  detectInstallCommand,
+  ENV_PATHSPECS,
+  localPath,
+  readWorktreeSetup,
+  writeWorktreeSetup
+} from './worktree-config';
 
 const log = createLogger('worktree');
 
@@ -305,7 +317,7 @@ export class WorktreeService {
       this.git(ctx, repoPath, ['branch', '--show-current']),
       this.refNames(ctx, repoPath, 'refs/heads/'),
       this.refNames(ctx, repoPath, 'refs/remotes/'),
-      readWorktreeSetup(repoPath, ctx)
+      this.resolveSetup(repoPath, ctx)
     ]);
 
     return {
@@ -314,6 +326,56 @@ export class WorktreeService {
       refs: [...local, ...remote.filter((ref) => !ref.endsWith('/HEAD'))],
       ...setup
     };
+  }
+
+  /** The repository's setup file; without one, the setup Fleet detects for it. */
+  private async resolveSetup(repoPath: string, ctx?: PathContext): Promise<WorktreeSetupInfo> {
+    const read = await readWorktreeSetup(repoPath, ctx);
+    if (read.setup !== null || read.setupError !== null) return { ...read, detected: false };
+
+    const setup = await this.detectSetup(repoPath, ctx);
+    return { setup, setupError: null, detected: setup !== null };
+  }
+
+  /** The lockfile's install command and the ignored `.env` files; null when there are neither. */
+  private async detectSetup(repoPath: string, ctx?: PathContext): Promise<WorktreeSetup | null> {
+    const setup = detectInstallCommand(repoPath, ctx);
+    const ignored = await this.ignoredPaths(ctx, repoPath, ENV_PATHSPECS);
+    // A trailing slash is a folder: `node_modules/`, or a virtualenv named `.env/`.
+    const copy = ignored.filter((path) => !path.endsWith('/'));
+
+    return setup === '' && copy.length === 0 ? null : { setup, copy };
+  }
+
+  /** Save the detected setup as the repository's setup file, and return what it now has. */
+  async saveSetup(repoPath: string, ctx?: PathContext): Promise<WorktreeSetupInfo> {
+    const setup = await this.detectSetup(repoPath, ctx);
+    if (setup === null) throw new Error('Fleet found nothing to put in the setup file.');
+
+    await writeWorktreeSetup(repoPath, setup, ctx);
+    return { setup, setupError: null, detected: false };
+  }
+
+  /**
+   * The git-ignored paths `pathspecs` match. A wholly ignored folder is one
+   * entry with a trailing slash, and git does not look inside it.
+   */
+  private async ignoredPaths(
+    ctx: PathContext | undefined,
+    repoPath: string,
+    pathspecs: string[]
+  ): Promise<string[]> {
+    const raw = await this.git(ctx, repoPath, [
+      'ls-files',
+      '-z',
+      '--others',
+      '--ignored',
+      '--exclude-standard',
+      '--directory',
+      '--',
+      ...pathspecs
+    ]);
+    return raw.split('\0').filter(Boolean);
   }
 
   /** Branch names under `prefix`, without it, most recent commit first. */
@@ -335,7 +397,7 @@ export class WorktreeService {
   }
 
   /**
-   * Copy the git-ignored files the setup file lists, like `.env`, from the main
+   * Copy the git-ignored files the setup lists, like `.env`, from the main
    * checkout into a new worktree. A path that git tracks, that is missing, or
    * that the worktree already has is skipped, so no file git knows is overwritten.
    */
@@ -344,22 +406,10 @@ export class WorktreeService {
     worktreePath: string,
     ctx?: PathContext
   ): Promise<{ copied: string[]; skipped: WorktreeCopySkip[] }> {
-    const { setup } = await readWorktreeSetup(repoPath, ctx);
+    const { setup } = await this.resolveSetup(repoPath, ctx);
     if (setup === null || setup.copy.length === 0) return { copied: [], skipped: [] };
 
-    const ignored = (
-      await this.git(ctx, repoPath, [
-        'ls-files',
-        '--others',
-        '--ignored',
-        '--exclude-standard',
-        '--directory',
-        '--',
-        ...setup.copy
-      ])
-    )
-      .split('\n')
-      .filter(Boolean);
+    const ignored = await this.ignoredPaths(ctx, repoPath, setup.copy);
 
     const copied: string[] = [];
     const skipped: WorktreeCopySkip[] = [];

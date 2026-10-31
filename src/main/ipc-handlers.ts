@@ -918,6 +918,10 @@ export function registerIpcHandlers(
     return worktreeService.prepare(req.repoPath, req.pathContext);
   });
 
+  ipcMain.handle(IPC_CHANNELS.WORKTREE_SAVE_SETUP, async (_event, req: WorktreePrepareRequest) => {
+    return worktreeService.saveSetup(req.repoPath, req.pathContext);
+  });
+
   ipcMain.handle(
     IPC_CHANNELS.WORKTREE_CREATE,
     async (_event, req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> => {
