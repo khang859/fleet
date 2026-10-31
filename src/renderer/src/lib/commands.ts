@@ -194,6 +194,15 @@ export function createCommandRegistry(): Command[] {
       }
     },
     {
+      id: 'move-pane-to-tab',
+      label: 'Move Pane to New Tab',
+      category: 'Panes',
+      execute: () => {
+        const state = useWorkspaceStore.getState();
+        if (state.activePaneId) state.movePaneToNewTab(state.activePaneId);
+      }
+    },
+    {
       id: 'git-changes',
       label: 'Git Changes',
       shortcut: sc('git-changes'),

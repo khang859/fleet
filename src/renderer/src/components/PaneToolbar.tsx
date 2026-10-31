@@ -13,7 +13,8 @@ import {
   FolderSync,
   FilePenLine,
   MoreHorizontal,
-  FolderTree
+  FolderTree,
+  SquareArrowOutUpRight
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
@@ -111,6 +112,24 @@ function MenuItem({
   );
 }
 
+const MOVE_LABEL = 'Move to New Tab';
+
+/** Agent and viewer panes have no toolbar, so this one action floats in their corner. */
+export function MovePaneButton({ onClick }: { onClick: () => void }): React.JSX.Element {
+  return (
+    <Tooltip.Provider delayDuration={300}>
+      <div className="absolute top-1 right-1 z-10 rounded bg-fleet-surface-2/80 opacity-0 transition-opacity focus-within:opacity-100 group-hover/pane:opacity-100">
+        <ToolbarButton
+          label={MOVE_LABEL}
+          ariaLabel="Move pane to new tab"
+          icon={<SquareArrowOutUpRight size={14} />}
+          onClick={onClick}
+        />
+      </div>
+    </Tooltip.Provider>
+  );
+}
+
 type PaneToolbarProps = {
   visible: boolean;
   isGitRepo: boolean;
@@ -127,6 +146,7 @@ type PaneToolbarProps = {
   onNotes?: () => void;
   onEnvSync?: () => void;
   onEnvEditor?: () => void;
+  onMoveToTab?: () => void;
 };
 
 export function PaneToolbar({
@@ -144,7 +164,8 @@ export function PaneToolbar({
   onTelescopeSidebar,
   onNotes,
   onEnvSync,
-  onEnvEditor
+  onEnvEditor,
+  onMoveToTab
 }: PaneToolbarProps): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const pick =
@@ -158,6 +179,11 @@ export function PaneToolbar({
   // These used to sit in the row as eight more icons, which made the toolbar
   // wider than the title it shares a line with.
   const menuActions = [
+    onMoveToTab && {
+      icon: <SquareArrowOutUpRight size={14} />,
+      label: MOVE_LABEL,
+      onSelect: onMoveToTab
+    },
     isGitRepo && {
       icon: <GitBranch size={14} />,
       label: 'Git Changes',
@@ -250,7 +276,7 @@ export function PaneToolbar({
                 align="end"
                 sideOffset={4}
                 onClick={(e) => e.stopPropagation()}
-                className={`z-50 w-52 overflow-hidden rounded-md border border-fleet-border-strong bg-fleet-surface-2 py-1 shadow-xl ${popperAnim}`}
+                className={`z-50 w-60 overflow-hidden rounded-md border border-fleet-border-strong bg-fleet-surface-2 py-1 shadow-xl ${popperAnim}`}
               >
                 {menuActions.map((a) => (
                   <MenuItem

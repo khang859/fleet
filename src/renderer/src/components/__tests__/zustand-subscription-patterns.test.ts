@@ -58,8 +58,8 @@ describe('Sidebar.tsx Zustand subscription pattern', () => {
 });
 
 /**
- * #541: these three all render inside (or as) `App`, so a bare store call in any
- * of them re-renders every pane in every tab on unrelated store activity.
+ * #541: every pane of every tab renders through this one grid, so a bare store
+ * call in it re-renders all of them on unrelated store activity.
  */
 describe('PaneGrid.tsx subscription pattern', () => {
   const source = readComponent('components/PaneGrid.tsx');
@@ -70,6 +70,10 @@ describe('PaneGrid.tsx subscription pattern', () => {
 
   it('memoizes the grid so a stray workspace update cannot re-render every pane', () => {
     expect(source).toMatch(/export const PaneGrid = memo\(/);
+  });
+
+  it('memoizes each pane, since every pane of every tab renders from one grid', () => {
+    expect(source).toMatch(/const StagedPane = memo\(/);
   });
 
   it('memoizes the terminal leaf, which owns its own stable handlers', () => {

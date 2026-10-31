@@ -259,7 +259,7 @@ export function SshBrowserPane({ paneId, host, initialPath }: Props): React.JSX.
       onDrop={handleDrop}
     >
       {/* Toolbar: navigation on the left, view controls on the right */}
-      <div className="flex-shrink-0 flex items-center gap-1 px-2 h-8 border-b border-neutral-800 bg-neutral-950/60">
+      <div className="flex-shrink-0 flex items-center gap-1 pl-2 pr-8 h-8 border-b border-neutral-800 bg-neutral-950/60">
         <ToolbarButton onClick={() => void goBack(paneId)} title="Back" disabled={!canBack}>
           <ArrowLeft size={13} />
         </ToolbarButton>

@@ -16,6 +16,8 @@ import { useSettingsStore } from './settings-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import {
   insertNestedTab,
+  isFileTab,
+  isSessionTab,
   nestedBlockLength,
   nestInsertIndex,
   resolveFileParentId
@@ -256,6 +258,12 @@ type WorkspaceStore = {
   // Pane actions
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => string;
   closePane: (paneId: string) => void;
+  /**
+   * Give a pane in a split a tab of its own, right after the one it left. The
+   * leaf moves as it is, so the pane stays alive; nothing is closed or disposed.
+   * Returns the new tab's id, or null when `canMovePane` says it has to stay.
+   */
+  movePaneToNewTab: (paneId: string) => string | null;
   setActivePane: (paneId: string) => void;
   resizeSplit: (splitNodePath: number[], ratio: number) => void;
   renamePane: (paneId: string, label: string) => void;
@@ -355,7 +363,7 @@ type WorkspaceStore = {
  * Both tree walkers return the node they were given when nothing below it
  * changed, so an update touches only the spine from the root to the one node it
  * edits. Callers rely on that identity to skip the enclosing tab entirely (see
- * `setPaneDirty`), and `PaneGrid`'s `useMemo(..., [root])` relies on it to avoid
+ * `setPaneDirty`), and `PaneGrid`'s layout cache relies on it to avoid
  * recomputing a layout that cannot have moved.
  */
 function updateRatioAtPath(node: PaneNode, path: number[], ratio: number): PaneNode {
@@ -591,6 +599,82 @@ function withoutAgent(tab: Tab): Tab {
     label: cwdBasename(cwd, tab.pathContext ?? 'posix'),
     labelIsCustom: false
   };
+}
+
+export function isTerminalLeaf(leaf: PaneLeaf): boolean {
+  return leaf.paneType === undefined || leaf.paneType === 'terminal';
+}
+
+/**
+ * Whether a pane may leave this tab. A lone pane has nowhere to leave, a pinned
+ * tab keeps its tool, and a worktree tab's panes stay beside the tab that owns
+ * the folder: closing it deletes that folder from under them.
+ */
+export function canMovePane(tab: Tab): boolean {
+  return tab.splitRoot.type === 'split' && !tab.worktreePath && !isPinnedTab(tab);
+}
+
+/** A file or SSH tab left holding only terminals split off it is a terminal tab. */
+function withoutViewer(tab: Tab): Tab {
+  if (isSessionTab(tab) || tab.type === 'agent') return tab;
+  if (!collectPaneLeafs(tab.splitRoot).every(isTerminalLeaf)) return tab;
+  return { ...tab, type: 'terminal', labelIsCustom: false, parentTabId: undefined };
+}
+
+/** The tab a pane left: its kind and folder follow the panes still in it. */
+function tabAfterPaneLeft(tab: Tab, splitRoot: PaneNode): Tab {
+  const next = withoutViewer(withoutAgent({ ...tab, splitRoot }));
+  if (!isSessionTab(next)) return next;
+  const cwd = getFirstPaneLiveCwd(splitRoot) ?? getFirstLeafCwd(splitRoot) ?? next.cwd;
+  const label = next.labelIsCustom ? next.label : cwdBasename(cwd, next.pathContext ?? 'posix');
+  return { ...next, cwd, label };
+}
+
+/** What a pane is called once it has a tab of its own. */
+function movedPaneLabel(leaf: PaneLeaf, cwd: string, ctx: PathContext): string {
+  if (leaf.labelIsCustom && leaf.label) return leaf.label;
+  if (leaf.paneType === 'agent' && isScratchDir(cwd)) return SCRATCH_TAB_LABEL;
+  if (leaf.paneType === 'ssh-browser' && leaf.remoteHost) return leaf.remoteHost.label;
+  const file = leaf.filePath ?? leaf.remotePath;
+  return file ? (file.split('/').pop() ?? file) : cwdBasename(cwd, ctx);
+}
+
+function tabFromLeaf(leaf: PaneLeaf, source: Tab): Tab {
+  const isTerminal = isTerminalLeaf(leaf);
+  const pathContext = leaf.pathContext ?? source.pathContext;
+  const cwd = (isTerminal ? useCwdStore.getState().cwds.get(leaf.id) : undefined) ?? leaf.cwd;
+  const tab: Tab = {
+    id: generateId(),
+    label: movedPaneLabel(leaf, cwd, pathContext ?? 'posix'),
+    labelIsCustom: !isTerminal || leaf.labelIsCustom === true,
+    cwd,
+    splitRoot: leaf
+  };
+  if (isTerminal) {
+    return { ...tab, pathContext, shellProfileId: leaf.shellProfileId ?? source.shellProfileId };
+  }
+  return { ...tab, type: leaf.paneType, ...(leaf.paneType === 'agent' ? { pathContext } : {}) };
+}
+
+/** Past the source's own nested files and the rest of its worktree group. */
+function indexAfterTab(tabs: Tab[], source: Tab): number {
+  let index = nestInsertIndex(tabs, tabs.indexOf(source) + 1);
+  while (source.groupId && tabs.at(index)?.groupId === source.groupId) {
+    index = nestInsertIndex(tabs, index + 1);
+  }
+  return index;
+}
+
+/** File tabs nest like any file opened from there; the rest sit beside the source. */
+function placeMovedTab(tabs: Tab[], source: Tab, moved: Tab): Tab[] {
+  const parentTabId = isSessionTab(source) ? source.id : source.parentTabId;
+  if (isFileTab(moved) && parentTabId) {
+    return insertNestedTab(tabs, { ...moved, parentTabId }, parentTabId);
+  }
+  const placed = moved.type === 'agent' ? moved : { ...moved, userGroupId: source.userGroupId };
+  const next = [...tabs];
+  next.splice(indexAfterTab(tabs, source), 0, placed);
+  return next;
 }
 
 /**
@@ -1217,6 +1301,33 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
+  movePaneToNewTab: (paneId) => {
+    const source = get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+    if (!source || !canMovePane(source)) return null;
+    const leaf = findLeaf(source.splitRoot, paneId);
+    const splitRoot = removePaneFromTree(source.splitRoot, paneId);
+    if (!leaf || !splitRoot) return null;
+
+    const remaining = tabAfterPaneLeft(source, splitRoot);
+    const moved = tabFromLeaf(leaf, source);
+    logLayout.debug('movePaneToNewTab', { paneId, from: source.id, to: moved.id });
+    // One update: the GC must never see this pane id missing from the layout.
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: placeMovedTab(
+          state.workspace.tabs.map((t) => (t.id === source.id ? remaining : t)),
+          remaining,
+          moved
+        )
+      },
+      activeTabId: moved.id,
+      activePaneId: paneId,
+      isDirty: true
+    }));
+    return moved.id;
+  },
+
   setActivePane: (paneId) => set({ activePaneId: paneId }),
 
   // Called per mousemove while a divider is dragged, so - like `setPaneDirty` -
@@ -1684,9 +1795,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
     // A leaf with no paneType is a terminal - that is what a pane is unless it
     // was opened as something else.
-    const existing = collectPaneLeafs(tab.splitRoot).find(
-      (leaf) => leaf.paneType === undefined || leaf.paneType === 'terminal'
-    );
+    const existing = collectPaneLeafs(tab.splitRoot).find(isTerminalLeaf);
     // Below rather than beside: the transcript is a column of prose, and
     // halving its width to make room costs more than the height does.
     const paneId = existing?.id ?? get().splitPane(agentPaneId, 'vertical');

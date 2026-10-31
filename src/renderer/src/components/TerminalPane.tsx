@@ -35,6 +35,7 @@ type TerminalPaneProps = {
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onClose?: () => void;
+  onMoveToTab?: () => void;
   shellProfileId?: string;
   cmd?: string;
   typeOnStart?: string;
@@ -57,6 +58,7 @@ export function TerminalPane({
   onSplitHorizontal,
   onSplitVertical,
   onClose,
+  onMoveToTab,
   shellProfileId,
   cmd,
   typeOnStart
@@ -180,6 +182,7 @@ export function TerminalPane({
       onNotes={() => document.dispatchEvent(new CustomEvent('fleet:toggle-notes'))}
       onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}
       onEnvEditor={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-editor'))}
+      onMoveToTab={onMoveToTab}
     />
   );
 
