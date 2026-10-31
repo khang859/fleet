@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.146.0
+
+- **Saved multi-agent workflows.**
+  A new Workflows tool sits beside Sessions and Annotate.
+  A workflow is a TOML file that you can share in a project.
+  It starts a team of Claude Code or Pi agents in panes, and you can chat with any agent at any time.
+  Each run ends with a report, and findings stay local until a person confirms a post.
+  Runs start by hand, from an agent tool, or on a schedule (#713).
+- **Pick an agent to start in a new worktree.**
+  The new-worktree dialog now has an Agent picker: None, Claude Code, Pi or a custom command.
+  The worktree's setup runs first, and the agent starts when the setup is done.
+  Settings > General has a Default Agent and a Custom Agent Command (#712).
+- **Move a pane to its own tab.**
+  A pane in a split can now move to its own sidebar item, from the terminal's `...` menu, a hover button or the command palette.
+  The pane keeps its scrollback, unsaved text and agent draft (#714).
+- **Session rows show their program.**
+  When two or more programs run, each sidebar row shows a tag like `Claude` or `Pi` before the branch (#711).
+
 ## v2.145.0
 
 - **Open a new tab when the sidebar is collapsed.**
