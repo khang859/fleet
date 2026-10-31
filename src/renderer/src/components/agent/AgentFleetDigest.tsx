@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { Radar } from 'lucide-react';
-import { splitFleetDigest, unfence } from '../../../../shared/fleet-tools';
+import { splitFleetDigest, unfence } from '../../../../shared/agent-legacy-fleet';
 
 /**
- * Fleet waking an orchestrator pane because sessions it looks after need
- * attention.
+ * A wakeup from the Orchestrator, in a chat saved while Fleet had one.
  *
  * A card for the reason the scheduled check-in is one: nobody in the room said
  * it, and the turn under it started on its own. The headlines stay open, since

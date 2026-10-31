@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClaudeSessionChange } from '../../../shared/claude-sessions';
 import type { HookEvent } from '../hook-events';
-import { ClaudeSessionRegistry, hashPrompt, type Clock } from '../registry';
+import { ClaudeSessionRegistry, type Clock } from '../registry';
 
 vi.mock('../../logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
@@ -418,34 +418,6 @@ describe('ClaudeSessionRegistry', () => {
       expect(clock.pending()).toBe(0);
       expect(registry.list()).toEqual([]);
     });
-  });
-
-  it('notes who typed a prompt without keeping the text', () => {
-    registry.ingest(ev(), pane);
-    registry.noteInput('s1', 'orchestrator', '[orchestrator] run the tests');
-    expect(registry.inputsFor('s1')).toEqual([
-      { origin: 'orchestrator', hash: hashPrompt('[orchestrator] run the tests'), at: 1_000 }
-    ]);
-    expect(JSON.stringify(registry.inputsFor('s1'))).not.toContain('run the tests');
-  });
-
-  it('hands a prompt noted for a pane to the session that first reports from it', () => {
-    registry.notePaneInput('pane-1', 'orchestrator', '[orchestrator] write the parser');
-    registry.notePaneInput('pane-2', 'orchestrator', '[orchestrator] elsewhere');
-    registry.ingest(ev({ event: 'SessionStart', status: 'waiting_for_input' }), pane);
-    expect(registry.inputsFor('s1')).toEqual([
-      { origin: 'orchestrator', hash: hashPrompt('[orchestrator] write the parser'), at: 1_000 }
-    ]);
-    // Handed over once: a later session in the same pane starts with none.
-    registry.ingest(
-      ev({ sessionId: 's2', event: 'SessionStart', status: 'waiting_for_input' }),
-      pane
-    );
-    expect(registry.inputsFor('s2')).toEqual([]);
-    // A pane that closes before its session reports takes its notes with it.
-    registry.releasePane('pane-2');
-    registry.ingest(ev({ sessionId: 's3' }), { ...pane, paneId: 'pane-2' });
-    expect(registry.inputsFor('s3')).toEqual([]);
   });
 });
 

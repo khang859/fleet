@@ -45,7 +45,10 @@ import {
 import { FLEET_WIRE_PREFIX, FLEET_WIRE_SUFFIX } from '../../../shared/agent-types';
 import { ScheduleStore } from '../schedule-store';
 import { SCHEDULE_WIRE_PREFIX } from '../../../shared/agent-schedule';
-import { FLEET_DIGEST_WIRE_PREFIX } from '../../../shared/fleet-tools';
+import {
+  FLEET_DIGEST_WIRE_PREFIX,
+  FLEET_TOOLS_GONE_NOTE
+} from '../../../shared/agent-legacy-fleet';
 import { PermissionGate } from '../permissions/gate';
 import { SubagentManager, type LiveSubagent } from '../subagents/manager';
 import {
@@ -130,8 +133,7 @@ async function oneRunningSubagent(threadId: string): Promise<SubagentManager> {
     parentModel: 'a/model',
     threadId,
     callId: 'call-1',
-    cwd: '/repo',
-    fleet: null
+    cwd: '/repo'
   });
   return subagents;
 }
@@ -628,6 +630,16 @@ describe('toReasoningParam', () => {
         reasoningTokens: 4096
       })
     ).toEqual({ max_tokens: 4096 });
+  });
+});
+
+describe('buildSystemPrompt: a chat from when Fleet had the Orchestrator', () => {
+  it('says the fleet tools are gone only in a chat that used them', () => {
+    const gone = buildSystemPrompt('/repo', null, { image: false, fleetToolsGone: true });
+    const fresh = buildSystemPrompt('/repo', null, { image: false });
+
+    expect(gone).toContain(FLEET_TOOLS_GONE_NOTE);
+    expect(fresh).not.toContain(FLEET_TOOLS_GONE_NOTE);
   });
 });
 
@@ -2229,6 +2241,54 @@ describe('AgentService', () => {
   });
 });
 
+describe('AgentService, on a chat that used the fleet tools', () => {
+  const systemPromptFor = async (history: AgentMessage[]): Promise<unknown> => {
+    const { emit, ended } = collector();
+    const rounds: StreamRequest[] = [];
+
+    new AgentService({
+      schedules: SCHEDULES,
+      gate: PASS_GATE,
+      getSettings: () => SETTINGS,
+      subagents: NO_SUBAGENTS,
+      getApiKey: () => 'sk-or-test',
+      resolveTarget: RESOLVE_TARGET,
+      emit,
+      stream: async (req) => {
+        rounds.push(req);
+        return Promise.resolve(round());
+      }
+    }).send({ ...REQUEST, history });
+    await ended;
+
+    return rounds[0].messages[0].content;
+  };
+
+  it('tells the model those tools are gone', async () => {
+    const call = {
+      id: 'c1',
+      name: 'fleet_read',
+      args: '{}',
+      result: 'done',
+      error: null,
+      summary: null,
+      image: null,
+      todos: null,
+      task: null
+    };
+    const history: AgentMessage[] = [
+      textMessage('a', 'user', 'watch my session'),
+      { ...textMessage('b', 'assistant', ''), parts: [{ type: 'tool', call }] }
+    ];
+
+    expect(await systemPromptFor(history)).toContain(FLEET_TOOLS_GONE_NOTE);
+  });
+
+  it('says nothing about them in any other chat', async () => {
+    expect(await systemPromptFor(REQUEST.history)).not.toContain(FLEET_TOOLS_GONE_NOTE);
+  });
+});
+
 describe('collectToolCalls', () => {
   const frag = (
     index: number,
@@ -2990,7 +3050,6 @@ describe('memory and project instructions', () => {
       model: 'anthropic/claude-sonnet-4.5',
       cwd: dir,
       signal: new AbortController().signal,
-      fleet: null,
       onMessage: () => {}
     });
     return rounds;

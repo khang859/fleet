@@ -392,14 +392,14 @@ func TestRuntimeArg(t *testing.T) {
 
 func TestEvaState_NamesRuntimeDatabaseAndLimitReset(t *testing.T) {
 	input := readInput(t, `{"session_id":"e1","hook_event_name":"StopFailure","cwd":"/w","pid":4242,
-		"db_path":"/home/u/.eva/sessions.db","error_kind":"rate_limit",
+		"error_kind":"rate_limit",
 		"error_message":"Too many requests","retry_after":1760000000,
 		"transcript_path":"/x.jsonl"}`)
 	env := map[string]string{"FLEET_PANE_ID": "pane-1", "CLAUDE_CONFIG_DIR": "/c"}
 	state := evaState(input, nil, 4242, func(k string) string { return env[k] })
 
-	if state.Runtime != "eva" || state.DBPath != "/home/u/.eva/sessions.db" || state.PID != 4242 {
-		t.Fatalf("runtime, db path or pid not forwarded: %+v", state)
+	if state.Runtime != "eva" || state.PID != 4242 {
+		t.Fatalf("runtime or pid not forwarded: %+v", state)
 	}
 	if state.TranscriptPath != "" || state.ConfigDir != "" {
 		t.Errorf("eva has no transcript file or Claude config dir: %+v", state)
@@ -480,7 +480,7 @@ func runHook(t *testing.T, args []string, payload string) (int, string) {
 func TestRun_EvaPermissionPrintsTheAnswerEvaTakes(t *testing.T) {
 	events := startAnsweringServer(t, `{"decision":"allow"}`)
 	code, out := runHook(t, []string{"--runtime", "eva"}, `{"session_id":"e1","hook_event_name":"PermissionRequest",
-		"cwd":"/w","pid":77,"db_path":"/d","tool_name":"bash","tool_input":{"command":"git push"},"tool_use_id":"call_1"}`)
+		"cwd":"/w","pid":77,"tool_name":"bash","tool_input":{"command":"git push"},"tool_use_id":"call_1"}`)
 
 	if code != 0 {
 		t.Fatalf("exit %d", code)

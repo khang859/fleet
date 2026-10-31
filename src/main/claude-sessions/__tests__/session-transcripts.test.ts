@@ -81,7 +81,6 @@ describe('SessionTranscripts', () => {
   let dir: string;
   let path: string;
   let signals: Array<[string, TranscriptSignal]>;
-  let changed: string[];
   let fire: (() => void) | null;
   let transcripts: SessionTranscripts;
   const watchFile: WatchFile = (_path, onChange) => {
@@ -95,11 +94,9 @@ describe('SessionTranscripts', () => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-transcripts-'));
     path = join(dir, 's1.jsonl');
     signals = [];
-    changed = [];
     fire = null;
     transcripts = new SessionTranscripts({
       onSignal: (sessionId, signal) => signals.push([sessionId, signal]),
-      onChange: (sessionId) => changed.push(sessionId),
       watchFile,
       debounceMs: 5
     });
@@ -110,26 +107,53 @@ describe('SessionTranscripts', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  const settled = async (): Promise<void> => new Promise((done) => setTimeout(done, 25));
+
   it('reports a rejection written after the permission request', async () => {
     writeFileSync(path, prompt('u1', 'clean up') + toolUse('t1'));
     // PermissionRequest arrives while the dialog is open.
     transcripts.onHookEvent('s1', path);
     appendFileSync(path, rejected('t1'));
-    await transcripts.read('s1');
-    expect(signals).toEqual([['s1', 'turnStopped']]);
+    await vi.waitFor(() => expect(signals).toEqual([['s1', 'turnStopped']]));
   });
 
   it('ignores signals the latest hook event already accounts for', async () => {
     // An old rejection, then a new prompt and a Stop: nothing to settle.
     writeFileSync(path, prompt('u1', 'a') + toolUse('t1') + rejected('t1') + queue('dequeue'));
     transcripts.onHookEvent('s1', path);
-    await transcripts.read('s1');
+    await settled();
     expect(signals).toEqual([]);
     // Lines written before a hook event that were not read yet are ignored too.
     appendFileSync(path, interrupted(false));
     transcripts.onHookEvent('s1', path);
-    await transcripts.read('s1');
+    await settled();
     expect(signals).toEqual([]);
+  });
+
+  it('starts over when the session reports a different transcript', async () => {
+    const other = join(dir, 'other.jsonl');
+    writeFileSync(path, prompt('u1', 'first'));
+    writeFileSync(other, prompt('u9', 'second') + toolUse('t1'));
+    transcripts.onHookEvent('s1', path);
+    transcripts.onHookEvent('s1', other);
+    appendFileSync(other, rejected('t1'));
+    await vi.waitFor(() => expect(signals).toEqual([['s1', 'turnStopped']]));
+  });
+
+  it('forgets a session and stops watching it', () => {
+    writeFileSync(path, prompt('u1', 'x'));
+    transcripts.onHookEvent('s1', path);
+    expect(fire).not.toBeNull();
+    transcripts.forget('s1');
+    expect(fire).toBeNull();
+  });
+
+  it('tracks a session whose transcript does not exist yet', async () => {
+    transcripts.onHookEvent('s1', path);
+    await settled();
+    writeFileSync(path, prompt('u1', 'hello') + toolUse('t1') + rejected('t1'));
+    fire?.();
+    await vi.waitFor(() => expect(signals).toEqual([['s1', 'turnStopped']]));
   });
 
   it('reports a queued prompt starting after the Stop', async () => {
@@ -139,44 +163,5 @@ describe('SessionTranscripts', () => {
     expect(fire).not.toBeNull();
     fire?.();
     await vi.waitFor(() => expect(signals).toEqual([['s1', 'turnStarted']]));
-  });
-
-  it('keeps the brief current and says when it changed', async () => {
-    writeFileSync(path, prompt('u1', 'fix the login bug'));
-    transcripts.onHookEvent('s1', path);
-    const read = await transcripts.read('s1');
-    expect(read?.brief.state.goal?.value).toBe('fix the login bug');
-    expect(read?.index.turns).toHaveLength(1);
-    expect(changed).toEqual(['s1']);
-    await transcripts.read('s1');
-    expect(changed).toEqual(['s1']);
-  });
-
-  it('starts over when the session reports a different transcript', async () => {
-    writeFileSync(path, prompt('u1', 'first'));
-    transcripts.onHookEvent('s1', path);
-    await transcripts.read('s1');
-    const other = join(dir, 'other.jsonl');
-    writeFileSync(other, prompt('u9', 'second'));
-    transcripts.onHookEvent('s1', other);
-    const read = await transcripts.read('s1');
-    expect(read?.index.turns.map((t) => t.preview)).toEqual(['second']);
-    expect(read?.brief.state.goal?.value).toBe('second');
-  });
-
-  it('forgets a session and stops watching it', async () => {
-    writeFileSync(path, prompt('u1', 'x'));
-    transcripts.onHookEvent('s1', path);
-    expect(fire).not.toBeNull();
-    transcripts.forget('s1');
-    expect(fire).toBeNull();
-    expect(await transcripts.read('s1')).toBeNull();
-  });
-
-  it('tracks a session whose transcript does not exist yet', async () => {
-    transcripts.onHookEvent('s1', path);
-    expect((await transcripts.read('s1'))?.end).toBe(0);
-    writeFileSync(path, prompt('u1', 'hello'));
-    expect((await transcripts.read('s1'))?.brief.state.goal?.value).toBe('hello');
   });
 });

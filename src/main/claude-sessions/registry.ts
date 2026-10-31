@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { isProcessAlive } from '../process-liveness';
 import type {
-  ClaudeInputOrigin,
   ClaudeSession,
   ClaudeSessionChange,
   ClaudeSessionEvent
@@ -42,14 +41,6 @@ export type PanePlacement = {
   workspaceName?: string;
 };
 
-/** A prompt Fleet typed into a session, kept so reads can tell who wrote it. */
-export type NotedInput = {
-  origin: ClaudeInputOrigin;
-  /** sha256 of the prompt text, so the text itself is not kept twice. */
-  hash: string;
-  at: number;
-};
-
 export type RegistryOptions = {
   clock?: Clock;
   isAlive?: (pid: number) => boolean;
@@ -61,7 +52,6 @@ export type RegistryOptions = {
 
 const DEFAULT_EVENT_LIMIT = 200;
 const DEFAULT_ENDED_RETENTION_MS = 30_000;
-const NOTED_INPUT_LIMIT = 50;
 /** `SessionStart` sources that mean the pane's Claude switched conversations. */
 const IN_PLACE_SOURCES = new Set(['clear', 'resume']);
 
@@ -92,7 +82,6 @@ function projectNameFromCwd(cwd: string): string {
 type Entry = {
   session: ClaudeSession;
   events: ClaudeSessionEvent[];
-  inputs: NotedInput[];
   /** Tool use ids from `PreToolUse`, for permission requests that arrive without one. */
   toolUseIds: Map<string, string[]>;
   removal: ReturnType<typeof setTimeout> | null;
@@ -108,8 +97,6 @@ type Entry = {
 export class ClaudeSessionRegistry {
   private readonly entries = new Map<string, Entry>();
   private readonly paneEpochs = new Map<string, PaneEpoch>();
-  /** Inputs noted for a pane before its session reported, handed to the session when it does. */
-  private readonly paneInputs = new Map<string, NotedInput[]>();
   private readonly listeners = new Set<(change: ClaudeSessionChange) => void>();
   private readonly clock: Clock;
   private readonly isAlive: (pid: number) => boolean;
@@ -202,7 +189,6 @@ export class ClaudeSessionRegistry {
           createdAt: now
         },
         events: [],
-        inputs: this.takePaneInputs(placement.paneId),
         toolUseIds: new Map(),
         removal: null
       };
@@ -304,36 +290,6 @@ export class ClaudeSessionRegistry {
     this.commit(entry, { ...entry.session, ...next, phaseSince }, null);
   }
 
-  /** Record a prompt Fleet typed into a session. */
-  noteInput(sessionId: string, origin: ClaudeInputOrigin, text: string): void {
-    const entry = this.entries.get(sessionId);
-    if (!entry) return;
-    entry.inputs.push({ origin, hash: hashPrompt(text), at: this.clock.now() });
-    if (entry.inputs.length > NOTED_INPUT_LIMIT) entry.inputs.shift();
-  }
-
-  /**
-   * Note a prompt Fleet gave a pane whose session has not started yet - the
-   * one a spawned session starts with - for the session that first reports
-   * from that pane.
-   */
-  notePaneInput(paneId: string, origin: ClaudeInputOrigin, text: string): void {
-    const pending = this.paneInputs.get(paneId) ?? [];
-    pending.push({ origin, hash: hashPrompt(text), at: this.clock.now() });
-    this.paneInputs.set(paneId, pending.slice(-NOTED_INPUT_LIMIT));
-  }
-
-  private takePaneInputs(paneId: string): NotedInput[] {
-    const pending = this.paneInputs.get(paneId) ?? [];
-    this.paneInputs.delete(paneId);
-    return pending;
-  }
-
-  /** Prompts Fleet typed into a session, oldest first. */
-  inputsFor(sessionId: string): NotedInput[] {
-    return [...(this.entries.get(sessionId)?.inputs ?? [])];
-  }
-
   /** End sessions whose Claude process has exited without saying so. */
   pruneDead(): void {
     for (const entry of this.entries.values()) {
@@ -349,7 +305,6 @@ export class ClaudeSessionRegistry {
       if (entry.session.paneId === paneId) this.end(entry.session.sessionId, 'pane closed');
     }
     this.paneEpochs.delete(paneId);
-    this.paneInputs.delete(paneId);
   }
 
   /** Forget every session, telling subscribers each one left. */

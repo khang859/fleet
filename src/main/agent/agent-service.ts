@@ -99,16 +99,7 @@ import { splitDeferred, toolSearchSpec } from '../../shared/agent-tool-search';
 import { streamResponse } from './responses';
 import { isFusionTurn } from './commands/expand';
 import { runAgentTool } from './tools/run';
-import { createFleetCapability, type FleetDeps } from './fleet/capability';
-import { renderLedgerBlock } from './fleet/ledger';
-import {
-  FLEET_ANALYST,
-  FLEET_DIGEST_WIRE_PREFIX,
-  fleetToolNames,
-  isFleetTool,
-  usesFleetTools,
-  type AgentFleetCapability
-} from '../../shared/fleet-tools';
+import { FLEET_DIGEST_WIRE_PREFIX, usedFleetTools } from '../../shared/agent-legacy-fleet';
 import {
   TaskFailure,
   type LiveSubagent,
@@ -155,8 +146,6 @@ type Deps = {
   subagents: SubagentManager;
   /** Every conversation's reminders. Only a turn's tools ever reach it. */
   schedules: ScheduleStore;
-  /** The Claude Code sessions, for an orchestrator pane's fleet tools; `null` when not wired up. */
-  fleet?: FleetDeps | null;
   /** Injectable for tests; defaults to the real OpenRouter call. */
   stream?: typeof streamCompletion;
   /** Swapped in tests. The Responses transport, used only when tools defer. */
@@ -262,17 +251,6 @@ type RoundsRequest = {
    * fire does not come back to the row that asked for it.
    */
   schedule: AgentScheduleCapability | null;
-  /**
-   * The fleet tools' way to the Claude Code sessions: the whole capability for
-   * an orchestrator turn, the read-only pick for its subagents, `null` for
-   * everything else.
-   */
-  fleet: AgentFleetCapability | null;
-  /**
-   * The orchestrator's ledger, as a note for the end of each round; `null` for
-   * everything but an orchestrator turn. See `withFleetLedger`.
-   */
-  fleetLedger: (() => string | null) | null;
   /**
    * One finished round of this run's own conversation. Set for a subagent,
    * whose transcript main has to keep because it has no pane; `null` for a turn,
@@ -552,22 +530,6 @@ export function withScheduleReminder(
     messages,
     schedule === null ? null : () => renderScheduleBlock(schedule.list(), new Date())
   );
-}
-
-/**
- * The messages for one round, with the orchestrator's ledger: what it has asked
- * of which session and is still waiting on, and what each session is doing.
- *
- * Pushed every round rather than left to the transcript, because the transcript
- * is what compaction folds, and a request whose answer is still coming is the
- * one thing an orchestrator must not forget it made. Read fresh each round for
- * the reason the roster is: a session can answer in the middle of a long turn.
- */
-export function withFleetLedger(
-  messages: AgentWireMessage[],
-  ledger: (() => string | null) | null
-): AgentWireMessage[] {
-  return withRoundNote(messages, ledger);
 }
 
 /**
@@ -1070,12 +1032,6 @@ export class AgentService {
 
   /** Starts a turn and returns immediately; the reply arrives as stream events. */
   send(req: AgentSendRequest): void {
-    // The user wrote, so an orchestrator conversation's run of turns Fleet
-    // started on its own is over. A turn with nothing typed is a digest, a
-    // schedule or a subagent report, none of which is the user.
-    if (req.orchestrator === true && (req.text.trim() !== '' || req.attachments.length > 0)) {
-      this.deps.fleet?.ledger.resetChain(req.threadId);
-    }
     void this.run(req.streamId, async (ctx, account) => this.turn(req, ctx, account));
   }
 
@@ -1207,27 +1163,7 @@ export class AgentService {
     // simply on an endpoint where the saving does not exist.
     const deferring = ctx.settings.toolSearch.enabled && ctx.target.serverTools;
     const { loaded: mcpLoaded, deferred } = splitDeferred(mcpSpecs, deferring);
-    // Only an orchestrator pane has the fleet tools. Its subagents get a
-    // read-only pick of them, and a definition that needs them - `fleet-analyst`
-    // - is offered nowhere else, since it could do nothing there.
-    const fleetDeps = this.deps.fleet ?? null;
-    const fleet =
-      req.orchestrator === true && fleetDeps !== null
-        ? createFleetCapability(
-            fleetDeps,
-            req.threadId,
-            'orchestrator',
-            req.cwd,
-            ctx.settings.orchestrator.answerPermissions
-          )
-        : null;
-    const childFleet =
-      fleet === null || fleetDeps === null
-        ? null
-        : createFleetCapability(fleetDeps, req.threadId, 'subagent', req.cwd);
-    const subagents = (await this.deps.subagents.list(req.cwd)).filter(
-      (s) => fleet !== null || !usesFleetTools(s.tools)
-    );
+    const subagents = await this.deps.subagents.list(req.cwd);
     // Read per turn for the reason subagents are: the file is the interface, and
     // a skill someone has just written should be offered on the next turn rather
     // than on the next launch.
@@ -1244,8 +1180,7 @@ export class AgentService {
         image: null,
         webFetch: ctx.settings.webFetch.enabled,
         skill: skillSpec,
-        memory: memorySpec,
-        fleet: childFleet
+        memory: memorySpec
       }).map((spec) => spec.function.name)
     );
     const taskSpec = buildTaskSpec(
@@ -1306,16 +1241,7 @@ export class AgentService {
         memory: true,
         // Always, for a turn: the three tools are offered on every one of them.
         schedule: true,
-        fleet:
-          fleet === null
-            ? usedFleetTools(req.history)
-              ? { role: 'off', tools: [] }
-              : null
-            : {
-                role: 'orchestrator',
-                tools: fleetToolNames(fleet),
-                analyst: taskSpec !== null && subagents.some((s) => s.name === FLEET_ANALYST)
-              },
+        fleetToolsGone: usedFleetTools(req.history),
         projectInstructions:
           instructions === null
             ? null
@@ -1330,8 +1256,7 @@ export class AgentService {
       mcp: mcpLoaded,
       task: taskSpec,
       skill: skillSpec,
-      memory: memorySpec,
-      fleet
+      memory: memorySpec
     });
     // What the tool list costs before the conversation says anything, logged
     // once per turn because it is charged once per round: a turn of eight
@@ -1385,16 +1310,11 @@ export class AgentService {
         // The parent is the only one that gets these. A child's context has
         // neither, which is the half of "no nesting" that does not depend on
         // the tool list being right.
-        dispatchTask: this.taskDispatcher(req, ctx, subagents, childFleet),
+        dispatchTask: this.taskDispatcher(req, ctx, subagents),
         findSubagent: (name) => subagents.find((s) => s.name === name) ?? null,
         findSkill: (name) => skills.find((s) => s.name === name) ?? null,
         findMemory: (name) => memories.find((m) => m.name === name) ?? null,
         schedule: this.scheduleCapability(req),
-        fleet,
-        fleetLedger:
-          fleet === null || fleetDeps === null
-            ? null
-            : () => renderLedgerBlock(fleetDeps.host, fleetDeps.ledger, req.threadId),
         // The pane draws this run and writes it down. Only a subagent needs
         // main to keep its transcript, and only a subagent is watched by
         // nobody while it runs.
@@ -1483,10 +1403,7 @@ export class AgentService {
         // recent thing said.
         messages: withTodoReminder(
           withScheduleReminder(
-            withFleetLedger(
-              this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
-              run.fleetLedger
-            ),
+            this.withRunningSubagents(withResumeNote(conversation, run.resumed), run.threadId),
             run.schedule
           ),
           todos.items,
@@ -1676,13 +1593,6 @@ export class AgentService {
           onUsage: (usage) => account.side(usage)
         })) === 'run',
       wasRefused: (command) => this.deps.gate.wasRefused(streamId, command),
-      approveFleet: async (ask) =>
-        (await this.deps.gate.checkFleet({
-          ...ask,
-          streamId,
-          callId,
-          signal: ctx.signal
-        })) === 'run',
       generateImage: this.imageGenerator(ctx, streamId, callId),
       fetchUrl: this.urlFetcher(ctx),
       todos: {
@@ -1700,8 +1610,7 @@ export class AgentService {
       findSubagent: run.findSubagent,
       findSkill: run.findSkill,
       findMemory: run.findMemory,
-      schedule: run.schedule,
-      fleet: run.fleet
+      schedule: run.schedule
     };
   }
 
@@ -1764,8 +1673,7 @@ export class AgentService {
   private taskDispatcher(
     req: AgentSendRequest,
     ctx: CallContext,
-    definitions: SubagentDefinition[],
-    fleet: AgentFleetCapability | null
+    definitions: SubagentDefinition[]
   ): (callId: string) => AgentTaskDispatcher | null {
     if (definitions.length === 0) return () => null;
     return (callId) => async (call) =>
@@ -1774,8 +1682,7 @@ export class AgentService {
         parentModel: ctx.model,
         threadId: req.threadId,
         callId,
-        cwd: req.cwd,
-        fleet
+        cwd: req.cwd
       });
   }
 
@@ -1853,15 +1760,6 @@ export class AgentService {
                 // definition's `tools` decides whether this child has a task
                 // list at all, and both bundled ones leave it out.
                 todo: run.tools.includes('todo_add'),
-                fleet:
-                  run.fleet === null
-                    ? null
-                    : {
-                        role: 'reader',
-                        tools: fleetToolNames(run.fleet).filter((name) =>
-                          (run.tools as readonly string[]).includes(name)
-                        )
-                      },
                 projectInstructions:
                   instructions === null
                     ? null
@@ -1880,7 +1778,6 @@ export class AgentService {
             webFetch: ctx.settings.webFetch.enabled,
             skill: skillSpec,
             memory: memorySpec,
-            fleet: run.fleet,
             only: run.tools
           }),
           // A child is not given remote tools, for the reason it is not given
@@ -1905,9 +1802,6 @@ export class AgentService {
           // Nothing to schedule against: this conversation ends when the report
           // does, so a fire aimed at it would wake nobody.
           schedule: null,
-          fleetLedger: null,
-          // The read-only pick, from an orchestrator turn only: see `TaskRun.fleet`.
-          fleet: run.fleet,
           onRound: run.onMessage,
           quiet: true
         },
@@ -2158,9 +2052,4 @@ export class AgentService {
       ...req
     });
   }
-}
-
-/** Whether a conversation called a fleet tool, so turning the mode off needs saying. */
-function usedFleetTools(history: AgentMessage[]): boolean {
-  return history.some((m) => m.parts.some((p) => p.type === 'tool' && isFleetTool(p.call.name)));
 }

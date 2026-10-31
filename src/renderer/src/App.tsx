@@ -44,7 +44,6 @@ import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { focusPane } from './lib/focus-pane';
 import { initClaudeSessionsListener } from './store/claude-sessions-store';
-import { initAgentFleet } from './store/agent-fleet';
 import { switchToWorkspace } from './lib/switch-workspace';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
@@ -69,7 +68,6 @@ import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
 import { WhatsNewDialog } from './components/WhatsNewDialog';
 import { useUpdateNudge } from './hooks/use-update-nudge';
-import { useFleetSpawnTabs } from './hooks/use-fleet-spawn-tabs';
 import { useUpdateStore } from './store/update-store';
 import { getAccentCssVars, getGlassCssVars } from './lib/theme';
 import { BackgroundLayer } from './components/BackgroundLayer';
@@ -372,11 +370,6 @@ export function App(): React.JSX.Element {
     return initClaudeSessionsListener();
   }, []);
 
-  // Wake orchestrator panes when the sessions they look after need them
-  useEffect(() => {
-    return initAgentFleet();
-  }, []);
-
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
   useEffect(() => {
     return window.fleet.notifications.onFocusPane(({ paneId }) => {
@@ -558,7 +551,6 @@ export function App(): React.JSX.Element {
 
   // Auto-updater: keeps the update store fed and fires the arrival toast.
   useUpdateNudge();
-  useFleetSpawnTabs();
 
   // Restore last active workspace on startup (or default), create a fresh tab if empty
   useEffect(() => {

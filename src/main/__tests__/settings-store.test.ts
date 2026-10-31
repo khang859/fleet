@@ -95,14 +95,6 @@ describe('SettingsStore settings merge', () => {
     expect(store.get().ai.agent.systemPrompt).toBe('be brief');
   });
 
-  it('keeps the Orchestrator off permissions unless turned on, including for an older file', () => {
-    store.set({ ai: { agent: { systemPrompt: 'be brief' } } });
-    expect(store.get().ai.agent.orchestrator.answerPermissions).toBe(false);
-    store.set({ ai: { agent: { orchestrator: { answerPermissions: true } } } });
-    store.set({ ai: { agent: { systemPrompt: null } } });
-    expect(store.get().ai.agent.orchestrator.answerPermissions).toBe(true);
-  });
-
   it('replaces the whole mcpServers map rather than merging entries', () => {
     // Removing a server means writing the map without it. An entry-wise merge
     // would make deletion impossible.
@@ -167,6 +159,27 @@ describe('SettingsStore settings merge', () => {
     expect(teleprompter.hotkeys.next).toBe('Control+Alt+N');
     expect(teleprompter.hotkeys.prev).toBe('Control+Alt+PageUp');
     expect(teleprompter.fontSize).toBe(40);
+  });
+
+  it('drops what an older Fleet saved for the Orchestrator, and keeps the rest', () => {
+    const file = (store as unknown as { store: { set: (key: string, value: unknown) => void } })
+      .store;
+    const agent = { systemPrompt: 'be brief', orchestrator: { answerPermissions: true } };
+    file.set('settings', { ai: { agent } });
+    store.dropOrchestrator();
+    expect(store.get().ai.agent).not.toHaveProperty('orchestrator');
+    expect(store.get().ai.agent.systemPrompt).toBe('be brief');
+  });
+
+  it('writes nothing when no Orchestrator setting is saved', () => {
+    const file = (store as unknown as { store: { set: (key: string, value: unknown) => void } })
+      .store;
+    file.set('settings', { ai: { agent: { systemPrompt: 'be brief' } } });
+    const write = vi.spyOn(file, 'set');
+
+    store.dropOrchestrator();
+
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('drops what an older Fleet saved for the Admiral, and keeps the rest', () => {

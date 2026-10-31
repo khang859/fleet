@@ -176,7 +176,6 @@ import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
-import type { FleetSpawns } from './agent/fleet/spawns';
 import type { ClaudeSessionsService } from './claude-sessions';
 import type { EnvSyncManager } from './env-sync/env-sync-manager';
 import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
@@ -228,8 +227,7 @@ export function registerIpcHandlers(
   envSyncSecrets: EnvSyncSecrets,
   ptyOscBridge: PtyOscBridge,
   teleprompter: TeleprompterService,
-  claudeSessions: ClaudeSessionsService,
-  fleetSpawns: FleetSpawns
+  claudeSessions: ClaudeSessionsService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -289,18 +287,9 @@ export function registerIpcHandlers(
       }
     }
 
-    // A pane `fleet_spawn` opened runs its command, once. The
-    // prompt is only ever here and in the environment, never in the layout.
-    const spawn = ptyManager.has(req.paneId) ? null : fleetSpawns.take(req.paneId);
-    if (spawn !== null) {
-      Object.assign(extraEnv, spawn.env);
-      for (const k of Object.keys(spawn.env)) envSources[k] = 'fleet-builtin';
-    }
-
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
-      ...(spawn === null ? {} : { cmd: spawn.cmd }),
       profile,
       env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined,
       envSources
@@ -465,10 +454,6 @@ export function registerIpcHandlers(
     // Tracking toggled, or a config folder added that needs Fleet's hooks.
     if (settings.claudeSessions || settings.copilot) {
       await claudeSessions.onSettingsChanged();
-    }
-    // The Orchestrator may no longer answer the hooks it holds.
-    if (settings.ai?.agent?.orchestrator) {
-      claudeSessions.releaseUnanswerable();
     }
     if (settings.teleprompter) {
       teleprompter.onSettingsChanged();

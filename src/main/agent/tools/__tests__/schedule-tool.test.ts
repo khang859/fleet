@@ -51,7 +51,6 @@ const ctx = (schedule: AgentScheduleCapability | null = capability()): AgentTool
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
-  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl: null,
   mcp: null,
@@ -60,7 +59,6 @@ const ctx = (schedule: AgentScheduleCapability | null = capability()): AgentTool
   findSkill: null,
   findMemory: null,
   schedule,
-  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

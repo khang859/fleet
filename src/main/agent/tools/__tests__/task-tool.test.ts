@@ -34,7 +34,6 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     handOff: () => {},
     approve: async () => Promise.resolve(true),
     wasRefused: () => false,
-    approveFleet: async () => Promise.resolve(false),
     generateImage: null,
     fetchUrl: null,
     todos: { list: () => [], save: () => {} },
@@ -43,8 +42,7 @@ function context(dispatch: AgentToolContext['dispatchTask']): AgentToolContext {
     findSubagent: (name) => (name === DEFINITION.name ? DEFINITION : null),
     findSkill: null,
     findMemory: null,
-    schedule: null,
-    fleet: null
+    schedule: null
   };
 }
 

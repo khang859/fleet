@@ -40,7 +40,6 @@ describe('PromptInput', () => {
   let now: number;
   let writes: string[];
   let sleeps: number[];
-  let noted: Array<{ origin: string; text: string }>;
   let listeners: Set<(change: ClaudeSessionChange) => void>;
   let ackOnSubmit: boolean;
   /** Sessions whose fleet-bridge mod is waiting for a prompt, and what it was handed. */
@@ -74,7 +73,6 @@ describe('PromptInput', () => {
     now = 100_000;
     writes = [];
     sleeps = [];
-    noted = [];
     listeners = new Set();
     ackOnSubmit = true;
     submitHash = () => undefined;
@@ -83,7 +81,6 @@ describe('PromptInput', () => {
     let typed = '';
     input = new PromptInput({
       session: (id) => (current?.sessionId === id ? current : undefined),
-      noteInput: (_id, origin, text) => noted.push({ origin, text }),
       subscribe: (l) => {
         listeners.add(l);
         return () => listeners.delete(l);
@@ -122,14 +119,14 @@ describe('PromptInput', () => {
 
   it('pastes the prompt into eva as one message, then submits it', async () => {
     current = session({ runtime: 'eva' });
-    const text = `[orchestrator] ${'Fix the login form. '.repeat(10)}\n- Keep it small.`;
-    const result = await input.send('s1', text, 'orchestrator');
+    const text = `${'Fix the login form. '.repeat(10)}\n- Keep it small.`;
+    const result = await input.send('s1', text);
     expect(result).toEqual({ ok: true, confirmed: true, text });
     expect(writes).toEqual([`\x1b[200~${text}\x1b[201~`, '\r']);
     expect(sleeps).toEqual([SUBMIT_DELAY_MS]);
 
     writes = [];
-    const long = await input.send('s1', 'x'.repeat(EVA_PASTE_MAX_BYTES + 1), 'orchestrator');
+    const long = await input.send('s1', 'x'.repeat(EVA_PASTE_MAX_BYTES + 1));
     expect(long).toEqual({
       ok: false,
       reason: 'Not sent: the prompt is longer than eva takes in one message.'
@@ -138,11 +135,10 @@ describe('PromptInput', () => {
   });
 
   it('types the prompt, submits it, and reports the acknowledgement', async () => {
-    const result = await input.send('s1', '[orchestrator] Run the tests', 'orchestrator');
-    expect(result).toEqual({ ok: true, confirmed: true, text: '[orchestrator] Run the tests' });
-    expect(writes).toEqual(['[orchestrator] Run the tests', '\r']);
+    const result = await input.send('s1', 'Run the tests');
+    expect(result).toEqual({ ok: true, confirmed: true, text: 'Run the tests' });
+    expect(writes).toEqual(['Run the tests', '\r']);
     expect(sleeps).toEqual([SUBMIT_DELAY_MS]);
-    expect(noted).toEqual([{ origin: 'orchestrator', text: '[orchestrator] Run the tests' }]);
     expect(listeners.size).toBe(1); // only its own draft listener is left
   });
 
@@ -150,7 +146,7 @@ describe('PromptInput', () => {
     waiting.add('s1');
     submitHash = (text) => hashPrompt(text);
     const text = `${'a'.repeat(300)}\n${'b'.repeat(100)}`;
-    expect(await input.send('s1', text, 'orchestrator')).toEqual({
+    expect(await input.send('s1', text)).toEqual({
       ok: true,
       confirmed: true,
       text
@@ -158,21 +154,19 @@ describe('PromptInput', () => {
     expect(delivered).toEqual([text]);
     expect(writes).toEqual([]);
     expect(sleeps).toEqual([]);
-    expect(noted).toEqual([{ origin: 'orchestrator', text }]);
   });
 
   it('lets a waiting mod take a prompt while the user has a draft in the pane', async () => {
     waiting.add('s1');
     input.onUserInput(PANE, 'half a thou');
-    expect(input.refusal('s1')).toBeNull();
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect((await input.send('s1', 'hello')).ok).toBe(true);
     expect(delivered).toEqual(['hello']);
     expect(writes).toEqual([]);
   });
 
   it('types a long prompt in chunks small enough not to read as a paste', async () => {
     const text = `${'a'.repeat(300)}\n${'b'.repeat(100)}`;
-    await input.send('s1', text, 'user');
+    await input.send('s1', text);
     const typed = writes.slice(0, -1);
     expect(typed.join('')).toBe(text);
     expect(typed.every((w) => w.length <= TYPE_CHUNK_CHARS)).toBe(true);
@@ -187,14 +181,14 @@ describe('PromptInput', () => {
 
   it('never splits a character that takes two UTF-16 units', async () => {
     const text = '😀'.repeat(TYPE_CHUNK_CHARS + 1);
-    await input.send('s1', text, 'user');
+    await input.send('s1', text);
     expect(writes[0]).toBe('😀'.repeat(TYPE_CHUNK_CHARS));
     expect(writes[1]).toBe('😀');
   });
 
   it('reports a submit Claude Code did not acknowledge as not confirmed', async () => {
     ackOnSubmit = false;
-    const pending = input.send('s1', 'hello', 'user');
+    const pending = input.send('s1', 'hello');
     await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS - 1);
     let settled = false;
     void pending.then(() => (settled = true));
@@ -207,7 +201,7 @@ describe('PromptInput', () => {
 
   it('confirms a prompt Claude Code got as it was typed', async () => {
     submitHash = (typed) => hashPrompt(typed);
-    expect(await input.send('s1', '  Run the tests\n', 'user')).toEqual({
+    expect(await input.send('s1', '  Run the tests\n')).toEqual({
       ok: true,
       confirmed: true,
       text: 'Run the tests'
@@ -216,7 +210,7 @@ describe('PromptInput', () => {
 
   it('fails a send whose prompt arrived different, and does not type it again', async () => {
     submitHash = () => hashPrompt('Run the test');
-    const pending = input.send('s1', 'Run the tests', 'orchestrator');
+    const pending = input.send('s1', 'Run the tests');
     await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
     expect(await pending).toEqual({ ok: false, reason: PROMPT_MISMATCH });
     expect(writes).toEqual(['Run the tests', '\r']);
@@ -225,7 +219,7 @@ describe('PromptInput', () => {
 
   it('waits past a prompt Claude Code submits on its own for the one typed', async () => {
     ackOnSubmit = false;
-    const pending = input.send('s1', 'Run the tests', 'orchestrator');
+    const pending = input.send('s1', 'Run the tests');
     await Promise.resolve();
     emit('UserPromptSubmit', current, hashPrompt('A background agent finished.'));
     emit('UserPromptSubmit', current, hashPrompt('Run the tests'));
@@ -244,14 +238,13 @@ describe('PromptInput', () => {
     [{ phase: 'ended' as const, waitingKind: null }, 'it has ended']
   ])('refuses a session that is not waiting for a prompt (%o)', async (over, reason) => {
     current = session(over);
-    const result = await input.send('s1', 'hello', 'orchestrator');
+    const result = await input.send('s1', 'hello');
     expect(result).toEqual({ ok: false, reason: expect.stringContaining(reason) });
     expect(writes).toEqual([]);
-    expect(noted).toEqual([]);
   });
 
   it('refuses an unknown session', async () => {
-    expect(await input.send('nope', 'hello', 'user')).toEqual({
+    expect(await input.send('nope', 'hello')).toEqual({
       ok: false,
       reason: expect.stringContaining('not running in a Fleet pane')
     });
@@ -260,7 +253,7 @@ describe('PromptInput', () => {
   it('refuses while the user has unsent text in the pane, until it is sent or cleared', async () => {
     input.onUserInput(PANE, 'half a thou');
     now += QUIET_MS;
-    expect(await input.send('s1', 'hello', 'orchestrator')).toEqual({
+    expect(await input.send('s1', 'hello')).toEqual({
       ok: false,
       reason: expect.stringContaining('typed text in that pane and not sent it')
     });
@@ -269,32 +262,32 @@ describe('PromptInput', () => {
       input.onUserInput(PANE, 'draft');
       input.onUserInput(PANE, clear);
       now += QUIET_MS;
-      expect((await input.send('s1', 'hello', 'orchestrator')).ok).toBe(true);
+      expect((await input.send('s1', 'hello')).ok).toBe(true);
     }
   });
 
   it('counts the draft by what comes last in one chunk of input', async () => {
     input.onUserInput(PANE, 'sent\rnew draft');
     now += QUIET_MS;
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(false);
+    expect((await input.send('s1', 'hello')).ok).toBe(false);
   });
 
   it('takes a UserPromptSubmit as the draft being sent', async () => {
     input.onUserInput(PANE, 'typed and submitted some other way');
     now += QUIET_MS;
     emit('UserPromptSubmit');
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect((await input.send('s1', 'hello')).ok).toBe(true);
   });
 
   it('refuses while the user is typing, even keys that leave no draft', async () => {
     input.onUserInput(PANE, '\x1b[A'); // arrow up
     now += QUIET_MS - 1;
-    expect(await input.send('s1', 'hello', 'user')).toEqual({
+    expect(await input.send('s1', 'hello')).toEqual({
       ok: false,
       reason: expect.stringContaining('the user is typing')
     });
     now += 1;
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect((await input.send('s1', 'hello')).ok).toBe(true);
   });
 
   it('does not count what the terminal reports on its own as typing', async () => {
@@ -308,13 +301,13 @@ describe('PromptInput', () => {
     ]) {
       input.onUserInput(PANE, report);
     }
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect((await input.send('s1', 'hello')).ok).toBe(true);
   });
 
   it('refuses a second prompt while one is being typed into the same session', async () => {
     ackOnSubmit = false;
-    const first = input.send('s1', 'first', 'user');
-    expect(await input.send('s1', 'second', 'user')).toEqual({
+    const first = input.send('s1', 'first');
+    expect(await input.send('s1', 'second')).toEqual({
       ok: false,
       reason: expect.stringContaining('another prompt is being typed')
     });
@@ -323,8 +316,8 @@ describe('PromptInput', () => {
   });
 
   it('refuses an empty prompt and one ending in a backslash', async () => {
-    expect((await input.send('s1', ' \t\x1b ', 'user')).ok).toBe(false);
-    expect(await input.send('s1', 'see C:\\', 'user')).toEqual({
+    expect((await input.send('s1', ' \t\x1b ')).ok).toBe(false);
+    expect(await input.send('s1', 'see C:\\')).toEqual({
       ok: false,
       reason: expect.stringContaining('line break')
     });
@@ -334,7 +327,7 @@ describe('PromptInput', () => {
   it('forgets a closed pane', async () => {
     input.onUserInput(PANE, 'draft');
     input.forgetPane(PANE);
-    expect((await input.send('s1', 'hello', 'user')).ok).toBe(true);
+    expect((await input.send('s1', 'hello')).ok).toBe(true);
   });
 });
 

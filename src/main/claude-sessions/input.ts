@@ -1,8 +1,4 @@
-import type {
-  ClaudeInputOrigin,
-  ClaudeSession,
-  ClaudeSessionChange
-} from '../../shared/claude-sessions';
+import type { ClaudeSession, ClaudeSessionChange } from '../../shared/claude-sessions';
 import type { PromptBridge } from './prompt-bridge';
 import { hashPrompt } from './registry';
 
@@ -57,7 +53,6 @@ export type SendResult =
 
 export type PromptInputDeps = {
   session(sessionId: string): ClaudeSession | undefined;
-  noteInput(sessionId: string, origin: ClaudeInputOrigin, text: string): void;
   subscribe(listener: (change: ClaudeSessionChange) => void): () => void;
   write(paneId: string, data: string): void;
   /** The fleet-bridge mod's end, which takes a prompt for a session whose mod is waiting. */
@@ -147,10 +142,7 @@ function busyReason(session: ClaudeSession): string | null {
   }
 }
 
-/**
- * The single way Fleet types a prompt into a Claude Code session: the
- * copilot's chat (`origin: user`) and the Orchestrator's `fleet_send`.
- */
+/** The single way Fleet types a prompt into a Claude Code session: the copilot's chat. */
 export class PromptInput {
   private readonly drafts = new Map<string, Draft>();
   /** Sessions a prompt is being typed into right now. */
@@ -187,10 +179,9 @@ export class PromptInput {
 
   /**
    * Type `text` into the session and submit it, or refuse without writing
-   * anything. `text` is sent as given, after cleaning, so an Orchestrator
-   * prompt carries its prefix already.
+   * anything. `text` is sent as given, after cleaning.
    */
-  async send(sessionId: string, text: string, origin: ClaudeInputOrigin): Promise<SendResult> {
+  async send(sessionId: string, text: string): Promise<SendResult> {
     const clean = cleanPrompt(text);
     const reason = this.refusal(sessionId) ?? promptProblem(clean);
     if (reason !== null) return { ok: false, reason };
@@ -204,7 +195,6 @@ export class PromptInput {
     this.sending.add(sessionId);
     const ack = this.watchAck(sessionId, hashPrompt(clean));
     try {
-      this.deps.noteInput(sessionId, origin, clean);
       // In the same tick as `refusal`, so a mod that let the draft through is still waiting.
       if (!this.deps.bridge?.deliver(sessionId, clean)) {
         if (eva) this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
@@ -223,10 +213,9 @@ export class PromptInput {
 
   /**
    * Why a prompt could not be typed into the session right now, or `null` when
-   * it could. What `send` checks first, for a caller that has to ask the user
-   * before sending and should not ask about a prompt that could not go in.
+   * it could.
    */
-  refusal(sessionId: string): string | null {
+  private refusal(sessionId: string): string | null {
     const session = this.deps.session(sessionId);
     if (!session) return 'That session is not running in a Fleet pane.';
     const busy = busyReason(session);

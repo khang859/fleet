@@ -2,7 +2,7 @@
  * What Fleet knows about each Claude Code session running in one of its panes.
  *
  * Main owns the record, built from Claude Code hook events. The copilot mascot,
- * the status view and the Orchestrator all read this same shape.
+ * and the status view all read this same shape.
  */
 
 /**
@@ -147,9 +147,6 @@ export type HookFolderStatus =
   | { state: 'installed' | 'missing' }
   | { state: 'unreadable'; detail: string };
 
-/** Who typed a prompt into a session: the user, or the Orchestrator on their behalf. */
-export type ClaudeInputOrigin = 'user' | 'orchestrator';
-
 /**
  * A change to one session. `session` is null when it left the registry, and
  * `event` is the hook event that caused the change, if one did.
@@ -183,7 +180,7 @@ export type ClaudeSessionUsage = {
   contextLimit: number | null;
 };
 
-/** A session as the status view and the Orchestrator see it. */
+/** A session as the status view sees it. */
 export type ClaudeSessionView = ClaudeSession & {
   usage: ClaudeSessionUsage;
   git: GitSummary | null;
@@ -208,15 +205,6 @@ export type ClaudeSessionsSnapshot = {
   sessions: ClaudeSessionView[];
 };
 
-/** A phase that asks for the attention of an Orchestrator, or the user. */
-export function needsAttention(session: ClaudeSession): boolean {
-  return (
-    session.phase === 'waitingForInput' ||
-    session.phase === 'waitingForApproval' ||
-    session.phase === 'ended'
-  );
-}
-
 /** Whether the session is held up on the user: a permission or a question. */
 export function needsUser(session: ClaudeSession): boolean {
   return (
@@ -233,22 +221,4 @@ export function formatAge(ms: number): string {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`;
-}
-
-/**
- * A session coming up at its prompt: a start, a resume or a `/clear`. It has
- * finished nothing, so it is not news to an Orchestrator even though its phase
- * is now `waitingForInput`.
- */
-export function cameUp(change: ClaudeSessionChange): boolean {
-  return change.event?.event === 'SessionStart';
-}
-
-/**
- * Enough of a session's state to tell one phase from the next, and the same
- * phase entered again. A hook event that changes none of it - Claude Code's
- * idle reminder a minute into a wait, say - is not news.
- */
-export function attentionKey(session: ClaudeSession): string {
-  return `${session.sessionId}|${session.phase}|${session.waitingKind}|${session.phaseSince}`;
 }
