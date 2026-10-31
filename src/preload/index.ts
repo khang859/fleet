@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
+import type { RunTab, WorkflowsApi, WorkflowsState } from '../shared/workflows';
 import type {
   PtyCreateRequest,
   PtyCreateResponse,
@@ -500,6 +501,21 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.CLAUDE_SESSIONS_LIST),
     onChanged: (callback: (snapshot: ClaudeSessionsSnapshot) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.CLAUDE_SESSIONS_CHANGED, callback)
+  },
+  workflows: {
+    call: async <Method extends keyof WorkflowsApi>(
+      method: Method,
+      ...args: Parameters<WorkflowsApi[Method]>
+    ): Promise<Awaited<ReturnType<WorkflowsApi[Method]>>> =>
+      typedInvoke<Awaited<ReturnType<WorkflowsApi[Method]>>>(
+        IPC_CHANNELS.WORKFLOWS_CALL,
+        method,
+        args
+      ),
+    onState: (callback: (state: WorkflowsState) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.WORKFLOWS_STATE, callback),
+    onTab: (callback: (tab: RunTab) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.WORKFLOWS_TAB, callback)
   },
   annotate: {
     list: async (): Promise<AnnotationMeta[]> =>

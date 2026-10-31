@@ -208,6 +208,7 @@ export class SettingsStore {
       tools: {
         annotate: saved.tools?.annotate ?? DEFAULT_SETTINGS.tools.annotate,
         sessions: saved.tools?.sessions ?? DEFAULT_SETTINGS.tools.sessions,
+        workflows: saved.tools?.workflows ?? DEFAULT_SETTINGS.tools.workflows,
         scratch: saved.tools?.scratch ?? DEFAULT_SETTINGS.tools.scratch
       },
       ai: {

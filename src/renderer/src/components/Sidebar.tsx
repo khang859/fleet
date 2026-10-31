@@ -53,6 +53,7 @@ import { buildTabNesting, isFileTab } from '../lib/tab-nesting';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
+import { WorkflowsTabCard } from './workflows/WorkflowsTabCard';
 import { isScratchTab } from '../lib/scratch';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
@@ -1241,6 +1242,7 @@ export function Sidebar({
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
                 t.type !== 'sessions' &&
+                t.type !== 'workflows' &&
                 t.type !== 'agent'
             );
 
@@ -1665,6 +1667,16 @@ export function Sidebar({
               .filter((tab) => tab.type === 'sessions')
               .map((tab) => (
                 <SessionsTabCard
+                  key={tab.id}
+                  isActive={tab.id === activeTabId}
+                  onClick={() => setActiveTab(tab.id)}
+                />
+              ))}
+            {/* Workflows tab (pinned, not closeable) */}
+            {workspace.tabs
+              .filter((tab) => tab.type === 'workflows')
+              .map((tab) => (
+                <WorkflowsTabCard
                   key={tab.id}
                   isActive={tab.id === activeTabId}
                   onClick={() => setActiveTab(tab.id)}

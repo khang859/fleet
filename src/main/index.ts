@@ -70,6 +70,10 @@ import type {
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot } from './copilot/index';
 import { ClaudeSessionsService } from './claude-sessions';
+import { PaneOpener } from './pane-opener';
+import { WorkflowsBridge } from './workflows/bridge-routes';
+import { createWorkflows } from './workflows/electron';
+import type { WorkflowsService } from './workflows';
 import { installClaudeMod } from './claude-sessions/claude-mod';
 import { ensurePiExtension, removePiExtension } from './claude-sessions/pi-extension';
 import { createTeleprompter } from './teleprompter/index';
@@ -157,6 +161,7 @@ let agentSubagents: SubagentManager | null = null;
 let agentScheduleTimer: ScheduleTimer | null = null;
 let teleprompter: TeleprompterService | null = null;
 let claudeSessions: ClaudeSessionsService | null = null;
+let workflows: WorkflowsService | null = null;
 /** The periodic update check, cleared on the way out with the other timers. */
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -313,6 +318,7 @@ function hasRunningWork(endsProcess: boolean): boolean {
   const reported = reportedActivity.getCounts();
   if (reported.working > 0 || reported.needsMe > 0) return true;
   if (agentService?.hasInflight() === true) return true;
+  if (workflows?.hasActive() === true) return true;
   if (!endsProcess) return false;
   if ((agentSubagents?.liveIds().length ?? 0) > 0) return true;
   if (listRunningBackgroundCommands().length > 0) return true;
@@ -802,6 +808,7 @@ void app.whenReady().then(async () => {
 
   // Tracks every Claude Code and Pi session in a Fleet pane, on macOS and Linux,
   // whether or not the copilot overlay is on.
+  const workflowsBridge = new WorkflowsBridge();
   claudeSessions = new ClaudeSessionsService({
     platform: process.platform,
     homeDir: homedir(),
@@ -819,6 +826,7 @@ void app.whenReady().then(async () => {
     piExtension: IS_FLEET_DEV
       ? undefined
       : { ensure: () => ensurePiExtension(), remove: () => removePiExtension() },
+    bridgeRoutes: workflowsBridge.routes(),
     onSnapshot: (snapshot) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.CLAUDE_SESSIONS_CHANGED, snapshot);
@@ -826,6 +834,28 @@ void app.whenReady().then(async () => {
     }
   });
   void claudeSessions.start();
+
+  const paneOpener = new PaneOpener({
+    ptyManager,
+    settingsStore,
+    shellProfileRegistry,
+    envSyncManager,
+    activityTracker,
+    notificationDetector,
+    ptyOscBridge,
+    cwdPoller,
+    eventBus,
+    getWindow: () => mainWindow
+  });
+  workflows = createWorkflows({
+    bridge: workflowsBridge,
+    paneOpener,
+    ptyManager,
+    activityTracker,
+    claudeSessions,
+    getWindow: () => mainWindow
+  });
+  workflows.start();
 
   registerIpcHandlers(
     ptyManager,
@@ -836,7 +866,6 @@ void app.whenReady().then(async () => {
     settingsStore,
     cwdPoller,
     gitService,
-    () => mainWindow,
     activityTracker,
     worktreeService,
     annotationStore,
@@ -845,9 +874,10 @@ void app.whenReady().then(async () => {
     wslService,
     envSyncManager,
     envSyncSecrets,
-    ptyOscBridge,
     teleprompter,
-    claudeSessions
+    claudeSessions,
+    paneOpener,
+    workflows
   );
 
   // Clean up old annotations based on retention settings
@@ -1704,6 +1734,8 @@ void app.whenReady().then(async () => {
 
 function shutdownAll(): void {
   void stopCopilot();
+  // First: a run marked Cut off does not take the pane kills below for failures.
+  workflows?.stop();
   void claudeSessions?.stop();
   teleprompter?.destroy();
   ptyManager.killAll();

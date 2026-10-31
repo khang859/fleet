@@ -1,4 +1,5 @@
 import * as pty from 'node-pty';
+import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { getDefaultShell } from './shell-detection';
 import { wslExePath } from './wsl-service';
@@ -6,6 +7,7 @@ import { createLogger } from './logger';
 import { buildEnvSnapshot } from '../shared/shell-env-snapshot';
 import { claudeModEnv } from './claude-sessions/claude-mod';
 import { withFleetPaneEnv } from './fleet-pane-env';
+import { BRIDGE_SOCKET_PATH } from '../shared/constants';
 import type { ShellProfile } from '../shared/shell-profiles';
 import type { EnvSource, ShellEnvSnapshot } from '../shared/shell-env-types';
 
@@ -43,6 +45,8 @@ export type PtyCreateOptions = {
   profile?: ShellProfile;
   /** Per-key provenance for env vars Fleet injected (Env Sync / Fleet built-ins). */
   envSources?: Record<string, EnvSource>;
+  /** Main owns this pane: `gc` leaves it, and its output is kept until a screen attaches. */
+  retain?: boolean;
 };
 
 export type PtyCreateResult = {
@@ -64,10 +68,17 @@ type PtyEntry = {
   /** Drops the `typeOnStart` lines not typed yet. */
   stopTyping?: () => void;
   /** A copy of what the pane shows, for a pane `mirror` named. */
+  /** Proves to the bridge that a call comes from this pane. */
+  token: string;
+  retained: boolean;
+  /** Output from before a screen attached to a retained pane. Null once one has. */
+  replay: string | null;
 };
 
 const FLUSH_INTERVAL_MS = 16;
 const BUFFER_OVERFLOW_BYTES = 256 * 1024;
+/** The most output kept for a pane that no screen has attached to. */
+const MAX_REPLAY_CHARS = 512 * 1024;
 
 /**
  * How long a pane may stay paused waiting for the renderer to say it has caught
@@ -155,6 +166,7 @@ export class PtyManager {
   private ptys = new Map<string, PtyEntry>();
   private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private closeListeners: Array<(paneId: string, killed: boolean) => void> = [];
 
   create(opts: PtyCreateOptions): PtyCreateResult {
     if (this.ptys.has(opts.paneId)) {
@@ -214,12 +226,16 @@ export class PtyManager {
     // 24-bit color, and image tools pick a protocol by terminal name.
     // claudeModEnv loads the fleet-bridge mod into Claude Code run in the pane.
     // withFleetPaneEnv points the hook and the `fleet` CLI at this Fleet.
+    // FLEET_PANE_TOKEN and FLEET_BRIDGE_SOCKET let an agent call Fleet's tools.
     const baseEnv = withFleetPaneEnv(withUtf8Locale(opts.env ?? process.env));
+    const token = randomUUID();
     const finalEnv = {
       ...baseEnv,
       ...claudeModEnv(baseEnv),
       FLEET_SESSION: '1',
       FLEET_PANE_ID: opts.paneId,
+      FLEET_PANE_TOKEN: token,
+      FLEET_BRIDGE_SOCKET: BRIDGE_SOCKET_PATH,
       COLORTERM: 'truecolor',
       TERM_PROGRAM: 'Fleet',
       TERM_PROGRAM_VERSION: this.appVersion
@@ -241,6 +257,9 @@ export class PtyManager {
       pausedAt: null,
       dataDisposable: null,
       exitDisposable: null,
+      token,
+      retained: opts.retain === true,
+      replay: opts.retain === true ? '' : null,
       snapshot: buildEnvSnapshot({
         finalEnv,
         sources: opts.envSources ?? {},
@@ -297,14 +316,42 @@ export class PtyManager {
       entry.exitDisposable?.dispose();
       this.dataCallbacks.delete(paneId);
       entry.process.kill();
-      this.forget(entry);
+      this.forget(entry, true);
     }
   }
 
   /** Drop a PTY that was killed or exited, and what was kept for it. */
-  private forget(entry: PtyEntry): void {
+  private forget(entry: PtyEntry, killed: boolean): void {
     this.ptys.delete(entry.paneId);
     this.clearFlushTimerIfEmpty();
+    for (const listener of this.closeListeners) listener(entry.paneId, killed);
+  }
+
+  /** Hear of every PTY that ends, by exit or by kill, which `onExit` alone does not tell. */
+  onClosed(listener: (paneId: string, killed: boolean) => void): void {
+    this.closeListeners.push(listener);
+  }
+
+  tokenOf(paneId: string): string | undefined {
+    return this.ptys.get(paneId)?.token;
+  }
+
+  /** Keep output for a pane no screen has attached to. Answers whether it was kept. */
+  keepForReplay(paneId: string, data: string): boolean {
+    const entry = this.ptys.get(paneId);
+    if (entry?.replay === null || entry?.replay === undefined) return false;
+    entry.replay = (entry.replay + data).slice(-MAX_REPLAY_CHARS);
+    return true;
+  }
+
+  /** Everything a screen must draw on attach. Later output comes to it live. */
+  takeForAttach(paneId: string): string {
+    const entry = this.ptys.get(paneId);
+    if (!entry) return '';
+    const data = (entry.replay ?? '') + entry.outputBuffer;
+    entry.replay = null;
+    entry.outputBuffer = '';
+    return data;
   }
 
   killAll(): void {
@@ -355,7 +402,7 @@ export class PtyManager {
   gc(activePaneIds: Set<string>): string[] {
     const killed: string[] = [];
     for (const paneId of this.ptys.keys()) {
-      if (!activePaneIds.has(paneId)) {
+      if (!activePaneIds.has(paneId) && !this.ptys.get(paneId)?.retained) {
         this.kill(paneId);
         killed.push(paneId);
       }
@@ -405,7 +452,7 @@ export class PtyManager {
         log.debug('exit', { paneId, exitCode });
         entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
-        this.forget(entry);
+        this.forget(entry, false);
         callback(exitCode);
       });
     }
