@@ -1305,6 +1305,12 @@ describe('openFile — nesting under a session', () => {
     });
   });
 
+  it('names a Windows file by its file name', () => {
+    useWorkspaceStore.getState().openFile('C:\\repo\\src\\file.ts', 'win32');
+    const { tabs } = useWorkspaceStore.getState().workspace;
+    expect(tabs.find((tab) => tab.type === 'file')?.label).toBe('file.ts');
+  });
+
   it('parents the file on the active session and inserts it right below', () => {
     useWorkspaceStore.getState().openFile('/repo/proj/a.ts');
 
@@ -1711,6 +1717,20 @@ describe('movePaneToNewTab', () => {
 
     expect(tabs()[0]).toMatchObject({ type: 'terminal', cwd: '/term', label: 'term' });
     expect(tabs()[1]).toMatchObject({ type: 'file', label: 'a.ts', cwd: '/' });
+  });
+
+  it('names a moved Windows file by its file name', () => {
+    const file = pane('f', {
+      paneType: 'file',
+      filePath: 'C:\\repo\\src\\file.ts',
+      pathContext: 'win32',
+      cwd: '/'
+    });
+    seed([tabOf('src', split(pane('first'), file))]);
+
+    move('f');
+
+    expect(tabs()[1]).toMatchObject({ label: 'file.ts', labelIsCustom: true });
   });
 
   it('nests a file that leaves a session under that session', () => {

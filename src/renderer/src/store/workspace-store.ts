@@ -635,8 +635,9 @@ function movedPaneLabel(leaf: PaneLeaf, cwd: string, ctx: PathContext): string {
   if (leaf.labelIsCustom && leaf.label) return leaf.label;
   if (leaf.paneType === 'agent' && isScratchDir(cwd)) return SCRATCH_TAB_LABEL;
   if (leaf.paneType === 'ssh-browser' && leaf.remoteHost) return leaf.remoteHost.label;
-  const file = leaf.filePath ?? leaf.remotePath;
-  return file ? (file.split('/').pop() ?? file) : cwdBasename(cwd, ctx);
+  if (leaf.filePath) return pathBasename(leaf.filePath, ctx);
+  if (leaf.remotePath) return pathBasename(leaf.remotePath, 'posix');
+  return cwdBasename(cwd, ctx);
 }
 
 function tabFromLeaf(leaf: PaneLeaf, source: Tab): Tab {
@@ -645,7 +646,7 @@ function tabFromLeaf(leaf: PaneLeaf, source: Tab): Tab {
   const cwd = (isTerminal ? useCwdStore.getState().cwds.get(leaf.id) : undefined) ?? leaf.cwd;
   const tab: Tab = {
     id: generateId(),
-    label: movedPaneLabel(leaf, cwd, pathContext ?? 'posix'),
+    label: movedPaneLabel(leaf, cwd, pathContext ?? hostDefaultContext()),
     labelIsCustom: !isTerminal || leaf.labelIsCustom === true,
     cwd,
     splitRoot: leaf
@@ -1670,11 +1671,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   openFile: (filePath, pathContext, target) => {
     const paneType = getPaneTypeForFilePath(filePath);
     const tabType = paneType;
-    const fileName = filePath.split('/').pop() ?? filePath;
     // Remember the coordinate system the path lives in (e.g. which WSL distro) so
     // the viewer can bridge it for `fs` access — otherwise a posix path falls back
     // to the win32 host context and `stat` fails (→ `C:\home\...` ENOENT).
     const ctx = pathContext ?? getPaneContextById(get().activePaneId);
+    const fileName = pathBasename(filePath, ctx);
     const parentTabId = resolveFileParentId(
       get().workspace.tabs,
       get().activeTabId,
