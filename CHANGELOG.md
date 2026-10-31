@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.144.0
+
+- **Fleet now tracks Pi like Claude Code.**
+  Pi sessions show in the sidebar, the pane activity and notifications.
+  Cost, context use and past sessions also work, with numbers that match Pi's own footer.
+- **The copilot works with Pi.**
+  It shows Pi chats live and can send a prompt to a Pi session.
+  A Pi dialog shows as a question, and you answer it in the terminal.
+  Fleet reports Pi tools only and never stops one, so tool and plan approvals stay Claude Code only (#709).
+
 ## v2.143.0
 
 - **Breaking: the Orchestrator is gone.**
