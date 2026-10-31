@@ -48,7 +48,11 @@ import type {
 import type { TerminalMenuAction } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
-import type { ClaudeSessionsSnapshot, HookFolderStatus } from '../shared/claude-sessions';
+import type {
+  ClaudeSessionsSnapshot,
+  CopilotServiceStatus,
+  HookFolderStatus
+} from '../shared/claude-sessions';
 import type {
   SetSourceResult,
   TeleprompterCommand,
@@ -159,7 +163,7 @@ import type {
 } from '../shared/remote-ssh-types';
 import type { ShellEnvSnapshot } from '../shared/shell-env-types';
 import type { QuitConfirmAsk } from '../shared/quit-confirm';
-import type { SessionSummary, SessionTranscript } from '../shared/sessions';
+import type { SessionKey, SessionSummary, SessionTranscript } from '../shared/sessions';
 import type {
   Learning,
   CreateLearningInput,
@@ -477,7 +481,7 @@ const fleetApi = {
     batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
   },
   copilot: {
-    serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
+    serviceStatus: async (): Promise<CopilotServiceStatus> =>
       typedInvoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
     installHooks: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
     uninstallHooks: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
@@ -1009,8 +1013,8 @@ const fleetApi = {
   },
   sessions: {
     list: async (): Promise<SessionSummary[]> => typedInvoke(IPC_CHANNELS.SESSIONS_LIST),
-    read: async (args: { id: string; cwd: string }): Promise<SessionTranscript | null> =>
-      typedInvoke(IPC_CHANNELS.SESSIONS_READ, args),
+    read: async (key: SessionKey): Promise<SessionTranscript | null> =>
+      typedInvoke(IPC_CHANNELS.SESSIONS_READ, key),
     onChanged: (callback: () => void): Unsubscribe =>
       onChannel<void>(IPC_CHANNELS.SESSIONS_CHANGED, () => callback())
   },

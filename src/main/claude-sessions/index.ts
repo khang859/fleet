@@ -1,3 +1,4 @@
+import { RUNTIMES } from '../../shared/session-runtimes';
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
@@ -5,8 +6,10 @@ import type { PermissionSuggestion, PlanApprovalMode } from '../../shared/claude
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
+  ClaudeSession,
   ClaudeSessionChange,
   ClaudeSessionsSnapshot,
+  ClaudeSessionUsage,
   ClaudeTrackingStatus,
   GitSummary
 } from '../../shared/claude-sessions';
@@ -25,7 +28,7 @@ import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolv
 import { ClaudeSessionRegistry } from './registry';
 import { SessionTranscripts } from './session-transcripts';
 import { SessionUsageTracker } from './session-usage';
-import { transcriptPathFor } from './transcript-path';
+import { sessionFilePath } from './transcript-path';
 
 const log = createLogger('claude-sessions');
 
@@ -55,6 +58,8 @@ export type ClaudeSessionsDeps = {
   socketPath?: string;
   bridgeSocketPath?: string;
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
+  /** Adds and removes Fleet's Pi extension along with the Claude hooks. */
+  piExtension?: { ensure: () => void; remove: () => void };
   git?: GitRunner;
 };
 
@@ -188,10 +193,16 @@ export class ClaudeSessionsService {
       .filter((s) => this.registry.getByPane(s.paneId)?.sessionId === s.sessionId)
       .map((s) => ({
         ...s,
-        usage: this.usage.get(s.sessionId),
+        usage: this.usageOf(s),
         git: this.gitStates.get(s.sessionId)?.summary ?? null
       }));
     return { status: this.status, installProblems: this.installProblems, sessions };
+  }
+
+  /** A session's usage, with the context window it reports itself, if it does. */
+  private usageOf(session: ClaudeSession): ClaudeSessionUsage {
+    const usage = this.usage.get(session.sessionId);
+    return session.contextWindow ? { ...usage, contextLimit: session.contextWindow } : usage;
   }
 
   async start(): Promise<void> {
@@ -221,6 +232,7 @@ export class ClaudeSessionsService {
   answerQuestion(sessionId: string, option: string): boolean {
     const session = this.registry.get(sessionId);
     if (session?.phase !== 'waitingForInput' || session.waitingKind !== 'question') return false;
+    if (RUNTIMES[session.runtime].questionAnswers !== 'number') return false;
     if (!/^\d+$/.test(option)) return false;
     this.deps.writeToPane(session.paneId, `${option}\r`);
     return true;
@@ -323,6 +335,7 @@ export class ClaudeSessionsService {
             log.warn('could not remove hooks', { configDir: dir, error: String(err) });
           }
         }
+        this.removePiExtension();
       }
       return;
     }
@@ -334,6 +347,7 @@ export class ClaudeSessionsService {
       configDir,
       detail: error.message
     }));
+    this.ensurePiExtension();
     this.scheduleSnapshot();
 
     if (this.running) return;
@@ -355,6 +369,23 @@ export class ClaudeSessionsService {
     this.running = true;
     this.scheduleSnapshot();
     log.info('claude session tracking started', { configDirs: dirs });
+  }
+
+  private ensurePiExtension(): void {
+    try {
+      this.deps.piExtension?.ensure();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.installProblems.push({ configDir: 'Pi', detail });
+    }
+  }
+
+  private removePiExtension(): void {
+    try {
+      this.deps.piExtension?.remove();
+    } catch (err) {
+      log.warn('could not remove the Pi extension', { error: String(err) });
+    }
   }
 
   private async halt(): Promise<void> {
@@ -388,14 +419,16 @@ export class ClaudeSessionsService {
     const firstSight = !this.gitStates.has(sessionId);
     if (firstSight || (event && GIT_EVENTS.has(event.event))) this.checkGit(sessionId, session.cwd);
     // eva's turns are read from its database when asked, and it has no transcript file to total.
-    if (session.runtime === 'eva') return;
-    const transcriptPath = transcriptPathFor(session, this.deps.homeDir);
+    const transcriptPath = sessionFilePath(session, this.deps.homeDir);
+    if (transcriptPath === null) return;
     // Only a hook event moves the transcript mark; a change the transcript
-    // itself caused must not.
-    if (event) this.transcripts.onHookEvent(sessionId, transcriptPath);
+    // itself caused must not. Pi's extension reports its turns, so it needs no mark.
+    if (event && session.runtime === 'claude') {
+      this.transcripts.onHookEvent(sessionId, transcriptPath);
+    }
     if (event || firstSight) {
       const turnOver = event?.event === 'Stop' || event?.event === 'SessionStart';
-      this.usage.refresh(sessionId, transcriptPath, turnOver);
+      this.usage.refresh(sessionId, transcriptPath, turnOver, session.runtime);
     }
   }
 

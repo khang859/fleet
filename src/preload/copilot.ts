@@ -6,7 +6,11 @@ import type {
   CopilotPosition,
   CopilotChatMessage
 } from '../shared/types';
-import type { HookFolderStatus, PlanApprovalMode } from '../shared/claude-sessions';
+import type {
+  CopilotServiceStatus,
+  HookFolderStatus,
+  PlanApprovalMode
+} from '../shared/claude-sessions';
 
 // Typed wrapper for ipcRenderer.invoke to avoid unsafe-return at every IPC call site.
 // The cast is safe: callers declare the return type, and main process implements it.
@@ -84,10 +88,8 @@ const copilotApi = {
       IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE
     ),
 
-  serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
-    typedInvoke<{ hookInstalled: boolean; claudeDetected: boolean }>(
-      IPC_CHANNELS.COPILOT_SERVICE_STATUS
-    ),
+  serviceStatus: async (): Promise<CopilotServiceStatus> =>
+    typedInvoke<CopilotServiceStatus>(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
 
   getPosition: async (): Promise<CopilotPosition | null> =>
     typedInvoke<CopilotPosition | null>(IPC_CHANNELS.COPILOT_POSITION_GET),

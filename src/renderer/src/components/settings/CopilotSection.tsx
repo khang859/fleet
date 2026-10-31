@@ -68,13 +68,13 @@ export function CopilotSection({ onNavigate }: SettingsSectionProps): React.JSX.
   const activeWorkspaceId = useWorkspaceStore((s) => s.workspace.id);
   const workspaces = useWorkspaceListStore((s) => s.workspaces);
   const refreshList = useWorkspaceListStore((s) => s.refresh);
-  const [claudeDetected, setClaudeDetected] = useState(true);
+  const [agentDetected, setAgentDetected] = useState(true);
 
   useEffect(() => {
     void refreshList();
     window.fleet.copilot
       .serviceStatus()
-      .then((st) => setClaudeDetected(st.claudeDetected))
+      .then((st) => setAgentDetected(st.claudeDetected || st.piDetected))
       .catch(() => {});
   }, [refreshList]);
 
@@ -134,14 +134,12 @@ export function CopilotSection({ onNavigate }: SettingsSectionProps): React.JSX.
         </SettingRow>
       </div>
 
-      {/* Claude Code connection */}
+      {/* Agent connection */}
       <div>
-        <label className="text-sm text-fleet-text-secondary block mb-1">
-          Claude Code connection
-        </label>
+        <label className="text-sm text-fleet-text-secondary block mb-1">Agent connection</label>
         <p className="text-xs text-fleet-text-subtle mb-2">
           Copilot receives updates through Fleet hooks in each workspace&apos;s Claude config
-          folder.
+          folder, and through a Fleet extension in Pi.
         </p>
         {!settings.claudeSessions.trackSessions && (
           <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5 mb-2">
@@ -149,11 +147,12 @@ export function CopilotSection({ onNavigate }: SettingsSectionProps): React.JSX.
               Session tracking is off
             </span>
             <span className="text-xs text-amber-400/70 block">
-              Copilot shows nothing until you turn on Track Claude Code sessions in Workspaces.
+              Copilot shows nothing until you turn on Track Claude Code and Pi sessions in
+              Workspaces.
             </span>
           </div>
         )}
-        {!claudeDetected && (
+        {!agentDetected && (
           <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5 mb-2">
             <span className="text-xs text-amber-400 block font-medium">Claude Code not found</span>
             <span className="text-xs text-amber-400/70 block">

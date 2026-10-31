@@ -9,7 +9,8 @@ import type { SettingsStore } from '../settings-store';
 import type { ConversationReader } from './conversation-reader';
 import type { ClaudeSessionsService } from '../claude-sessions';
 import * as hookInstaller from '../claude-sessions/hook-installer';
-import { transcriptPathFor } from '../claude-sessions/transcript-path';
+import { piInstalled } from '../claude-sessions/pi-extension';
+import { sessionFilePath } from '../claude-sessions/transcript-path';
 
 const log = createLogger('copilot:ipc');
 
@@ -113,7 +114,8 @@ export function registerCopilotIpcHandlers(
     const configDir = settings.copilot.claudeConfigDir || undefined;
     return {
       hookInstalled: hookInstaller.isInstalled(configDir),
-      claudeDetected: await isClaudeInstalled()
+      claudeDetected: await isClaudeInstalled(),
+      piDetected: piInstalled()
     };
   });
 
@@ -152,15 +154,18 @@ export function registerCopilotIpcHandlers(
     IPC_CHANNELS.COPILOT_CHAT_HISTORY,
     (_event, args: { sessionId: string; cwd: string }) => {
       const session = registry.get(args.sessionId);
-      const filePath = transcriptPathFor(
+      const runtime = session?.runtime ?? 'claude';
+      const filePath = sessionFilePath(
         session ?? {
+          runtime,
           sessionId: args.sessionId,
           cwd: args.cwd,
           transcriptPath: null,
           configDir: null
         }
       );
-      const messages = conversationReader.getMessages(args.sessionId, filePath);
+      if (filePath === null) return [];
+      const messages = conversationReader.getMessages(args.sessionId, filePath, runtime);
       conversationReader.watch(args.sessionId, filePath);
       return messages;
     }

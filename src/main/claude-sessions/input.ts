@@ -1,4 +1,5 @@
 import type { ClaudeSession, ClaudeSessionChange } from '../../shared/claude-sessions';
+import { RUNTIMES } from '../../shared/session-runtimes';
 import type { PromptBridge } from './prompt-bridge';
 import { hashPrompt } from './registry';
 
@@ -12,9 +13,9 @@ import { hashPrompt } from './registry';
  * in small chunks, LF inserts a line break, `\r` submits, and the transcript
  * records exactly what was written (docs/learnings/2026-09-30-claude-code-wraps-pasted-prompts.md).
  *
- * eva is the other way round: it takes a bracketed paste as typed text, sent
- * as it is, while typed text can open its command list. So an eva session
- * gets the prompt as one paste, then `\r`.
+ * eva and Pi are the other way round: each takes a bracketed paste as typed
+ * text, sent as it is, while typed text can open a command list. So their
+ * sessions get the prompt as one paste, then `\r`.
  *
  * A Claude Code session that loaded the fleet-bridge mod takes the prompt
  * through it instead, with no typing at all (`PromptBridge`).
@@ -30,13 +31,12 @@ export const SUBMIT_DELAY_MS = 50;
 export const QUIET_MS = 3_000;
 /** How long Claude Code has to acknowledge the prompt with `UserPromptSubmit`. */
 export const ACK_TIMEOUT_MS = 5_000;
-/** The most eva takes in one paste, in bytes. */
-export const EVA_PASTE_MAX_BYTES = 1_000_000;
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
-/** What `send` says when Claude Code submitted some other text than the prompt typed. */
-export const PROMPT_MISMATCH =
-  'Claude Code got a different prompt than the one typed. It was not sent again; read the session to see what it got.';
+/** What `send` says when the program submitted some other text than the prompt typed. */
+export function promptMismatch(label: string): string {
+  return `${label} got a different prompt than the one typed. It was not sent again; read the session to see what it got.`;
+}
 
 /** What the session's `UserPromptSubmit` said about a typed prompt, if anything. */
 type Heard = 'match' | 'mismatch' | 'none';
@@ -118,7 +118,7 @@ export function cleanPrompt(text: string): string {
 export function promptProblem(clean: string): string | null {
   if (clean === '') return 'Not sent: the prompt is empty.';
   if (clean.endsWith('\\')) {
-    return 'Not sent: a prompt cannot end with "\\", which Claude Code reads as a line break.';
+    return 'Not sent: a prompt cannot end with "\\", which reads as a line break.';
   }
   return null;
 }
@@ -187,9 +187,12 @@ export class PromptInput {
     if (reason !== null) return { ok: false, reason };
     const session = this.deps.session(sessionId);
     if (!session) return { ok: false, reason: 'That session is not running in a Fleet pane.' };
-    const eva = session.runtime === 'eva';
-    if (eva && Buffer.byteLength(clean) > EVA_PASTE_MAX_BYTES) {
-      return { ok: false, reason: 'Not sent: the prompt is longer than eva takes in one message.' };
+    const { label, maxPromptBytes, promptDelivery } = RUNTIMES[session.runtime];
+    if (maxPromptBytes !== undefined && Buffer.byteLength(clean) > maxPromptBytes) {
+      return {
+        ok: false,
+        reason: `Not sent: the prompt is longer than ${label} takes in one message.`
+      };
     }
 
     this.sending.add(sessionId);
@@ -197,13 +200,14 @@ export class PromptInput {
     try {
       // In the same tick as `refusal`, so a mod that let the draft through is still waiting.
       if (!this.deps.bridge?.deliver(sessionId, clean)) {
-        if (eva) this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
-        else await this.type(session.paneId, clean);
+        if (promptDelivery === 'paste') {
+          this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
+        } else await this.type(session.paneId, clean);
         await this.sleep(SUBMIT_DELAY_MS);
         this.deps.write(session.paneId, '\r');
       }
       const heard = await ack.wait();
-      if (heard === 'mismatch') return { ok: false, reason: PROMPT_MISMATCH };
+      if (heard === 'mismatch') return { ok: false, reason: promptMismatch(label) };
       return { ok: true, confirmed: heard === 'match', text: clean };
     } finally {
       ack.stop();

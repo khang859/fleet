@@ -1,5 +1,7 @@
 import { existsSync, watch, type FSWatcher } from 'fs';
 import { createLogger } from '../logger';
+import type { SessionRuntime } from '../../shared/claude-sessions';
+import { normalizePiLine } from '../claude-sessions/pi-transcript';
 import {
   normalizeLine,
   toolInputPreview,
@@ -12,7 +14,7 @@ const log = createLogger('copilot:conversation-reader');
 
 type SessionParseState = {
   filePath: string;
-  tail: MessageTail;
+  tail: MessageTail | PiMessageTail;
 };
 
 /**
@@ -141,9 +143,65 @@ export class MessageTail {
   }
 }
 
+/** A message or other entry of a Pi session, and the entry it follows. */
+type PiNode = { parentUuid: string | null; message: CopilotChatMessage | null };
+
+/**
+ * A Pi session's chat messages, followed as the file grows. Pi keeps every
+ * branch `/tree` left behind in the file, so the chat is the path that leads
+ * to the last entry, not every line.
+ */
+export class PiMessageTail {
+  private nodes = new Map<string, PiNode>();
+  private leaf: string | null = null;
+  private fold = new ChatMessageFold();
+  private readonly tail = new TranscriptTail({
+    normalize: normalizePiLine,
+    onLine: (line) => this.add(line.events),
+    onReset: () => {
+      this.nodes = new Map();
+      this.leaf = null;
+      this.fold = new ChatMessageFold();
+    }
+  });
+
+  get messages(): CopilotChatMessage[] {
+    const path: CopilotChatMessage[] = [];
+    let at = this.leaf;
+    while (at !== null) {
+      const node = this.nodes.get(at);
+      if (!node) break;
+      if (node.message) path.push(node.message);
+      at = node.parentUuid;
+    }
+    return path.reverse();
+  }
+
+  async read(path: string): Promise<void> {
+    await this.tail.read(path);
+  }
+
+  readSync(path: string): void {
+    this.tail.readSync(path);
+  }
+
+  private add(events: TranscriptEvent[]): void {
+    const first = events.at(0);
+    if (!first?.uuid) return;
+    const message = this.fold.add(events);
+    this.nodes.set(first.uuid, {
+      parentUuid: first.parentUuid ?? null,
+      message: message === 'clear' ? null : message
+    });
+    this.leaf = first.uuid;
+  }
+}
+
 export class ConversationReader {
   private states = new Map<string, SessionParseState>();
   private watchers = new Map<string, FSWatcher>();
+  /** Sessions to watch once their file exists: Pi writes it after the first prompt. */
+  private waitingForFile = new Set<string>();
   private onChange: ((sessionId: string, messages: CopilotChatMessage[]) => void) | null = null;
 
   setOnChange(cb: (sessionId: string, messages: CopilotChatMessage[]) => void): void {
@@ -151,14 +209,18 @@ export class ConversationReader {
   }
 
   /** `filePath` is the session's transcript, from `transcriptPathFor`. */
-  getMessages(sessionId: string, filePath: string): CopilotChatMessage[] {
-    if (!existsSync(filePath)) return [];
-
+  getMessages(
+    sessionId: string,
+    filePath: string,
+    runtime: SessionRuntime = 'claude'
+  ): CopilotChatMessage[] {
     let state = this.states.get(sessionId);
     if (!state) {
-      state = this.newState(filePath);
+      state = this.newState(filePath, runtime);
       this.states.set(sessionId, state);
     }
+
+    if (!existsSync(filePath)) return [];
 
     this.parseNewLines(state);
     return state.tail.messages;
@@ -167,7 +229,11 @@ export class ConversationReader {
   watch(sessionId: string, filePath: string): void {
     if (this.watchers.has(sessionId)) return;
 
-    if (!existsSync(filePath)) return;
+    if (!existsSync(filePath)) {
+      this.waitingForFile.add(sessionId);
+      return;
+    }
+    this.waitingForFile.delete(sessionId);
 
     const watcher = watch(filePath, { persistent: false }, (eventType) => {
       log.debug('fs.watch fired', { sessionId, eventType });
@@ -194,6 +260,7 @@ export class ConversationReader {
       watcher.close();
       this.watchers.delete(sessionId);
     }
+    this.waitingForFile.delete(sessionId);
     this.states.delete(sessionId);
   }
 
@@ -201,6 +268,10 @@ export class ConversationReader {
   refresh(sessionId: string): void {
     const state = this.states.get(sessionId);
     if (!state) return;
+    if (this.waitingForFile.has(sessionId)) {
+      this.watch(sessionId, state.filePath);
+      if (this.waitingForFile.has(sessionId)) return;
+    }
     const prevCount = state.tail.messages.length;
     this.parseNewLines(state);
     if (state.tail.messages.length !== prevCount) {
@@ -213,7 +284,7 @@ export class ConversationReader {
   }
 
   getWatchedSessionIds(): string[] {
-    return Array.from(this.watchers.keys());
+    return [...this.watchers.keys(), ...this.waitingForFile];
   }
 
   dispose(): void {
@@ -221,11 +292,12 @@ export class ConversationReader {
       watcher.close();
     }
     this.watchers.clear();
+    this.waitingForFile.clear();
     this.states.clear();
   }
 
-  private newState(filePath: string): SessionParseState {
-    return { filePath, tail: new MessageTail() };
+  private newState(filePath: string, runtime: SessionRuntime): SessionParseState {
+    return { filePath, tail: runtime === 'pi' ? new PiMessageTail() : new MessageTail() };
   }
 
   private parseNewLines(state: SessionParseState): void {

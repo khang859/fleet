@@ -90,7 +90,8 @@ const UpdateInputSchema: z.ZodType<UpdateLearningInput> = z.object({
 
 const DistillRequestSchema: z.ZodType<DistillRequest> = z.object({
   id: nonBlank('id'),
-  cwd: nonBlank('cwd')
+  cwd: nonBlank('cwd'),
+  source: z.enum(['claude', 'pi']).optional()
 });
 
 /** Parse an untrusted IPC payload, reporting the first failure as a renderer-safe message. */
@@ -173,7 +174,7 @@ export function registerLearningsIpcHandlers(
     const parsed = DistillRequestSchema.safeParse(rawReq);
     if (!parsed.success) return { status: 'error', message: 'invalid request' };
     const req = parsed.data;
-    const transcript = await sessions.read(req.id, req.cwd);
+    const transcript = await sessions.read(req);
     if (!transcript) return { status: 'error', message: 'Session transcript not found' };
     return distillLearning(transcript);
   });

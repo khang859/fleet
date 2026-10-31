@@ -78,8 +78,8 @@ export type ClaudePendingPermission = {
   suggestions?: PermissionSuggestion[];
 };
 
-/** The program a tracked session runs: Claude Code, or eva. */
-export type SessionRuntime = 'claude' | 'eva';
+/** The program a tracked session runs; `RUNTIMES` says how each differs. */
+export type SessionRuntime = 'claude' | 'eva' | 'pi';
 
 export type ClaudeSession = {
   sessionId: string;
@@ -106,6 +106,8 @@ export type ClaudeSession = {
   transcriptPath: string | null;
   /** The Claude config folder the session runs with, when it is not the default. */
   configDir: string | null;
+  /** Its model's context window, when the program reports one. */
+  contextWindow?: number;
   /**
    * The mode Claude Code last reported, on a prompt, a stop or a permission
    * request; absent until it reports one. Shift+Tab sends nothing, so it lags
@@ -155,6 +157,13 @@ export type ClaudeSessionChange = {
   sessionId: string;
   session: ClaudeSession | null;
   event: ClaudeSessionEvent | null;
+};
+
+/** What the copilot needs to know to say why it shows no sessions. */
+export type CopilotServiceStatus = {
+  hookInstalled: boolean;
+  claudeDetected: boolean;
+  piDetected: boolean;
 };
 
 /** What a session's folder looks like to git. */

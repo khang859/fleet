@@ -71,6 +71,7 @@ import { createLogger } from './logger';
 import { initCopilot, stopCopilot } from './copilot/index';
 import { ClaudeSessionsService } from './claude-sessions';
 import { installClaudeMod } from './claude-sessions/claude-mod';
+import { ensurePiExtension, removePiExtension } from './claude-sessions/pi-extension';
 import { createTeleprompter } from './teleprompter/index';
 import type { TeleprompterService } from './teleprompter/service';
 import { restoreDockIcon } from './dock-icon';
@@ -799,7 +800,7 @@ void app.whenReady().then(async () => {
 
   teleprompter = createTeleprompter(settingsStore);
 
-  // Tracks every Claude Code session in a Fleet pane, on macOS and Linux,
+  // Tracks every Claude Code and Pi session in a Fleet pane, on macOS and Linux,
   // whether or not the copilot overlay is on.
   claudeSessions = new ClaudeSessionsService({
     platform: process.platform,
@@ -814,6 +815,10 @@ void app.whenReady().then(async () => {
       void ensurePricesFresh();
       return getPriceTable();
     },
+    // A dev app keeps out of Pi's real config folder: test with `pi -e`.
+    piExtension: IS_FLEET_DEV
+      ? undefined
+      : { ensure: () => ensurePiExtension(), remove: () => removePiExtension() },
     onSnapshot: (snapshot) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.CLAUDE_SESSIONS_CHANGED, snapshot);

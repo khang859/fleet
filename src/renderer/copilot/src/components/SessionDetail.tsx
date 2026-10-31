@@ -11,6 +11,7 @@ import { PermissionRequest } from './PermissionRequest';
 import { GoToTerminalButton } from './GoToTerminalButton';
 import { ModeLabel } from './ModeLabel';
 import { sessionStatus, statusLabel } from '../lib/sessions';
+import { RUNTIMES } from '../../../../shared/session-runtimes';
 
 export function SessionDetail(): React.JSX.Element | null {
   const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
@@ -89,6 +90,7 @@ export function SessionDetail(): React.JSX.Element | null {
   const canSendMessage = session.phase === 'waitingForInput' && session.waitingKind !== 'question';
   const status = sessionStatus(session);
   const label = statusLabel(session);
+  const agent = RUNTIMES[session.runtime].label;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -160,10 +162,8 @@ export function SessionDetail(): React.JSX.Element | null {
               disabled={!canSendMessage}
               placeholder={
                 canSendMessage
-                  ? 'Message Claude...'
-                  : session.tty
-                    ? `${label} - you can send a message when Claude is ready`
-                    : 'No TTY — cannot send messages'
+                  ? `Message ${agent}...`
+                  : `${label} - you can send a message when ${agent} is ready`
               }
             />
             <Button

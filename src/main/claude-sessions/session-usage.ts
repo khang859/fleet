@@ -1,6 +1,7 @@
 import { estimateSessionCostUsd, type PriceTable } from '../../shared/claude-pricing';
-import type { ClaudeSessionUsage } from '../../shared/claude-sessions';
+import type { ClaudeSessionUsage, SessionRuntime } from '../../shared/claude-sessions';
 import { createLogger } from '../logger';
+import { parsePiLine, PiUsage } from './pi-transcript';
 import { SessionTail } from './session-tail';
 import { UsageAccumulator } from './usage-accumulator';
 
@@ -29,11 +30,63 @@ export function contextLimitFor(tokens: number, seenLong: boolean): number {
   return seenLong || tokens > STANDARD_CONTEXT ? LONG_CONTEXT : STANDARD_CONTEXT;
 }
 
+/** Totals one runtime's session file, a line at a time. */
+type UsageReader = {
+  addLine(line: string): void;
+  /** The file was replaced: start the totals over. */
+  reset(): void;
+  usage(): ClaudeSessionUsage;
+};
+
+class ClaudeUsageReader implements UsageReader {
+  private acc = new UsageAccumulator();
+  private seenLong = false;
+
+  constructor(private readonly priceTable: () => PriceTable) {}
+
+  addLine(line: string): void {
+    this.acc.addLine(line);
+  }
+
+  reset(): void {
+    this.acc = new UsageAccumulator();
+  }
+
+  usage(): ClaudeSessionUsage {
+    const agg = this.acc.result();
+    const cost = agg.hasUsage ? estimateSessionCostUsd(agg.perModel, this.priceTable()) : undefined;
+    const tokens = agg.context?.tokens ?? null;
+    if (tokens !== null && tokens > STANDARD_CONTEXT) this.seenLong = true;
+    return {
+      costUsd: cost ?? null,
+      contextTokens: tokens,
+      contextLimit: tokens === null ? null : contextLimitFor(tokens, this.seenLong)
+    };
+  }
+}
+
+/** The limit is left out: Pi reports it with its events, as `contextWindow`. */
+class PiUsageReader implements UsageReader {
+  private totals = new PiUsage();
+
+  addLine(line: string): void {
+    this.totals.add(parsePiLine(line));
+  }
+
+  reset(): void {
+    this.totals = new PiUsage();
+  }
+
+  usage(): ClaudeSessionUsage {
+    const { costUsd, contextTokens } = this.totals;
+    return { costUsd, contextTokens, contextLimit: null };
+  }
+}
+
 type Tracked = {
   transcriptPath: string;
-  acc: UsageAccumulator;
+  reader: UsageReader;
   tail: SessionTail;
-  seenLong: boolean;
   usage: ClaudeSessionUsage;
   lastRun: number;
   running: Promise<void> | null;
@@ -73,15 +126,20 @@ export class SessionUsageTracker {
    * just ended) or when the last read is old enough, otherwise once the
    * throttle window passes.
    */
-  refresh(sessionId: string, transcriptPath: string, immediate = false): void {
+  refresh(
+    sessionId: string,
+    transcriptPath: string,
+    immediate = false,
+    runtime: SessionRuntime = 'claude'
+  ): void {
     let t = this.tracked.get(sessionId);
     if (t?.transcriptPath !== transcriptPath) {
       if (t?.timer) clearTimeout(t.timer);
       t = {
         transcriptPath,
-        acc: new UsageAccumulator(),
+        reader:
+          runtime === 'pi' ? new PiUsageReader() : new ClaudeUsageReader(this.opts.priceTable),
         tail: new SessionTail(transcriptPath),
-        seenLong: false,
         usage: UNKNOWN_USAGE,
         lastRun: 0,
         running: null,
@@ -133,7 +191,7 @@ export class SessionUsageTracker {
     t.running = this.read(t)
       .then(() => {
         if (this.tracked.get(sessionId) !== t) return;
-        const next = this.usageOf(t);
+        const next = t.reader.usage();
         if (!sameUsage(next, t.usage)) {
           t.usage = next;
           this.opts.onChange(sessionId);
@@ -153,24 +211,9 @@ export class SessionUsageTracker {
 
   private async read(t: Tracked): Promise<void> {
     await t.tail.read(
-      (line) => t.acc.addLine(line),
-      // A file got shorter, so it was replaced: start the totals over.
-      () => (t.acc = new UsageAccumulator())
+      (line) => t.reader.addLine(line),
+      () => t.reader.reset()
     );
-  }
-
-  private usageOf(t: Tracked): ClaudeSessionUsage {
-    const agg = t.acc.result();
-    const cost = agg.hasUsage
-      ? estimateSessionCostUsd(agg.perModel, this.opts.priceTable())
-      : undefined;
-    const tokens = agg.context?.tokens ?? null;
-    if (tokens !== null && tokens > STANDARD_CONTEXT) t.seenLong = true;
-    return {
-      costUsd: cost ?? null,
-      contextTokens: tokens,
-      contextLimit: tokens === null ? null : contextLimitFor(tokens, t.seenLong)
-    };
   }
 }
 

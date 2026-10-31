@@ -227,6 +227,7 @@ export class ClaudeSessionRegistry {
       transcriptPath: event.transcriptPath ?? before.transcriptPath,
       configDir: event.configDir ?? before.configDir,
       permissionMode: event.permissionMode ?? before.permissionMode,
+      contextWindow: event.contextWindow ?? before.contextWindow,
       lastActivity: now
     };
 

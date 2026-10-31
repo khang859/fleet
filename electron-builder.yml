@@ -24,6 +24,9 @@ extraResources:
     to: hooks/
   - from: resources/mascots/
     to: resources/mascots/
+  # Copied into Pi's config folder at runtime, so it needs a real path.
+  - from: resources/pi-extensions/
+    to: resources/pi-extensions/
   # Read with readdir at runtime, which cannot walk into app.asar - so these
   # need a real folder outside it, not just asarUnpack. See
   # docs/learnings/2026-06-28-chat-skills-missing-from-packaged-app.md.

@@ -13,8 +13,8 @@ export type ProjectsWatcherTiming = {
 const DEFAULT_TIMING: ProjectsWatcherTiming = { debounceMs: 500, maxWaitMs: 2_000 };
 
 /**
- * Watches the Claude projects dir and each project dir in it, and calls
- * `onChange` (debounced) when a transcript is added or written.
+ * Watches a sessions dir and each project dir in it, and calls `onChange`
+ * (debounced) when a transcript is added or written.
  *
  * Not `recursive`: on Linux Node emulates that in JS with a watcher per
  * subdirectory, and a session's `subagents/` and `tool-results/` dirs make
