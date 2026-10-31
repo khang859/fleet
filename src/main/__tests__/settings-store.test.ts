@@ -144,7 +144,12 @@ describe('SettingsStore settings merge', () => {
         agent: { compactThreshold: { unit: 'fraction', value: 0.5 } }
       }
     } as never);
-    expect(store.get().tools).toEqual({ annotate: true, sessions: false, scratch: true });
+    expect(store.get().tools).toEqual({
+      annotate: true,
+      sessions: false,
+      scratch: true,
+      workflows: true
+    });
     expect(Object.keys(store.get().ai)).toEqual(['agent']);
     expect(store.get().ai.agent.compactThreshold).toEqual({ unit: 'fraction', value: 0.5 });
   });

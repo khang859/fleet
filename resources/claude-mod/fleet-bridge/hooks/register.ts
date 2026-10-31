@@ -12,6 +12,10 @@ import type { Args, EngineInterface, Next, Register, ResultOf } from 'claude-cod
  * It also asks Fleet about each permission request while Claude Code shows its
  * dialog, so the request can be answered in Fleet or in the terminal, whichever
  * comes first (src/main/claude-sessions/permission-bridge.ts).
+ *
+ * Fleet's workflow tools come from Fleet too: the mod asks for this pane's list
+ * in `session.start`, and it holds no copy of any name or schema
+ * (src/main/workflows/bridge-routes.ts).
  */
 
 /** How long to wait before asking again after the socket failed, e.g. Fleet is not running. */
@@ -162,6 +166,85 @@ async function askPermission(
   }
 }
 
+/** The prefix Claude Code gives a tool this mod registers. */
+const MOD_PREFIX = 'mcp__fleet-bridge__';
+const TOOL_PREFIX = `${MOD_PREFIX}fleet_`;
+
+type FleetTool = {
+  name: string;
+  description: string;
+  inputSchema: { properties?: Record<string, unknown> };
+};
+
+/** This pane's tools. `only` means that nothing else may run in it. */
+type ToolList = { tools: FleetTool[]; only: boolean };
+
+/** Who this pane is to Fleet, once the session has its tools. */
+type Pane = {
+  socketPath: string;
+  id: string;
+  token: string;
+  only: boolean;
+  /** Each tool's argument names: a call's arguments come mixed in with the event's own fields. */
+  fields: Map<string, string[]>;
+};
+
+async function fetchTools(
+  $: EngineInterface,
+  socketPath: string,
+  id: string,
+  token: string
+): Promise<ToolList | null> {
+  const res = await $.http.fetch(`http://fleet/workflows/tools?pane=${encodeURIComponent(id)}`, {
+    headers: { 'x-fleet-token': token },
+    socketPath
+  });
+  return res.status === 200 ? (JSON.parse(res.text) as ToolList) : null;
+}
+
+/** Register this pane's tools. A Fleet with no workflows leaves the session as it was. */
+async function registerTools($: EngineInterface, socketPath: string): Promise<Pane | null> {
+  const id = await $.env.get('FLEET_PANE_ID');
+  const token = await $.env.get('FLEET_PANE_TOKEN');
+  if (!id || !token) return null;
+  try {
+    const list = await fetchTools($, socketPath, id, token);
+    if (!list) return null;
+    const fields = new Map<string, string[]>();
+    for (const tool of list.tools) {
+      await $.tool.register({ ...tool, isDeferred: false });
+      fields.set(tool.name, Object.keys(tool.inputSchema.properties ?? {}));
+    }
+    return { socketPath, id, token, only: list.only, fields };
+  } catch {
+    return null;
+  }
+}
+
+/** Run a Fleet tool in main, which checks the pane and does the work. */
+async function callFleet(
+  $: EngineInterface,
+  pane: Pane,
+  fullName: string,
+  call: Record<string, unknown>
+): Promise<string> {
+  const name = fullName.slice(MOD_PREFIX.length);
+  const given = (pane.fields.get(name) ?? []).filter((field) => call[field] !== undefined);
+  const args = Object.fromEntries(given.map((field) => [field, call[field]]));
+  const res = await $.http.fetch(`http://fleet/workflows/${name}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ paneId: pane.id, token: pane.token, args }),
+    socketPath: pane.socketPath
+  });
+  return res.text;
+}
+
+/** The pane, when this call is one of its Fleet tools. */
+function fleetPaneFor(pane: Pane | null, tool: string): Pane | null {
+  return tool.startsWith(TOOL_PREFIX) ? pane : null;
+}
+
 /** The poll loop's state, kept across /clear but not across a reload of the mod. */
 type Loop = {
   socketPath?: string;
@@ -189,18 +272,24 @@ async function poll(
 export const register: Register = (on) => {
   const loop: Loop = { generation: 0 };
   const asked: AskedIds = new Map();
+  let pane: Pane | null = null;
 
   on('session.start', async ($, e, next) => {
+    // Before `next`: a tool registered by then is listed for the first turn.
+    const socketPath = await $.env.get('FLEET_BRIDGE_SOCKET');
+    if (socketPath && e.isInteractive) pane = await registerTools($, socketPath);
     const result = await next(e);
     // Nobody types into a -p run, and a held request would keep it from exiting.
     if (!e.isInteractive) return result;
-    loop.socketPath = await $.env.get('FLEET_BRIDGE_SOCKET');
+    loop.socketPath = socketPath;
     if (loop.socketPath) start($, loop, loop.socketPath);
     return result;
   });
 
   // Each ask's call id, for the permission request that follows it.
   on('tool.check', async (_$, e, next) => {
+    // Main checks each Fleet tool against the pane, so no dialog needs to.
+    if (fleetPaneFor(pane, e.tool)) return { decision: 'allow' };
     const result = await next(e);
     if (result.decision === 'ask' && e.tool_use_id) {
       const key = askKey(e.agentId, e.tool, e.input);
@@ -210,7 +299,12 @@ export const register: Register = (on) => {
   });
 
   // An ask no dialog took, such as one auto mode settled, ends with its call.
-  on('tool.call', async (_$, e, next) => {
+  on('tool.call', async ($, e, next) => {
+    const fleetPane = fleetPaneFor(pane, e.tool);
+    if (fleetPane) {
+      return { result: await callFleet($, fleetPane, e.tool, e as Record<string, unknown>) };
+    }
+    if (pane?.only) return { deny: 'Only the Fleet tool works in this pane.' };
     try {
       return await next(e);
     } finally {

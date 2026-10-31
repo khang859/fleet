@@ -57,6 +57,7 @@ export type Tab = {
     | 'settings'
     | 'annotate'
     | 'sessions'
+    | 'workflows'
     | 'agent'
     | 'ssh-browser';
   avatarVariant?: string;
@@ -74,6 +75,8 @@ export type Tab = {
    * gone (session closed) simply renders the file at the top level again.
    */
   parentTabId?: string;
+  /** The workflow run whose panes this tab shows. Main owns these tabs, so none is saved. */
+  workflowRunId?: string;
   /** ShellProfile id used when this tab was created. Optional for legacy persisted tabs. */
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */

@@ -30,7 +30,7 @@ const INSTALL_COMMANDS = [
 ] as const;
 
 /** A path inside the repository, `/`-separated, that cannot climb out of it or reach into `.git`. */
-const RepoPath = z
+export const RepoPath = z
   .string()
   .max(400)
   .transform((p) => p.replace(/^\.\//, '').replace(/\/+$/, ''))

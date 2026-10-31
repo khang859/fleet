@@ -10,6 +10,9 @@ import type {
 import type { UserGroupColor } from '../../../shared/group-colors';
 import type { ToolType, ToolVisibility } from '../../../shared/tools';
 import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
+import type { RunTab } from '../../../shared/workflows';
+import { runTabRoot } from '../lib/workflow-tabs';
+import { collectPaneIds } from '../lib/pane-tree';
 import { getPaneTypeForFilePath, type OpenablePaneType } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
@@ -118,34 +121,19 @@ function createLeafWithProfile(
   return { type: 'leaf', id: generateId(), cwd, shellProfileId: profileId, pathContext };
 }
 
-/** Ensure workspace has a pinned Sessions tab; returns the workspace */
-function ensureSessionsTab(workspace: Workspace): Workspace {
-  if (workspace.tabs.some((t) => t.type === 'sessions')) return workspace;
+/** Ensure workspace has a pinned tab for a tool; returns the workspace */
+function ensureToolTab(workspace: Workspace, type: Tab['type'], label: string): Workspace {
+  if (workspace.tabs.some((t) => t.type === type)) return workspace;
   const cwd = workspace.tabs[0]?.cwd ?? '/';
-  const sessionsTab: Tab = {
+  const tab: Tab = {
     id: generateId(),
-    label: 'Sessions',
+    label,
     labelIsCustom: true,
     cwd,
-    type: 'sessions',
+    type,
     splitRoot: createLeaf(cwd)
   };
-  return { ...workspace, tabs: [sessionsTab, ...workspace.tabs] };
-}
-
-/** Ensure workspace has a pinned Annotate tab; mutates and returns the workspace */
-function ensureAnnotateTab(workspace: Workspace): Workspace {
-  if (workspace.tabs.some((t) => t.type === 'annotate')) return workspace;
-  const cwd = workspace.tabs[0]?.cwd ?? '/';
-  const annotateTab: Tab = {
-    id: generateId(),
-    label: 'Annotate',
-    labelIsCustom: true,
-    cwd,
-    type: 'annotate',
-    splitRoot: createLeaf(cwd)
-  };
-  return { ...workspace, tabs: [annotateTab, ...workspace.tabs] };
+  return { ...workspace, tabs: [tab, ...workspace.tabs] };
 }
 
 /** Current global tool visibility, falling back to defaults before settings load. */
@@ -159,11 +147,13 @@ function currentToolVisibility(): ToolVisibility {
  */
 function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspace {
   let ws = workspace;
-  if (vis.sessions) ws = ensureSessionsTab(ws);
-  if (vis.annotate) ws = ensureAnnotateTab(ws);
+  if (vis.sessions) ws = ensureToolTab(ws, 'sessions', 'Sessions');
+  if (vis.annotate) ws = ensureToolTab(ws, 'annotate', 'Annotate');
+  if (vis.workflows) ws = ensureToolTab(ws, 'workflows', 'Workflows');
   const tabs = ws.tabs.filter((t) => {
     if (t.type === 'annotate') return vis.annotate;
     if (t.type === 'sessions') return vis.sessions;
+    if (t.type === 'workflows') return vis.workflows;
     return true;
   });
   return tabs.length === ws.tabs.length ? ws : { ...ws, tabs };
@@ -219,6 +209,8 @@ type WorkspaceStore = {
   openResumeTab: (cwd: string, cmd: string, label: string) => void;
   duplicateTab: (tabId: string) => string | null;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
+  /** Make a workflow run's tab match what main says. */
+  syncRunTab: (run: RunTab, showNewTab: boolean) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
   resetTabLabel: (tabId: string, liveCwd?: string) => void;
@@ -516,10 +508,7 @@ export function getActivePaneContext(): {
   };
 }
 
-export function collectPaneIds(node: PaneNode): string[] {
-  if (node.type === 'leaf') return [node.id];
-  return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
-}
+export { collectPaneIds };
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
 /**
@@ -541,6 +530,8 @@ function pruneDefunctLeaves(root: PaneNode): PaneNode | null {
 function restoreTabs(tabs: SavedTab[]): Tab[] {
   return tabs.flatMap((t) => {
     if (DEFUNCT_TAB_TYPES.has(t.type ?? '')) return [];
+    // A run's panes end with the app, so its tab has nothing to come back to.
+    if (t.workflowRunId) return [];
     const splitRoot = pruneDefunctLeaves(t.splitRoot);
     if (!splitRoot) return [];
     const tab = migrateTab({ ...t, splitRoot });
@@ -548,7 +539,7 @@ function restoreTabs(tabs: SavedTab[]): Tab[] {
   });
 }
 
-const SPECIAL_TAB_TYPES = new Set(['annotate', 'settings', 'sessions']);
+const SPECIAL_TAB_TYPES = new Set(['annotate', 'settings', 'sessions', 'workflows']);
 
 function isNormalTab(tab: Tab): boolean {
   return !isPinnedTab(tab);
@@ -562,6 +553,41 @@ export function isPinnedTab(tab: Pick<Tab, 'type' | 'cwd'>): boolean {
 /** Protect the tool itself while allowing auxiliary split panes to close. */
 function isToolPane(tab: Tab, paneId: string): boolean {
   return isPinnedTab(tab) && removePaneFromTree(tab.splitRoot, paneId) === null;
+}
+
+type OpenWorkspaces = Pick<WorkspaceStore, 'workspace' | 'backgroundWorkspaces'>;
+
+function findRunWorkspace(state: OpenWorkspaces, runId: string): Workspace | undefined {
+  return [state.workspace, ...state.backgroundWorkspaces.values()].find((workspace) =>
+    workspace.tabs.some((t) => t.workflowRunId === runId)
+  );
+}
+
+/** Whether a run has a tab in any open workspace. */
+export function hasRunTab(state: OpenWorkspaces, runId: string): boolean {
+  return findRunWorkspace(state, runId) !== undefined;
+}
+
+/** The workspace that shows a run's tab. A new run opens in the one in front. */
+function workspaceOfRun(state: OpenWorkspaces, runId: string): Workspace {
+  return findRunWorkspace(state, runId) ?? state.workspace;
+}
+
+/** Add the panes main opened and drop the ones it closed. No panes left means no tab. */
+function withRunTab(tabs: Tab[], run: RunTab): Tab[] {
+  const current = tabs.find((t) => t.workflowRunId === run.runId);
+  const root = runTabRoot(current?.splitRoot ?? null, run);
+  if (!root) return tabs.filter((t) => t !== current);
+  if (current) return tabs.map((t) => (t === current ? { ...t, splitRoot: root } : t));
+  const tab: Tab = {
+    id: generateId(),
+    label: run.label,
+    labelIsCustom: true,
+    cwd: run.cwd,
+    splitRoot: root,
+    workflowRunId: run.runId
+  };
+  return [...tabs, tab];
 }
 
 /** Pick the best next tab after closing one — prefer normal tabs, fall back to null */
@@ -743,16 +769,37 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
               activeTabId: nextTab?.id ?? null,
               activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null
             }),
-        lastClosedTab: closedTab
-          ? {
-              tab: closedTab,
-              index: tabIndex,
-              closedAt: Date.now(),
-              serializedPanes: serializedPanes ?? new Map<string, string>()
-            }
-          : null,
+        lastClosedTab:
+          closedTab && !closedTab.workflowRunId
+            ? {
+                tab: closedTab,
+                index: tabIndex,
+                closedAt: Date.now(),
+                serializedPanes: serializedPanes ?? new Map<string, string>()
+              }
+            : null,
         isDirty: true
       };
+    });
+  },
+
+  syncRunTab: (run, showNewTab) => {
+    logTabs.debug('syncRunTab', { runId: run.runId, panes: run.paneIds.length });
+    set((state) => {
+      const home = workspaceOfRun(state, run.runId);
+      const before = home.tabs.find((t) => t.workflowRunId === run.runId);
+      const tabs = withRunTab(home.tabs, run);
+      if (home !== state.workspace) {
+        const backgroundWorkspaces = new Map(state.backgroundWorkspaces);
+        backgroundWorkspaces.set(home.id, { ...home, tabs });
+        return { backgroundWorkspaces };
+      }
+      const shown = showNewTab && !before ? tabs.find((t) => t.workflowRunId === run.runId) : null;
+      const workspace = { ...state.workspace, tabs };
+      const active = shown
+        ? { activeTabId: shown.id, activePaneId: run.paneIds[0] ?? null }
+        : resolveActiveTab(workspace, state.activeTabId, state.activePaneId);
+      return { workspace, ...active };
     });
   },
 
@@ -1353,7 +1400,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   ensureSessionsTab: () => {
     set((state) => {
-      const updated = ensureSessionsTab(state.workspace);
+      const updated = ensureToolTab(state.workspace, 'sessions', 'Sessions');
       if (updated === state.workspace) return state;
       return { workspace: updated, isDirty: true };
     });

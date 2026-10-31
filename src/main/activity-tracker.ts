@@ -43,6 +43,11 @@ export class ActivityTracker {
   private opts: ActivityTrackerOptions;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
+  /** When a pane last printed something, or 0 when it never did. */
+  lastOutputAt(paneId: string): number {
+    return this.panes.get(paneId)?.lastOutputAt ?? 0;
+  }
+
   constructor(eventBus: EventBus, opts: ActivityTrackerOptions) {
     this.eventBus = eventBus;
     this.opts = opts;
