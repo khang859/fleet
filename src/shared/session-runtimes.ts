@@ -3,6 +3,8 @@ import type { SessionRuntime } from './claude-sessions';
 export type RuntimeProfile = {
   /** The program's name, as the UI shows it. */
   label: string;
+  /** Its name in few letters, for a session row where space is short. */
+  tag: string;
   /** How a prompt reaches its input box; see `PromptInput`. */
   promptDelivery: 'type' | 'paste';
   /** The most it takes in one prompt, in bytes, when it has a limit. */
@@ -17,18 +19,26 @@ export type RuntimeProfile = {
 export const RUNTIMES: Record<SessionRuntime, RuntimeProfile> = {
   claude: {
     label: 'Claude Code',
+    tag: 'Claude',
     promptDelivery: 'type',
     transcript: 'claude',
     questionAnswers: 'number'
   },
   eva: {
     label: 'eva',
+    tag: 'eva',
     promptDelivery: 'paste',
     maxPromptBytes: 1_000_000,
     transcript: null,
     questionAnswers: 'number'
   },
-  pi: { label: 'Pi', promptDelivery: 'paste', transcript: 'pi', questionAnswers: 'terminal' }
+  pi: {
+    label: 'Pi',
+    tag: 'Pi',
+    promptDelivery: 'paste',
+    transcript: 'pi',
+    questionAnswers: 'terminal'
+  }
 };
 
 /** The names of the programs running these sessions, Claude Code when there are none. */
@@ -39,4 +49,9 @@ export function runtimesLabel(sessions: ReadonlyArray<{ runtime: SessionRuntime 
     .filter((runtime) => running.has(runtime))
     .map((runtime) => runtime.label)
     .join(' · ');
+}
+
+/** Whether these sessions run in more than one program, so rows must say which. */
+export function hasMixedRuntimes(sessions: ReadonlyArray<{ runtime: SessionRuntime }>): boolean {
+  return new Set(sessions.map((s) => s.runtime)).size > 1;
 }
