@@ -197,6 +197,14 @@ export class PiMessageTail {
   }
 }
 
+/**
+ * Tells two chats apart. A Pi branch can replace messages with as many others,
+ * so the count alone misses it. The last message fixes the whole branch.
+ */
+function chatMark(messages: CopilotChatMessage[]): string {
+  return `${messages.length}:${messages.at(-1)?.id}`;
+}
+
 export class ConversationReader {
   private states = new Map<string, SessionParseState>();
   private watchers = new Map<string, FSWatcher>();
@@ -238,16 +246,7 @@ export class ConversationReader {
     const watcher = watch(filePath, { persistent: false }, (eventType) => {
       log.debug('fs.watch fired', { sessionId, eventType });
       const state = this.states.get(sessionId);
-      if (!state) return;
-      const prevCount = state.tail.messages.length;
-      this.parseNewLines(state);
-      if (state.tail.messages.length !== prevCount) {
-        log.debug('new messages detected via watcher', {
-          sessionId,
-          count: state.tail.messages.length - prevCount
-        });
-        this.onChange?.(sessionId, state.tail.messages);
-      }
+      if (state) this.update(sessionId, state);
     });
 
     this.watchers.set(sessionId, watcher);
@@ -264,7 +263,7 @@ export class ConversationReader {
     this.states.delete(sessionId);
   }
 
-  /** Re-parse a watched session's JSONL and emit onChange if new messages found */
+  /** Re-parse a watched session's JSONL and emit onChange if its chat changed */
   refresh(sessionId: string): void {
     const state = this.states.get(sessionId);
     if (!state) return;
@@ -272,15 +271,17 @@ export class ConversationReader {
       this.watch(sessionId, state.filePath);
       if (this.waitingForFile.has(sessionId)) return;
     }
-    const prevCount = state.tail.messages.length;
+    this.update(sessionId, state);
+  }
+
+  /** Read what the file gained, and report the chat if that changed it. */
+  private update(sessionId: string, state: SessionParseState): void {
+    const before = chatMark(state.tail.messages);
     this.parseNewLines(state);
-    if (state.tail.messages.length !== prevCount) {
-      log.debug('new messages detected via refresh', {
-        sessionId,
-        count: state.tail.messages.length - prevCount
-      });
-      this.onChange?.(sessionId, state.tail.messages);
-    }
+    const messages = state.tail.messages;
+    if (chatMark(messages) === before) return;
+    log.debug('chat changed', { sessionId, count: messages.length });
+    this.onChange?.(sessionId, messages);
   }
 
   getWatchedSessionIds(): string[] {

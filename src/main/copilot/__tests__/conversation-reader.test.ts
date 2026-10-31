@@ -76,6 +76,34 @@ describe('PiMessageTail', () => {
   });
 });
 
+describe('ConversationReader on a Pi branch change', () => {
+  const entry = (id: string, parentId: string | null, role: string, text: string): string =>
+    `${JSON.stringify({
+      type: 'message',
+      id,
+      parentId,
+      message: { role, content: [{ type: 'text', text }] }
+    })}\n`;
+
+  it('reports a branch with the same number of messages', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-reader-branch-'));
+    const path = join(dir, 's.jsonl');
+    writeFileSync(path, entry('a', null, 'user', 'start') + entry('b', 'a', 'assistant', 'left'));
+
+    const reader = new ConversationReader();
+    const changes: number[] = [];
+    reader.setOnChange((_id, messages) => changes.push(messages.length));
+    reader.getMessages('s', path, 'pi');
+
+    appendFileSync(path, entry('c', 'a', 'assistant', 'right'));
+    reader.refresh('s');
+    expect(changes).toEqual([2]);
+
+    reader.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('ConversationReader on a file that does not exist yet', () => {
   it('starts following the session when a change shows the file is there', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-reader-late-'));

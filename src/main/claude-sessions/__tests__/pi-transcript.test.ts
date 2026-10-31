@@ -102,6 +102,31 @@ describe('PiUsage', () => {
     expect(usage.contextTokens).toBe(100);
   });
 
+  it('adds up everything Pi bills, as its own footer does', () => {
+    const usage = new PiUsage();
+    const billed = (total: number): Record<string, unknown> => ({ cost: { total } });
+    usage.add(parsePiLine(entry('a', null, assistant({ totalTokens: 100, cost: { total: 1 } }))));
+    usage.add({ type: 'compaction', id: 'b', usage: billed(0.25) });
+    usage.add({ type: 'branch_summary', id: 'c', usage: billed(0.125) });
+    usage.add({ type: 'usage', id: 'd', usage: billed(0.0625) });
+    usage.add({ type: 'message', id: 'e', message: { role: 'toolResult', usage: billed(0.5) } });
+    expect(usage.costUsd).toBe(1.9375);
+  });
+
+  it('does not know the context after a compaction, until a reply reports it', () => {
+    const usage = new PiUsage();
+    usage.add(parsePiLine(entry('a', null, assistant({ totalTokens: 190_000 }))));
+    usage.add({ type: 'compaction', id: 'b', parentId: 'a' });
+    expect(usage.contextTokens).toBeNull();
+
+    const failed = { ...assistant({ totalTokens: 500 }), stopReason: 'aborted' };
+    usage.add(parsePiLine(entry('c', 'b', failed)));
+    expect(usage.contextTokens).toBeNull();
+
+    usage.add(parsePiLine(entry('d', 'b', assistant({ totalTokens: 9_000 }))));
+    expect(usage.contextTokens).toBe(9_000);
+  });
+
   it('counts only assistant messages', () => {
     const usage = new PiUsage();
     usage.add(

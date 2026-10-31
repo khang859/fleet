@@ -120,11 +120,18 @@ export function normalizePiLine(line: string): TranscriptEvent[] {
   return normalizePiEntry(parsePiLine(line));
 }
 
-/** The assistant's `usage` an entry carries, if it is an assistant message. */
+/** The assistant message an entry holds, if it holds one. */
 function assistantOf(entry: PiEntry): Record<string, unknown> | null {
   const message = entry['message'];
   if (entry['type'] !== 'message' || !isRecord(message)) return null;
   return message['role'] === 'assistant' ? message : null;
+}
+
+/** What an entry was billed: a message, or a compaction, summary or cache-warming entry. */
+function billedUsage(entry: PiEntry): unknown {
+  if (entry['type'] !== 'message') return entry['usage'];
+  const message = entry['message'];
+  return isRecord(message) && message['role'] !== 'user' ? message['usage'] : undefined;
 }
 
 function numberAt(record: unknown, key: string): number {
@@ -133,23 +140,28 @@ function numberAt(record: unknown, key: string): number {
 }
 
 /**
- * What a session has spent and how full its context is. Pi prices each message
+ * What a session has spent and how full its context is. Pi prices each entry
  * itself, so no price table is needed. Spend counts every branch, because
- * leaving a branch does not refund it.
+ * leaving a branch does not refund it. A compaction makes the context unknown
+ * until the next reply reports it, as in Pi's own `getContextUsage`.
  */
 export class PiUsage {
   costUsd = 0;
-  /** Tokens at the latest message that reported any; a failed request reports none. */
+  /** Tokens at the latest reply that finished, or null when unknown. */
   contextTokens: number | null = null;
   readonly models = new Set<string>();
 
   add(entry: PiEntry | null): void {
-    const message = entry && assistantOf(entry);
+    if (!entry) return;
+    const billed = billedUsage(entry);
+    this.costUsd += numberAt(isRecord(billed) ? billed['cost'] : undefined, 'total');
+    if (entry['type'] === 'compaction') this.contextTokens = null;
+
+    const message = assistantOf(entry);
     if (!message) return;
-    const usage = message['usage'];
-    this.costUsd += numberAt(isRecord(usage) ? usage['cost'] : undefined, 'total');
-    const tokens = numberAt(usage, 'totalTokens');
-    if (tokens > 0) this.contextTokens = tokens;
     if (typeof message['model'] === 'string') this.models.add(message['model']);
+    const tokens = numberAt(message['usage'], 'totalTokens');
+    const finished = message['stopReason'] !== 'aborted' && message['stopReason'] !== 'error';
+    if (tokens > 0 && finished) this.contextTokens = tokens;
   }
 }

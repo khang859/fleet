@@ -33,3 +33,14 @@ A test that uses `SessionsService` must mock `pi-source` too, or it reads the re
 
 It rewrote 79 unrelated files in this work, because many files are not in Prettier style.
 Format only what a change touched: `npx prettier --write <files>`.
+
+## Match Pi's own usage rules
+
+Pi bills more than assistant messages: `compaction`, `branch_summary` and `usage` entries, and tool results, also carry usage.
+`getSessionStats` in Pi's `agent-session.js` is the reference for spend.
+After a compaction Pi treats context as unknown until the next finished reply, so Fleet must too.
+
+## A Pi chat can change with no change in length
+
+A branch can replace messages with as many others, so a count check misses it.
+`ConversationReader` compares the count and the last message id, because the last message fixes the whole branch.
