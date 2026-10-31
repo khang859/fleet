@@ -37,7 +37,7 @@ import { useCwdStore } from '../store/cwd-store';
 import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { switchToWorkspace } from '../lib/switch-workspace';
-import { formatShortcut, getShortcut } from '../lib/shortcuts';
+import { shortcutHint } from '../lib/shortcuts';
 import { getFileSave } from '../lib/file-save-registry';
 import { popperAnim, dialogFadeAnim } from '../lib/motion';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
@@ -58,10 +58,7 @@ import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
 
 // Platform constant, so resolve it once at module load (same pattern as CommandPalette).
-const NEW_TAB_HINT = (() => {
-  const def = getShortcut('new-tab');
-  return def ? ` (${formatShortcut(def)})` : '';
-})();
+const NEW_TAB_HINT = shortcutHint('new-tab');
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
