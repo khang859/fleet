@@ -1,16 +1,19 @@
-import { Suspense, lazy, memo, useCallback, useMemo, useRef } from 'react';
-import type { PaneNode, PaneLeaf, TerminalBackground, FileOpenTarget } from '../../../shared/types';
+import { Suspense, lazy, memo, useCallback, useRef } from 'react';
+import type { PaneLeaf, TerminalBackground, FileOpenTarget } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import type { OpenablePaneType } from '../../../shared/file-open';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
+import { MovePaneButton } from './PaneToolbar';
 import { PaneStatusGlyph } from './PaneStatusGlyph';
 import { RemoteFileGate } from './ssh/RemoteFileGate';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, isTerminalLeaf } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { activityRingClass } from '../lib/activity-glyph';
+import { calcToPixels, layoutOf, paneSlots, rectStyle } from '../lib/pane-layout';
+import type { PaneGridTab, Rect } from '../lib/pane-layout';
 import { createLogger } from '../logger';
 
 const log = createLogger('layout:panes');
@@ -45,99 +48,6 @@ const AgentPane = lazy(async () => ({
 // placeholder — anything more would flash in and out within a couple of frames.
 const PANE_FALLBACK = <div className="h-full w-full" />;
 
-// --- Calc-based absolute positioning system ---
-// Each dimension is expressed as `calc(pct% + px)` to handle the 6px resize
-// handles without knowing the container's pixel size at render time.
-
-type CalcValue = { pct: number; px: number };
-type Rect = { top: CalcValue; left: CalcValue; width: CalcValue; height: CalcValue };
-
-const HANDLE_PX = 6;
-const HALF_HANDLE = HANDLE_PX / 2;
-
-function cv(pct: number, px: number): CalcValue {
-  return { pct, px };
-}
-
-function toCSS(v: CalcValue): string {
-  if (v.px === 0) return `${v.pct}%`;
-  if (v.pct === 0) return `${v.px}px`;
-  return `calc(${v.pct}% + ${v.px}px)`;
-}
-
-function addCV(a: CalcValue, b: CalcValue): CalcValue {
-  return { pct: a.pct + b.pct, px: a.px + b.px };
-}
-
-function scaleCV(a: CalcValue, f: number): CalcValue {
-  return { pct: a.pct * f, px: a.px * f };
-}
-
-function calcToPixels(v: CalcValue, containerDim: number): number {
-  return containerDim * (v.pct / 100) + v.px;
-}
-
-// --- Layout computation ---
-
-type LeafEntry = { id: string; node: PaneLeaf; rect: Rect };
-type HandleEntry = {
-  key: string;
-  path: number[];
-  direction: 'horizontal' | 'vertical';
-  rect: Rect;
-  splitRect: Rect;
-};
-type Layout = { leaves: LeafEntry[]; handles: HandleEntry[] };
-
-function computeLayout(node: PaneNode, rect: Rect, path: number[]): Layout {
-  if (node.type === 'leaf') {
-    return { leaves: [{ id: node.id, node, rect }], handles: [] };
-  }
-
-  const r = node.ratio;
-  const isH = node.direction === 'horizontal';
-
-  let leftRect: Rect, handleRect: Rect, rightRect: Rect;
-
-  if (isH) {
-    const leftW = addCV(scaleCV(rect.width, r), cv(0, -HALF_HANDLE));
-    const hLeft = addCV(rect.left, leftW);
-    const rLeft = addCV(hLeft, cv(0, HANDLE_PX));
-    const rightW = addCV(scaleCV(rect.width, 1 - r), cv(0, -HALF_HANDLE));
-
-    leftRect = { top: rect.top, left: rect.left, width: leftW, height: rect.height };
-    handleRect = { top: rect.top, left: hLeft, width: cv(0, HANDLE_PX), height: rect.height };
-    rightRect = { top: rect.top, left: rLeft, width: rightW, height: rect.height };
-  } else {
-    const topH = addCV(scaleCV(rect.height, r), cv(0, -HALF_HANDLE));
-    const hTop = addCV(rect.top, topH);
-    const bTop = addCV(hTop, cv(0, HANDLE_PX));
-    const botH = addCV(scaleCV(rect.height, 1 - r), cv(0, -HALF_HANDLE));
-
-    leftRect = { top: rect.top, left: rect.left, width: rect.width, height: topH };
-    handleRect = { top: hTop, left: rect.left, width: rect.width, height: cv(0, HANDLE_PX) };
-    rightRect = { top: bTop, left: rect.left, width: rect.width, height: botH };
-  }
-
-  const left = computeLayout(node.children[0], leftRect, [...path, 0]);
-  const right = computeLayout(node.children[1], rightRect, [...path, 1]);
-
-  return {
-    leaves: [...left.leaves, ...right.leaves],
-    handles: [
-      ...left.handles,
-      ...right.handles,
-      {
-        key: path.join('-') || 'root',
-        path,
-        direction: node.direction,
-        rect: handleRect,
-        splitRect: rect
-      }
-    ]
-  };
-}
-
 // The canvas gutter is 8px, and two things already contribute to it between a
 // pair of panes: each leaf's own padding, twice, plus the HANDLE_PX seam the
 // split maths carves out for the resize handle. So the leaf padding is what is
@@ -150,15 +60,7 @@ function computeLayout(node: PaneNode, rect: Rect, path: number[]): Layout {
 const PANE_GUTTER = 'p-px';
 const GRID_INSET = 'p-[7px]';
 
-function rectStyle(rect: Rect): React.CSSProperties {
-  return {
-    position: 'absolute',
-    top: toCSS(rect.top),
-    left: toCSS(rect.left),
-    width: toCSS(rect.width),
-    height: toCSS(rect.height)
-  };
-}
+const NO_PANE_FOCUS = (): void => {};
 
 // --- Components ---
 
@@ -300,18 +202,24 @@ function ViewerPane({
   }
 }
 
-type TerminalLeafProps = {
-  paneId: string;
-  node: PaneLeaf;
-  isActive: boolean;
-  onPaneFocus: (paneId: string) => void;
-  serializedContent?: string;
+/** What panes read from settings. Passed through untouched. */
+type PaneView = {
   fontFamily?: string;
   fontSize?: number;
   scrollbackSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
   slideshowFrame?: SlideshowFrame;
+};
+
+type PaneContentProps = PaneView & {
+  paneId: string;
+  node: PaneLeaf;
+  isActive: boolean;
+  onPaneFocus: (paneId: string) => void;
+  /** Unset when this pane has to stay in its tab. */
+  onMoveToTab?: () => void;
+  serializedContent?: string;
 };
 
 /*
@@ -327,6 +235,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
   node,
   isActive,
   onPaneFocus,
+  onMoveToTab,
   serializedContent,
   fontFamily,
   fontSize,
@@ -334,7 +243,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
   terminalTheme,
   terminalBackground,
   slideshowFrame
-}: TerminalLeafProps): React.JSX.Element {
+}: PaneContentProps): React.JSX.Element {
   const splitPane = useWorkspaceStore((s) => s.splitPane);
   const closePane = useWorkspaceStore((s) => s.closePane);
 
@@ -364,6 +273,7 @@ const TerminalLeaf = memo(function TerminalLeaf({
       onSplitHorizontal={handleSplitHorizontal}
       onSplitVertical={handleSplitVertical}
       onClose={handleClose}
+      onMoveToTab={onMoveToTab}
       shellProfileId={node.shellProfileId}
       cmd={node.cmd}
       typeOnStart={node.typeOnStart}
@@ -371,180 +281,218 @@ const TerminalLeaf = memo(function TerminalLeaf({
   );
 });
 
-type PaneGridProps = {
-  root: PaneNode;
+function PaneContent({
+  paneId,
+  node,
+  isActive,
+  onPaneFocus,
+  onMoveToTab,
+  serializedContent,
+  ...view
+}: PaneContentProps): React.JSX.Element {
+  switch (node.paneType) {
+    // No paneType is the legacy terminal leaf.
+    case undefined:
+    case 'terminal':
+      return (
+        <div className="flex-1 min-h-0">
+          {/* The title bar is the terminal's own now, so that the pane
+              actions can live in it instead of over the output. */}
+          <TerminalLeaf
+            paneId={paneId}
+            node={node}
+            isActive={isActive}
+            onPaneFocus={onPaneFocus}
+            onMoveToTab={onMoveToTab}
+            serializedContent={serializedContent}
+            {...view}
+          />
+        </div>
+      );
+    case 'agent':
+      return (
+        <AgentPane
+          paneId={paneId}
+          cwd={node.cwd}
+          sessionId={node.agentSessionId}
+          terminalBackground={view.terminalBackground}
+          slideshowFrame={view.slideshowFrame}
+        />
+      );
+    case 'ssh-browser':
+      return node.remoteHost ? (
+        <SshBrowserPane paneId={paneId} host={node.remoteHost} initialPath={node.remotePath} />
+      ) : (
+        <UnsupportedPane paneType={node.paneType} />
+      );
+    case 'file':
+    case 'markdown':
+    case 'image':
+    case 'pdf':
+    case 'media': {
+      const viewerType = node.paneType;
+      const remote =
+        node.remoteHost && node.remotePath
+          ? { host: node.remoteHost, path: node.remotePath }
+          : null;
+      // Remote files are materialised into the local cache first, so every
+      // viewer below sees an ordinary local path and needs no SSH awareness.
+      return remote ? (
+        <RemoteFileGate host={remote.host} remotePath={remote.path}>
+          {(fetched) => (
+            <ViewerPane
+              paneType={viewerType}
+              paneId={paneId}
+              filePath={fetched.localPath}
+              remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
+            />
+          )}
+        </RemoteFileGate>
+      ) : (
+        <ViewerPane
+          paneType={viewerType}
+          paneId={paneId}
+          filePath={node.filePath ?? ''}
+          pathContext={node.pathContext}
+          openTarget={node.openTarget}
+        />
+      );
+    }
+    default: {
+      // A paneType added to the union without a branch above fails to
+      // typecheck here. At runtime this is a value from older saved data.
+      const unhandled: never = node.paneType;
+      return <UnsupportedPane paneType={String(unhandled)} />;
+    }
+  }
+}
+
+type StagedPaneProps = Omit<PaneContentProps, 'onMoveToTab'> & {
+  canMove: boolean;
+  top: string | number | undefined;
+  left: string | number | undefined;
+  width: string | number | undefined;
+  height: string | number | undefined;
+  visible: boolean;
+};
+
+/*
+ * The memo boundary for one pane. The rect arrives as four strings rather than
+ * an object because a split elsewhere in the tab builds new rect objects with
+ * the same values, and every pane of every tab renders through this one parent.
+ */
+const StagedPane = memo(function StagedPane({
+  top,
+  left,
+  width,
+  height,
+  visible,
+  canMove,
+  ...content
+}: StagedPaneProps): React.JSX.Element {
+  const { paneId, node, isActive, onPaneFocus } = content;
+  const isTerminal = isTerminalLeaf(node);
+  const movePane = useWorkspaceStore((s) => s.movePaneToNewTab);
+  const moveToTab = useCallback(() => movePane(paneId), [movePane, paneId]);
+
+  return (
+    <div
+      className={PANE_GUTTER}
+      style={{
+        position: 'absolute',
+        top,
+        left,
+        width,
+        height,
+        display: visible ? undefined : 'none',
+        // Keeps the focused card's shadow above its neighbours. DOM order can't
+        // be relied on for that: it follows pane ids, not the layout.
+        zIndex: isActive ? 1 : undefined
+      }}
+    >
+      {/* No PaneHeader: the non-terminal panes own their chrome, and the
+          terminal draws its own title bar with the glyph in it. */}
+      <PaneFrame
+        paneId={paneId}
+        isActive={isActive}
+        showGlyph={false}
+        onPaneFocus={isTerminal ? undefined : onPaneFocus}
+      >
+        <Suspense fallback={PANE_FALLBACK}>
+          <PaneContent {...content} onMoveToTab={canMove ? moveToTab : undefined} />
+        </Suspense>
+        {canMove && !isTerminal && <MovePaneButton onClick={moveToTab} />}
+      </PaneFrame>
+    </div>
+  );
+});
+
+type PaneGridProps = PaneView & {
+  tabs: PaneGridTab[];
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
-  serializedPanes?: Map<string, string>;
-  fontFamily?: string;
-  fontSize?: number;
-  scrollbackSize?: number;
-  terminalTheme?: TerminalThemeId;
-  terminalBackground?: TerminalBackground;
-  slideshowFrame?: SlideshowFrame;
 };
 
 function PaneGridImpl({
-  root,
+  tabs,
   activePaneId,
   onPaneFocus,
-  serializedPanes,
-  fontFamily,
-  fontSize,
-  scrollbackSize,
-  terminalTheme,
-  terminalBackground,
-  slideshowFrame
+  ...view
 }: PaneGridProps): React.JSX.Element {
   const gridRef = useRef<HTMLDivElement>(null);
-
-  // Stable reference — never changes, safe to omit from deps.
-  const fullRect = useRef<Rect>({
-    top: cv(0, 0),
-    left: cv(0, 0),
-    width: cv(100, 0),
-    height: cv(100, 0)
-  });
-
-  const layout = useMemo(() => computeLayout(root, fullRect.current, []), [root]);
+  const shownTab = tabs.find((tab) => tab.visible);
 
   return (
-    <div className={`h-full w-full ${GRID_INSET}`}>
+    <div
+      className={`absolute inset-0 ${GRID_INSET}`}
+      style={{ display: shownTab ? 'block' : 'none' }}
+    >
       <div ref={gridRef} className="h-full w-full" style={{ position: 'relative' }}>
-        {/* Terminal panes — flat keyed siblings, never unmounted by tree changes */}
-        {layout.leaves.map((leaf) => {
-          const node = leaf.node;
-          const isActive = leaf.id === activePaneId;
-          const frame = (content: React.ReactNode): React.JSX.Element => (
-            <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-              {/* No PaneHeader: the non-terminal panes own their chrome. */}
-              <PaneFrame
-                paneId={leaf.id}
-                isActive={isActive}
-                showGlyph={false}
-                onPaneFocus={onPaneFocus}
-              >
-                <Suspense fallback={PANE_FALLBACK}>{content}</Suspense>
-              </PaneFrame>
-            </div>
+        {/* All panes are flat keyed siblings: a tab only decides where each sits. */}
+        {paneSlots(tabs).map(({ tab, leaf }) => {
+          const { top, left, width, height } = rectStyle(leaf.rect);
+          return (
+            <StagedPane
+              key={leaf.id}
+              paneId={leaf.id}
+              node={leaf.node}
+              top={top}
+              left={left}
+              width={width}
+              height={height}
+              visible={tab.visible}
+              isActive={tab.visible && leaf.id === activePaneId}
+              canMove={tab.canMovePanes}
+              onPaneFocus={tab.background ? NO_PANE_FOCUS : onPaneFocus}
+              serializedContent={tab.serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
+              {...view}
+            />
           );
-          switch (node.paneType) {
-            // No paneType is the legacy terminal leaf.
-            case undefined:
-            case 'terminal':
-              return (
-                <div key={leaf.id} className={PANE_GUTTER} style={rectStyle(leaf.rect)}>
-                  {/* The glyph moved into the title bar, which the terminal draws
-                    itself - leaving it here too would put it under the actions. */}
-                  <PaneFrame paneId={leaf.id} isActive={isActive} showGlyph={false}>
-                    <div className="flex-1 min-h-0">
-                      {/* The title bar is the terminal's own now, so that the pane
-                        actions can live in it instead of over the output. */}
-                      <TerminalLeaf
-                        paneId={leaf.id}
-                        node={node}
-                        isActive={isActive}
-                        onPaneFocus={onPaneFocus}
-                        serializedContent={serializedPanes?.get(leaf.id) ?? node.serializedContent}
-                        fontFamily={fontFamily}
-                        fontSize={fontSize}
-                        scrollbackSize={scrollbackSize}
-                        terminalTheme={terminalTheme}
-                        terminalBackground={terminalBackground}
-                        slideshowFrame={slideshowFrame}
-                      />
-                    </div>
-                  </PaneFrame>
-                </div>
-              );
-            case 'agent':
-              return frame(
-                <AgentPane
-                  paneId={leaf.id}
-                  cwd={node.cwd}
-                  sessionId={node.agentSessionId}
-                  terminalBackground={terminalBackground}
-                  slideshowFrame={slideshowFrame}
-                />
-              );
-            case 'ssh-browser':
-              return frame(
-                node.remoteHost ? (
-                  <SshBrowserPane
-                    paneId={leaf.id}
-                    host={node.remoteHost}
-                    initialPath={node.remotePath}
-                  />
-                ) : (
-                  <UnsupportedPane paneType={node.paneType} />
-                )
-              );
-            case 'file':
-            case 'markdown':
-            case 'image':
-            case 'pdf':
-            case 'media': {
-              const viewerType = node.paneType;
-              const remote =
-                node.remoteHost && node.remotePath
-                  ? { host: node.remoteHost, path: node.remotePath }
-                  : null;
-              // Remote files are materialised into the local cache first, so every
-              // viewer below sees an ordinary local path and needs no SSH awareness.
-              return frame(
-                remote ? (
-                  <RemoteFileGate host={remote.host} remotePath={remote.path}>
-                    {(fetched) => (
-                      <ViewerPane
-                        paneType={viewerType}
-                        paneId={leaf.id}
-                        filePath={fetched.localPath}
-                        remote={{ ...remote, mtimeMs: fetched.mtimeMs }}
-                      />
-                    )}
-                  </RemoteFileGate>
-                ) : (
-                  <ViewerPane
-                    paneType={viewerType}
-                    paneId={leaf.id}
-                    filePath={node.filePath ?? ''}
-                    pathContext={node.pathContext}
-                    openTarget={node.openTarget}
-                  />
-                )
-              );
-            }
-            default: {
-              // A paneType added to the union without a branch above fails to
-              // typecheck here. At runtime this is a value from older saved data.
-              const unhandled: never = node.paneType;
-              return frame(<UnsupportedPane paneType={String(unhandled)} />);
-            }
-          }
         })}
 
         {/* Resize handles */}
-        {layout.handles.map((h) => (
-          <AbsoluteResizeHandle
-            key={h.key}
-            direction={h.direction}
-            path={h.path}
-            rect={h.rect}
-            splitRect={h.splitRect}
-            gridRef={gridRef}
-          />
-        ))}
+        {shownTab &&
+          layoutOf(shownTab.root).handles.map((h) => (
+            <AbsoluteResizeHandle
+              key={h.key}
+              direction={h.direction}
+              path={h.path}
+              rect={h.rect}
+              splitRect={h.splitRect}
+              gridRef={gridRef}
+            />
+          ))}
       </div>
     </div>
   );
 }
 
 /*
- * Backstop for #541. Every tab renders a grid and all of them stay mounted, so
- * one whole-object workspace update used to re-render every pane in the app.
+ * Backstop for #541. Every pane of every tab renders from here, so one
+ * whole-object workspace update used to re-render every pane in the app.
  * The store guards are the real fix; this stops the next one that slips through.
  *
- * Requires callers to pass a stable `onPaneFocus` — see App.tsx.
+ * Requires callers to pass a stable `tabs` and `onPaneFocus` - see App.tsx.
  */
 export const PaneGrid = memo(PaneGridImpl);
 

@@ -22,6 +22,10 @@ jobs:
           go-version: '1.22'
           cache-dependency-path: hooks/fleet-copilot-go/go.mod
       - run: npm ci
+        env:
+          # Skips the GPU files from NuGet. CI does not use them, and a timeout
+          # on that download fails the whole install.
+          ONNXRUNTIME_NODE_INSTALL: skip
       - run: npm rebuild better-sqlite3
       - name: Build hook binary
         run: npm run build:hook

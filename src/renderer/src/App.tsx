@@ -22,11 +22,14 @@ import { Sidebar } from './components/Sidebar';
 import { TabStatusIndicator } from './components/TabStatusIndicator';
 import { Dashboard } from './components/Dashboard';
 import { PaneGrid } from './components/PaneGrid';
+import type { PaneGridTab } from './lib/pane-layout';
 import {
   useWorkspaceStore,
   collectPaneIds,
   collectPaneLeafs,
-  getPaneContextById
+  getPaneContextById,
+  isPinnedTab,
+  canMovePane
 } from './store/workspace-store';
 import { isScratchTab } from './lib/scratch';
 import { isFileTab } from './lib/tab-nesting';
@@ -133,7 +136,6 @@ function RailDivider(): React.JSX.Element {
 }
 
 /** Background-workspace grids are never focusable; hoisted so the prop is stable. */
-const NO_PANE_FOCUS = (): void => {};
 
 /**
  * Corner status dot for a rail tab — the same signal the sidebar row shows next
@@ -392,7 +394,7 @@ export function App(): React.JSX.Element {
     }))
   );
   // Stable so the memoized PaneGrid can actually skip; an inline arrow here
-  // would hand every grid a new prop on every App render (#541).
+  // would hand the grid a new prop on every App render (#541).
   const handlePaneFocus = useCallback(
     (paneId: string) => {
       setActivePane(paneId);
@@ -421,6 +423,31 @@ export function App(): React.JSX.Element {
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
+
+  // Everything the grid draws, in one list: a pane stays mounted when it changes
+  // tabs only because all tabs share that one parent. Tool tabs are not panes -
+  // they render by type below, and a grid would spawn a shell for their leaf.
+  const paneTabs = useMemo<PaneGridTab[]>(() => {
+    const drawn = (tab: Tab): boolean => !isPinnedTab(tab) && isTabMounted(tab.id);
+    const foreground = workspace.tabs.filter(drawn).map((tab) => ({
+      id: tab.id,
+      root: tab.splitRoot,
+      visible: tab.id === activeTabId,
+      background: false,
+      canMovePanes: canMovePane(tab),
+      serializedPanes: restoredPanesRef.current.get(tab.id)
+    }));
+    const background = Array.from(backgroundWorkspaces.values())
+      .flatMap((bgWs) => bgWs.tabs.filter(drawn))
+      .map((tab) => ({
+        id: tab.id,
+        root: tab.splitRoot,
+        visible: false,
+        background: true,
+        canMovePanes: false
+      }));
+    return [...foreground, ...background];
+  }, [workspace.tabs, backgroundWorkspaces, activeTabId, isTabMounted]);
 
   // Clean up consumed entries after mount (can't delete during render due to StrictMode)
   useEffect(() => {
@@ -1113,55 +1140,22 @@ export function App(): React.JSX.Element {
           <main className="flex-1 min-w-0 relative overflow-hidden">
             {/* Active tab content — show empty state when no tab is selected */}
             {activeTabId ? (
-              workspace.tabs.map((tab) => {
-                const serializedPanes = restoredPanesRef.current.get(tab.id);
-                return (
-                  <div
-                    key={tab.id}
-                    className="h-full w-full"
-                    style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-                  >
-                    {tab.type === 'annotate' ? (
-                      <ToolPaneFrame overCanvas={canvasActive}>
-                        <Suspense fallback={null}>
-                          <AnnotateTab />
-                        </Suspense>
-                      </ToolPaneFrame>
-                    ) : tab.type === 'settings' ? (
-                      <ToolPaneFrame overCanvas={canvasActive}>
-                        <Suspense fallback={null}>
-                          <SettingsTab />
-                        </Suspense>
-                      </ToolPaneFrame>
-                    ) : tab.type === 'sessions' ? (
-                      <ToolPaneFrame overCanvas={canvasActive}>
-                        <Suspense fallback={null}>
-                          <SessionsTab />
-                        </Suspense>
-                      </ToolPaneFrame>
-                    ) : tab.type === 'workflows' ? (
-                      <ToolPaneFrame overCanvas={canvasActive}>
-                        <Suspense fallback={null}>
-                          <WorkflowsTab />
-                        </Suspense>
-                      </ToolPaneFrame>
-                    ) : isTabMounted(tab.id) ? (
-                      <PaneGrid
-                        root={tab.splitRoot}
-                        activePaneId={tab.id === activeTabId ? activePaneId : null}
-                        onPaneFocus={handlePaneFocus}
-                        serializedPanes={serializedPanes}
-                        fontFamily={settings?.general.fontFamily}
-                        fontSize={settings?.general.fontSize}
-                        scrollbackSize={settings?.general.scrollbackSize}
-                        terminalTheme={settings?.general.terminalTheme}
-                        terminalBackground={settings?.general.terminalBackground}
-                        slideshowFrame={slideshowFrame}
-                      />
-                    ) : null}
-                  </div>
-                );
-              })
+              workspace.tabs.filter(isPinnedTab).map((tab) => (
+                <div
+                  key={tab.id}
+                  className="h-full w-full"
+                  style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+                >
+                  <ToolPaneFrame overCanvas={canvasActive}>
+                    <Suspense fallback={null}>
+                      {tab.type === 'annotate' && <AnnotateTab />}
+                      {tab.type === 'settings' && <SettingsTab />}
+                      {tab.type === 'sessions' && <SessionsTab />}
+                      {tab.type === 'workflows' && <WorkflowsTab />}
+                    </Suspense>
+                  </ToolPaneFrame>
+                </div>
+              ))
             ) : (
               <Dashboard
                 recentFiles={recentFiles}
@@ -1171,28 +1165,20 @@ export function App(): React.JSX.Element {
                 onOpenFolder={(folderPath) => addTab(undefined, folderPath)}
               />
             )}
-            {/* Background workspace tabs (hidden, keep PTYs warm). They join the
-                mount queue rather than render with the first frame (#621). */}
-            {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
-              bgWs.tabs
-                .filter((tab) => isTabMounted(tab.id))
-                .map((tab) => (
-                  <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
-                    <PaneGrid
-                      root={tab.splitRoot}
-                      activePaneId={null}
-                      onPaneFocus={NO_PANE_FOCUS}
-                      serializedPanes={undefined}
-                      fontFamily={settings?.general.fontFamily}
-                      fontSize={settings?.general.fontSize}
-                      scrollbackSize={settings?.general.scrollbackSize}
-                      terminalTheme={settings?.general.terminalTheme}
-                      terminalBackground={settings?.general.terminalBackground}
-                      slideshowFrame={slideshowFrame}
-                    />
-                  </div>
-                ))
-            )}
+            {/* Every pane of every tab and workspace. Hidden ones keep PTYs warm,
+                and they join the mount queue rather than render with the first
+                frame (#621). */}
+            <PaneGrid
+              tabs={paneTabs}
+              activePaneId={activePaneId}
+              onPaneFocus={handlePaneFocus}
+              fontFamily={settings?.general.fontFamily}
+              fontSize={settings?.general.fontSize}
+              scrollbackSize={settings?.general.scrollbackSize}
+              terminalTheme={settings?.general.terminalTheme}
+              terminalBackground={settings?.general.terminalBackground}
+              slideshowFrame={slideshowFrame}
+            />
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-lg text-sm duration-150 animate-in fade-in-0 slide-in-from-bottom-2">

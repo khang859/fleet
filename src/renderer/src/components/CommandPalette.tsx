@@ -24,7 +24,7 @@ import {
 import { rankIds } from '../lib/frecency';
 import { useCommandFrecencyStore } from '../store/command-frecency-store';
 import { useNotificationStore } from '../store/notification-store';
-import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { useWorkspaceStore, collectPaneIds, canMovePane } from '../store/workspace-store';
 import { useSettingsStore } from '../store/settings-store';
 
 type CommandPaletteProps = {
@@ -82,6 +82,15 @@ function ItemRow({
       )}
     </CommandItem>
   );
+}
+
+function moveToTabItem(paneId: string): PaletteItem {
+  return {
+    id: 'move-to-tab',
+    label: 'Move to New Tab',
+    section: 'command',
+    run: () => useWorkspaceStore.getState().movePaneToNewTab(paneId)
+  };
 }
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.JSX.Element {
@@ -233,6 +242,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.
         section: 'command',
         run: () => ws.splitPane(paneId, 'vertical')
       },
+      ...(loc && canMovePane(loc.tab) ? [moveToTabItem(paneId)] : []),
       {
         id: 'rename',
         label: 'Rename Pane',

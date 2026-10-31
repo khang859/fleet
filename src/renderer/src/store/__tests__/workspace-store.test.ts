@@ -4,11 +4,12 @@ import {
   collectPaneLeafs,
   collectPaneIds,
   agentSessionsInUse,
-  registerPaneDisposer
+  registerPaneDisposer,
+  canMovePane
 } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
 import { scratchDir, isScratchTab } from '../../lib/scratch';
-import type { Workspace } from '../../../../shared/types';
+import type { PaneLeaf, PaneNode, Tab, Workspace } from '../../../../shared/types';
 
 const ANNOTATE_TAB_A = {
   id: 'tab-ann-a',
@@ -1307,6 +1308,12 @@ describe('openFile — nesting under a session', () => {
     });
   });
 
+  it('names a Windows file by its file name', () => {
+    useWorkspaceStore.getState().openFile('C:\\repo\\src\\file.ts', 'win32');
+    const { tabs } = useWorkspaceStore.getState().workspace;
+    expect(tabs.find((tab) => tab.type === 'file')?.label).toBe('file.ts');
+  });
+
   it('parents the file on the active session and inserts it right below', () => {
     useWorkspaceStore.getState().openFile('/repo/proj/a.ts');
 
@@ -1609,5 +1616,183 @@ describe('moveAgentTab', () => {
     agentTab({ type: 'terminal' });
     useWorkspaceStore.getState().moveAgentTab(PANE, '/dev/fleet');
     expect(moved().cwd).toBe(scratchDir());
+  });
+});
+
+describe('movePaneToNewTab', () => {
+  const pane = (id: string, extra: Partial<PaneLeaf> = {}): PaneLeaf => ({
+    type: 'leaf',
+    id,
+    cwd: `/${id}`,
+    ...extra
+  });
+  const split = (a: PaneNode, b: PaneNode): PaneNode => ({
+    type: 'split',
+    direction: 'horizontal',
+    ratio: 0.5,
+    children: [a, b]
+  });
+  const tabOf = (id: string, splitRoot: PaneNode, extra: Partial<Tab> = {}): Tab => ({
+    id,
+    label: id,
+    labelIsCustom: false,
+    cwd: '/first',
+    splitRoot,
+    ...extra
+  });
+  const seed = (tabs: Tab[], activePaneId = 'first'): void => {
+    useWorkspaceStore.setState({
+      workspace: { id: 'ws', label: 'ws', tabs },
+      activeTabId: tabs[0].id,
+      activePaneId,
+      isDirty: false
+    });
+  };
+  const tabs = (): Tab[] => useWorkspaceStore.getState().workspace.tabs;
+  const move = (paneId: string): string | null =>
+    useWorkspaceStore.getState().movePaneToNewTab(paneId);
+  const twoPanes = split(pane('first'), pane('second'));
+
+  it('moves the same leaf out, right after its tab, and shows it', () => {
+    const leaf = pane('second', { shellProfileId: 'zsh', pathContext: 'posix' });
+    seed([tabOf('src', split(pane('first'), leaf)), tabOf('next', pane('other'))]);
+
+    const newTabId = move('second');
+
+    expect(tabs().map((t) => t.id)).toEqual(['src', newTabId, 'next']);
+    expect(tabs()[0].splitRoot).toEqual(pane('first'));
+    expect(tabs()[1].splitRoot).toBe(leaf);
+    expect(tabs()[1].shellProfileId).toBe('zsh');
+    const state = useWorkspaceStore.getState();
+    expect(state.activeTabId).toBe(newTabId);
+    expect(state.activePaneId).toBe('second');
+    expect(state.isDirty).toBe(true);
+  });
+
+  it('never disposes the pane, so an agent turn keeps running', () => {
+    const disposed = vi.fn();
+    registerPaneDisposer(disposed);
+    seed([tabOf('src', twoPanes)]);
+    move('second');
+    expect(disposed).not.toHaveBeenCalled();
+  });
+
+  it('names a terminal after its live folder', () => {
+    useCwdStore.setState({ cwds: new Map([['second', '/live/project']]) });
+    seed([tabOf('src', twoPanes)]);
+    move('second');
+    expect(tabs()[1]).toMatchObject({
+      label: 'project',
+      labelIsCustom: false,
+      cwd: '/live/project'
+    });
+    expect(tabs()[1].type).toBeUndefined();
+  });
+
+  it('carries a custom pane name to the tab', () => {
+    const named = pane('second', { label: 'server', labelIsCustom: true });
+    seed([tabOf('src', split(pane('first'), named))]);
+    move('second');
+    expect(tabs()[1]).toMatchObject({ label: 'server', labelIsCustom: true });
+  });
+
+  it('points the source tab at its first remaining pane', () => {
+    seed([tabOf('src', twoPanes)]);
+    move('first');
+    expect(tabs()[0]).toMatchObject({ cwd: '/second', label: 'second' });
+  });
+
+  it('turns an agent tab into a terminal tab once its agent leaves', () => {
+    const agent = pane('agent', { paneType: 'agent', agentSessionId: 's1' });
+    seed([tabOf('src', split(agent, pane('term')), { type: 'agent', labelIsCustom: true })]);
+
+    move('agent');
+
+    expect(tabs()[0]).toMatchObject({ type: 'terminal', labelIsCustom: false, label: 'term' });
+    expect(tabs()[1]).toMatchObject({ type: 'agent', labelIsCustom: true, label: 'agent' });
+  });
+
+  it('turns a file tab into a terminal tab once its file leaves', () => {
+    const file = pane('f', { paneType: 'file', filePath: '/repo/a.ts', cwd: '/' });
+    seed([tabOf('src', split(file, pane('term')), { type: 'file', labelIsCustom: true })]);
+
+    move('f');
+
+    expect(tabs()[0]).toMatchObject({ type: 'terminal', cwd: '/term', label: 'term' });
+    expect(tabs()[1]).toMatchObject({ type: 'file', label: 'a.ts', cwd: '/' });
+  });
+
+  it('names a moved Windows file by its file name', () => {
+    const file = pane('f', {
+      paneType: 'file',
+      filePath: 'C:\\repo\\src\\file.ts',
+      pathContext: 'win32',
+      cwd: '/'
+    });
+    seed([tabOf('src', split(pane('first'), file))]);
+
+    move('f');
+
+    expect(tabs()[1]).toMatchObject({ label: 'file.ts', labelIsCustom: true });
+  });
+
+  it('nests a file that leaves a session under that session', () => {
+    const file = pane('f', { paneType: 'file', filePath: '/repo/a.ts', cwd: '/' });
+    seed([tabOf('src', split(pane('first'), file))]);
+    move('f');
+    expect(tabs()[1].parentTabId).toBe('src');
+  });
+
+  it('lands after the source tab and its nested files', () => {
+    const nested = tabOf('nested', pane('n', { paneType: 'file' }), {
+      type: 'file',
+      parentTabId: 'src'
+    });
+    seed([tabOf('src', twoPanes), nested, tabOf('next', pane('other'))]);
+    const newTabId = move('second');
+    expect(tabs().map((t) => t.id)).toEqual(['src', 'nested', newTabId, 'next']);
+  });
+
+  it('lands after the whole worktree group of a parent tab', () => {
+    const parent = tabOf('src', twoPanes, { groupId: 'g', groupRole: 'parent' });
+    const worktree = tabOf('wt', pane('w'), {
+      groupId: 'g',
+      groupRole: 'worktree',
+      worktreePath: '/wt'
+    });
+    seed([parent, worktree]);
+
+    const newTabId = move('second');
+
+    expect(tabs().map((t) => t.id)).toEqual(['src', 'wt', newTabId]);
+    expect(tabs()[2].groupId).toBeUndefined();
+  });
+
+  it('stays in the user group, unless it is an agent', () => {
+    const agent = pane('agent', { paneType: 'agent' });
+    seed([tabOf('src', split(pane('term'), agent), { userGroupId: 'u' })]);
+    move('term');
+    expect(tabs()[1].userGroupId).toBe('u');
+
+    seed([tabOf('src', split(pane('term'), agent), { userGroupId: 'u' })]);
+    move('agent');
+    expect(tabs()[1].userGroupId).toBeUndefined();
+  });
+
+  it.each([
+    ['a lone pane', tabOf('src', pane('first'))],
+    ['a worktree tab', tabOf('src', twoPanes, { worktreePath: '/wt' })],
+    ['a pinned tab', tabOf('src', twoPanes, { type: 'settings' })]
+  ])('refuses %s', (_name, tab) => {
+    seed([tab]);
+    expect(canMovePane(tab)).toBe(false);
+    expect(move('first')).toBeNull();
+    expect(tabs()).toEqual([tab]);
+    expect(useWorkspaceStore.getState().isDirty).toBe(false);
+  });
+
+  it('ignores a pane that is not in this workspace', () => {
+    seed([tabOf('src', twoPanes)]);
+    expect(move('elsewhere')).toBeNull();
   });
 });

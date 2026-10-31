@@ -39,10 +39,13 @@ Both only needed actions, which are stable references. `usePaneNavigation` also 
 ## The trap in the backstop
 
 `memo(TerminalPane)` on its own would have been inert.
-Its `onFocus`/`onSplitHorizontal`/`onSplitVertical`/`onClose` handlers can only be built per leaf, so inlining them inside `layout.leaves.map(...)` hands it four new functions on every grid render.
+Its `onFocus`/`onSplitHorizontal`/`onSplitVertical`/`onClose` handlers can only be built per leaf, so inlining them inside the grid's map hands it four new functions on every grid render.
 The memo boundary has to be a component that *owns* those handlers - hence `TerminalLeaf` - so `useCallback` has somewhere to live.
 
-Same trap one level up: `memo(PaneGrid)` needs `App` to pass a `useCallback`'d `onPaneFocus` and a hoisted constant for the background-workspace no-op, or it never skips.
+Same trap one level up: `memo(PaneGrid)` needs `App` to pass a `useCallback`'d `onPaneFocus` and a `useMemo`'d `tabs`, or it never skips.
+
+The grid now draws every pane of every tab, so each pane has its own boundary too: `StagedPane`.
+It takes its rect as four strings, because a split elsewhere builds new rect objects with the same values.
 
 ## How it was verified
 
