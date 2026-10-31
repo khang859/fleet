@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SettingsStore, migrateLegacyScrollback } from '../settings-store';
 import { DEFAULT_SCROLLBACK } from '../../shared/types';
+import type { AgentChoice } from '../../shared/agents';
 // Mock electron-store, seeding `defaults` like the real lib does.
 //
 // `reads` and `fireChange` are what let the caching in SettingsStore be tested
@@ -60,6 +61,19 @@ describe('SettingsStore settings merge', () => {
     store.set({ general: { clickOpensLinks: true } });
     store.set({ general: { fontSize: 16 } });
     expect(store.get().general.clickOpensLinks).toBe(true);
+  });
+
+  it('has no default agent until one is set, and keeps it across other writes', () => {
+    expect(store.get().general.defaultAgent).toBeNull();
+    store.set({ general: { defaultAgent: 'pi', customAgentCommand: 'codex' } });
+    store.set({ general: { fontSize: 16 } });
+    expect(store.get().general.defaultAgent).toBe('pi');
+    expect(store.get().general.customAgentCommand).toBe('codex');
+  });
+
+  it('reads an agent it does not know as not set', () => {
+    store.set({ general: { defaultAgent: 'eva' as AgentChoice } });
+    expect(store.get().general.defaultAgent).toBeNull();
   });
 
   it('merges partial general changes without stale full-object overwrites', () => {

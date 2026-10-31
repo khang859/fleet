@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Command as CommandPrimitive } from 'cmdk';
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
+import { Bot, Check, ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import { popperAnim } from '../../lib/motion';
 import { Overlay } from '../Overlay';
 import { cleanIpcError } from '../../lib/ipc-error';
+import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { useToastStore } from '../../store/toast-store';
+import { agentOptions, isFirstAgentPick, worktreeStartText } from '../../../../shared/agents';
+import type { AgentChoice, AgentOption } from '../../../../shared/agents';
 import type {
   WorktreeCreateResponse,
   WorktreePrepareResponse,
@@ -25,11 +28,13 @@ export type WorktreeTarget = {
 const fieldClass =
   'w-full bg-fleet-surface-2 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle focus-ring';
 
+const panelClass = `z-50 w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg border border-fleet-border-strong bg-fleet-surface shadow-xl ${popperAnim}`;
+
 /** Opens the new worktree in a group with its tab, and says which listed files were not copied. */
 function openWorktree(
   target: WorktreeTarget,
   made: WorktreeCreateResponse,
-  setupCommand: string | undefined
+  startText: string | undefined
 ): void {
   useWorkspaceStore
     .getState()
@@ -38,7 +43,7 @@ function openWorktree(
       made.worktreePath,
       made.branchName,
       target.repoPath,
-      setupCommand
+      startText
     );
   if (made.skipped.length > 0) {
     const list = made.skipped.map((s) => `${s.path} (${s.reason})`).join(', ');
@@ -46,11 +51,19 @@ function openWorktree(
   }
 }
 
+/** Makes the agent just started the default, when there is no default yet. */
+function rememberFirstAgent(picked: AgentChoice): void {
+  const { settings, updateSettings } = useSettingsStore.getState();
+  if (settings && isFirstAgentPick(settings.general.defaultAgent, picked)) {
+    void updateSettings({ general: { defaultAgent: picked } });
+  }
+}
+
 /**
- * Names a new worktree and picks what it starts from, then makes it. The
- * repository's `.fleet/worktree.toml` setup, or what Fleet detects without one,
- * can be read here before it runs, so a command from a freshly cloned
- * repository never runs unseen.
+ * Names a new worktree and picks what it starts from and which agent runs in
+ * it, then makes it. The repository's `.fleet/worktree.toml` setup, or what
+ * Fleet detects without one, can be read here before it runs, so a command from
+ * a freshly cloned repository never runs unseen.
  */
 export function CreateWorktreeDialog({
   target,
@@ -63,9 +76,11 @@ export function CreateWorktreeDialog({
   const [branch, setBranch] = useState('');
   const [startFrom, setStartFrom] = useState('');
   const [runSetup, setRunSetup] = useState(true);
+  const [agent, setAgent] = useState<AgentChoice>('none');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const branchRef = useRef<HTMLInputElement>(null);
+  const customAgentCommand = useSettingsStore((s) => s.settings?.general.customAgentCommand ?? '');
 
   useEffect(() => {
     if (target === null) return;
@@ -74,6 +89,8 @@ export function CreateWorktreeDialog({
     setBranch('');
     setStartFrom('');
     setRunSetup(true);
+    // No default yet reads as None: nothing starts until someone picks an agent.
+    setAgent(useSettingsStore.getState().settings?.general.defaultAgent ?? 'none');
     setSubmitting(false);
     setError(null);
     window.fleet.worktree
@@ -95,6 +112,10 @@ export function CreateWorktreeDialog({
   const setupCommand = info?.setup?.setup ?? '';
   const canSubmit = target !== null && info !== null && startFrom !== '' && !submitting;
 
+  const agents = agentOptions(customAgentCommand);
+  // A custom default with no command left in Settings has no row, so it reads as None.
+  const pickedAgent = agents.find((option) => option.choice === agent) ?? agents[0];
+
   const handleCreate = async (): Promise<void> => {
     if (!canSubmit) return;
     setSubmitting(true);
@@ -106,7 +127,12 @@ export function CreateWorktreeDialog({
         branch: branch.trim() || undefined,
         startPoint: startFrom
       });
-      openWorktree(target, made, runSetup && setupCommand !== '' ? setupCommand : undefined);
+      openWorktree(
+        target,
+        made,
+        worktreeStartText(runSetup ? setupCommand : '', pickedAgent.command)
+      );
+      rememberFirstAgent(pickedAgent.choice);
       onClose();
     } catch (err) {
       setError(cleanIpcError(String(err)));
@@ -142,6 +168,13 @@ export function CreateWorktreeDialog({
         </div>
 
         <StartFromPicker info={info} value={startFrom} onChange={setStartFrom} />
+
+        <AgentPicker
+          options={agents}
+          picked={pickedAgent}
+          missing={info?.missingAgents ?? []}
+          onChange={setAgent}
+        />
 
         {target !== null && info !== null && (
           <SetupRow
@@ -219,12 +252,7 @@ function StartFromPicker({
           </button>
         </Popover.Trigger>
         {/* No portal: inside the dialog's focus trap, a portalled search box could not take focus. */}
-        <Popover.Content
-          side="bottom"
-          align="start"
-          sideOffset={4}
-          className={`z-50 w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-lg border border-fleet-border-strong bg-fleet-surface shadow-xl ${popperAnim}`}
-        >
+        <Popover.Content side="bottom" align="start" sideOffset={4} className={panelClass}>
           {/* Opens with the chosen ref highlighted, so Enter keeps it. */}
           <CommandPrimitive label="Start from" defaultValue={value}>
             <CommandPrimitive.Input
@@ -236,10 +264,16 @@ function StartFromPicker({
             />
             <CommandPrimitive.List className="max-h-[200px] overflow-y-auto p-1">
               {info?.refs.map((ref) => (
-                <RefItem key={ref} value={ref} selected={ref === value} onSelect={pick} />
+                <PickerItem key={ref} value={ref} selected={ref === value} onSelect={pick} />
               ))}
               {typed !== '' && !info?.refs.includes(typed) && (
-                <RefItem value={typed} label={`Use “${typed}”`} selected={false} onSelect={pick} />
+                <PickerItem
+                  value={typed}
+                  label={`Use “${typed}”`}
+                  alwaysShown
+                  selected={false}
+                  onSelect={pick}
+                />
               )}
             </CommandPrimitive.List>
           </CommandPrimitive>
@@ -249,27 +283,105 @@ function StartFromPicker({
   );
 }
 
-function RefItem({
+/**
+ * A one-line button that opens the short list of agents to start in the
+ * worktree. An agent Fleet did not find can still be picked: an alias is
+ * invisible from here, so "not found" is not proof it cannot run.
+ */
+function AgentPicker({
+  options,
+  picked,
+  missing,
+  onChange
+}: {
+  options: AgentOption[];
+  picked: AgentOption;
+  missing: AgentChoice[];
+  onChange: (choice: AgentChoice) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const pick = (choice: AgentChoice): void => {
+    onChange(choice);
+    setOpen(false);
+  };
+  const noteFor = (choice: AgentChoice): string | undefined =>
+    missing.includes(choice) ? 'Not found' : undefined;
+
+  return (
+    <div>
+      <label className="text-xs text-fleet-text-muted block mb-1">Agent</label>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <button type="button" className={`${fieldClass} flex items-center gap-2`}>
+            <Bot size={13} className="shrink-0 text-fleet-text-muted" />
+            <span className="flex-1 text-left truncate font-mono">{picked.label}</span>
+            <PickerNote text={noteFor(picked.choice)} />
+            <ChevronDown size={13} className="shrink-0 text-fleet-text-muted" />
+          </button>
+        </Popover.Trigger>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          className={panelClass}
+          // There is no search box to take focus, and the arrow keys need it in the list.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            listRef.current?.focus();
+          }}
+        >
+          <CommandPrimitive ref={listRef} label="Agent" defaultValue={picked.choice}>
+            <CommandPrimitive.List className="p-1">
+              {options.map((option) => (
+                <PickerItem
+                  key={option.choice}
+                  value={option.choice}
+                  label={option.label}
+                  note={noteFor(option.choice)}
+                  selected={option.choice === picked.choice}
+                  onSelect={() => pick(option.choice)}
+                />
+              ))}
+            </CommandPrimitive.List>
+          </CommandPrimitive>
+        </Popover.Content>
+      </Popover.Root>
+    </div>
+  );
+}
+
+function PickerNote({ text }: { text: string | undefined }): React.JSX.Element | null {
+  if (text === undefined) return null;
+  return <span className="shrink-0 text-xs text-fleet-text-subtle">{text}</span>;
+}
+
+function PickerItem({
   value,
   label,
+  note,
+  alwaysShown,
   selected,
   onSelect
 }: {
   value: string;
   label?: string;
+  note?: string;
+  /** For the typed-ref row: it matches whatever was typed, so it never filters out. */
+  alwaysShown?: boolean;
   selected: boolean;
-  onSelect: (ref: string) => void;
+  onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
     <CommandPrimitive.Item
       value={value}
-      // The typed-ref row matches whatever was typed, so it never filters out.
-      forceMount={label !== undefined}
+      forceMount={alwaysShown}
       onSelect={() => onSelect(value)}
       className="flex items-center gap-2 h-6 px-2 rounded text-xs text-fleet-text-secondary cursor-pointer select-none data-[selected=true]:bg-fleet-surface-3 data-[selected=true]:text-fleet-text"
     >
       <Check size={12} className={selected ? 'shrink-0 fleet-accent-text' : 'shrink-0 invisible'} />
-      <span className="truncate font-mono">{label ?? value}</span>
+      <span className="flex-1 truncate font-mono">{label ?? value}</span>
+      <PickerNote text={note} />
     </CommandPrimitive.Item>
   );
 }

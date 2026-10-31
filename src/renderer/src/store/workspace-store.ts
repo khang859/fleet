@@ -219,13 +219,13 @@ type WorkspaceStore = {
   collapsedGroups: Set<string>;
   worktreeCloseConfirm: { tabId: string; label: string } | null;
   setWorktreeCloseConfirm: (confirm: { tabId: string; label: string } | null) => void;
-  /** `setup` is typed into the worktree's terminal once its prompt is up. */
+  /** `startText` is typed into the worktree's terminal once its prompt is up. */
   createWorktreeGroup: (
     tabId: string,
     worktreePath: string,
     branchName: string,
     repoPath: string,
-    setup?: string
+    startText?: string
   ) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
@@ -829,8 +829,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  createWorktreeGroup: (tabId, worktreePath, branchName, repoPath, setup) => {
-    const leaf: PaneLeaf = { ...createLeaf(worktreePath), typeOnStart: setup };
+  createWorktreeGroup: (tabId, worktreePath, branchName, repoPath, startText) => {
+    const leaf: PaneLeaf = { ...createLeaf(worktreePath), typeOnStart: startText };
     const newGroupId = generateId();
 
     set((state) => {

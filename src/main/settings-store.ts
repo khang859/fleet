@@ -3,6 +3,7 @@ import type { CopilotWorkspaceOverride, FleetSettings, FleetSettingsPatch } from
 import { DEFAULT_SCROLLBACK } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
 import { readCompactThreshold } from '../shared/agent-context';
+import { readAgentChoice } from '../shared/agents';
 
 /**
  * Read the per-host answer to Fleet's "install the shell snippet?" offer.
@@ -154,6 +155,8 @@ export class SettingsStore {
       general: {
         ...DEFAULT_SETTINGS.general,
         ...saved.general,
+        // Checked here so a choice from a newer Fleet, or a hand edit, reads as not set.
+        defaultAgent: readAgentChoice(saved.general?.defaultAgent),
         terminalBackground: {
           ...DEFAULT_SETTINGS.general.terminalBackground,
           ...saved.general?.terminalBackground,

@@ -1,3 +1,4 @@
+import type { AgentChoice } from './agents';
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState, PathContext } from './shell-profiles';
 import type { OpenablePaneType } from './file-open';
@@ -291,6 +292,8 @@ export type WorktreePrepareResponse = WorktreeSetupInfo & {
   current: string | null;
   /** Local branches, then remote ones like `origin/main`, most recent commit first. */
   refs: string[];
+  /** The known agents not found on this machine. */
+  missingAgents: AgentChoice[];
 };
 
 export type WorktreeCreateRequest = {

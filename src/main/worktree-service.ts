@@ -6,6 +6,7 @@ import { execInContext } from './run-in-context';
 import { toWindowsAccessiblePath } from '../shared/path-platform';
 import { isWslContext, type PathContext } from '../shared/shell-profiles';
 import { WslService } from './wsl-service';
+import { missingAgents } from './worktree-agents';
 import { FLEET_HOME } from '../shared/constants';
 import type {
   WorktreeCopySkip,
@@ -313,17 +314,19 @@ export class WorktreeService {
 
   /** What the new-worktree dialog offers: the branches to start from, and the setup file. */
   async prepare(repoPath: string, ctx?: PathContext): Promise<WorktreePrepareResponse> {
-    const [current, local, remote, setup] = await Promise.all([
+    const [current, local, remote, setup, missing] = await Promise.all([
       this.git(ctx, repoPath, ['branch', '--show-current']),
       this.refNames(ctx, repoPath, 'refs/heads/'),
       this.refNames(ctx, repoPath, 'refs/remotes/'),
-      this.resolveSetup(repoPath, ctx)
+      this.resolveSetup(repoPath, ctx),
+      missingAgents(ctx)
     ]);
 
     return {
       current: current.trim() || null,
       // `origin/HEAD` only points at another remote branch.
       refs: [...local, ...remote.filter((ref) => !ref.endsWith('/HEAD'))],
+      missingAgents: missing,
       ...setup
     };
   }

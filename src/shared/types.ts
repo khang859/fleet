@@ -1,3 +1,4 @@
+import type { AgentChoice } from './agents';
 import type { PathContext } from './shell-profiles';
 import type { OpenablePaneType } from './file-open';
 import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
@@ -130,7 +131,7 @@ export type PaneLeaf = {
   serializedContent?: string;
   /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */
   cmd?: string;
-  /** One-shot text typed into the shell at its first prompt, like a worktree's setup. */
+  /** One-shot text typed into the shell at its first prompt, like a worktree's setup and agent. */
   typeOnStart?: string;
   label?: string;
   labelIsCustom?: boolean;
@@ -296,6 +297,13 @@ export type FleetSettings = {
      * Cmd/Ctrl+click. File paths take Cmd/Ctrl+click either way.
      */
     clickOpensLinks: boolean;
+    /**
+     * What the New worktree dialog starts with. It can be changed there for one
+     * worktree. Null until one is set: the first agent started there becomes it.
+     */
+    defaultAgent: AgentChoice | null;
+    /** The command behind the custom agent choice. Kept when another default is picked. */
+    customAgentCommand: string;
   };
   notifications: {
     taskComplete: { badge: boolean; sound: boolean; os: boolean };
