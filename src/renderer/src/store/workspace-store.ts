@@ -24,7 +24,6 @@ import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
 import { basename as pathBasename } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
-import type { FleetOpenTabRequest } from '../../../shared/fleet-tools';
 import type { RemoteHost } from '../../../shared/remote-ssh-types';
 import { useShellProfilesStore } from './shell-profiles-store';
 import { scratchDir, isScratchDir } from '../lib/scratch';
@@ -208,12 +207,6 @@ type WorkspaceStore = {
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
   openResumeTab: (cwd: string, cmd: string, label: string) => void;
-  /**
-   * Open a terminal tab on a pane id main chose, without taking focus from
-   * whatever the user is looking at. For `fleet_spawn`: main hands the pane's
-   * PTY its prompt by that id, so the prompt never enters the layout.
-   */
-  openTerminalTab: (req: Omit<FleetOpenTabRequest, 'requestId'>) => void;
   duplicateTab: (tabId: string) => string | null;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
@@ -270,8 +263,6 @@ type WorkspaceStore = {
    * comes back to after a restart rather than a choice that lasts a session.
    */
   setAgentSession: (paneId: string, sessionId: string, cwd?: string) => void;
-  /** Turn orchestrator mode on or off for an agent pane. Persisted with the layout. */
-  setAgentOrchestrator: (paneId: string, on: boolean) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -577,30 +568,6 @@ export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
 }
 
-/**
- * Whether an agent pane is in orchestrator mode, wherever it is: a pane in a
- * background workspace can still be mid-turn.
- */
-export function isOrchestratorPane(state: OpenWorkspaces, paneId: string): boolean {
-  return findLeafAnywhere(state, (l) => l.id === paneId)?.agentOrchestrator === true;
-}
-
-type OpenWorkspaces = { workspace: Workspace; backgroundWorkspaces: Map<string, Workspace> };
-
-/** The first leaf matching `match` in the current workspace or a background one. */
-function findLeafAnywhere(
-  state: OpenWorkspaces,
-  match: (leaf: PaneLeaf) => boolean
-): PaneLeaf | null {
-  for (const ws of [state.workspace, ...state.backgroundWorkspaces.values()]) {
-    for (const tab of ws.tabs) {
-      const leaf = collectPaneLeafs(tab.splitRoot).find(match);
-      if (leaf) return leaf;
-    }
-  }
-  return null;
-}
-
 /** An agent tab whose last agent pane closed is a terminal tab again, named after its folder. */
 function withoutAgent(tab: Tab): Tab {
   if (tab.type !== 'agent') return tab;
@@ -710,29 +677,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       },
       activeTabId: tab.id,
       activePaneId: leafWithCmd.id,
-      isDirty: true
-    }));
-  },
-
-  openTerminalTab: ({ paneId, cwd, label, worktree }) => {
-    const { id: profileId, pathContext } = resolveDefaultProfile();
-    const leaf: PaneLeaf = { ...createLeafWithProfile(cwd, profileId, pathContext), id: paneId };
-    const tab: Tab = {
-      id: generateId(),
-      label,
-      labelIsCustom: true,
-      cwd,
-      splitRoot: leaf,
-      shellProfileId: profileId,
-      pathContext,
-      // Closed through the worktree flow, which offers to remove it.
-      ...(worktree === null ? {} : { worktreePath: worktree.path, worktreeBranch: worktree.branch })
-    };
-    logTabs.debug('openTerminalTab', { tabId: tab.id, label, cwd, paneId });
-    set((state) => ({
-      workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
-      // Focus is only taken where there is nothing to take it from.
-      ...(state.activeTabId === null ? { activeTabId: tab.id, activePaneId: paneId } : {}),
       isDirty: true
     }));
   },
@@ -1329,21 +1273,6 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             agentSessionId: sessionId,
             ...(cwd === undefined ? {} : { cwd })
           }))
-        }))
-      },
-      isDirty: true
-    }));
-  },
-
-  setAgentOrchestrator: (paneId, on) => {
-    set((state) => ({
-      workspace: {
-        ...state.workspace,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) =>
-            leaf.paneType === 'agent' ? { ...leaf, agentOrchestrator: on } : leaf
-          )
         }))
       },
       isDirty: true

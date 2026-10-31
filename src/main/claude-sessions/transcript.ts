@@ -1,5 +1,4 @@
 import { closeSync, openSync, readSync, statSync } from 'fs';
-import { open, type FileHandle } from 'fs/promises';
 import { isRecord } from '../../shared/is-record';
 import { READ_CHUNK_BYTES, readGrowth } from './read-growth';
 
@@ -8,10 +7,8 @@ import { READ_CHUNK_BYTES, readGrowth } from './read-growth';
  * line, appended as the session runs.
  *
  * `normalizeLine` turns a line into events that every reader shares, so the
- * copilot chat, the session brief and the Orchestrator's reads agree on what
- * a transcript says. `TranscriptTail` reads a transcript a chunk at a time,
- * remembering where each turn and each tool result sits in the file, so a
- * later read can go back to one without keeping it in memory.
+ * copilot chat and the phase signals agree on what a transcript says.
+ * `TranscriptTail` reads a transcript a chunk at a time.
  *
  * Shapes observed on Claude Code 2.1.285.
  */
@@ -334,127 +331,17 @@ export function toolInputPreview(toolName: string, input: Record<string, unknown
   }
 }
 
-/**
- * Where something sits in its source, `[start, end)`: bytes of a Claude Code
- * transcript, or record ids of eva's database.
- */
-export type Span = { start: number; end: number };
+/** One line of a transcript, its bytes `[start, end)`, and the events it holds. */
+export type TailLine = { start: number; end: number; events: TranscriptEvent[] };
 
-/** One line of a transcript, or one eva record, and the events it holds. */
-export type TailLine = Span & { events: TranscriptEvent[] };
-
-/**
- * A turn: from a prompt to the next one. `end` is null while it is the
- * latest, which runs to wherever the transcript has been read up to.
- */
-export type TurnEntry = {
-  /** Counts from 1 since the transcript began or was last cleared. */
-  n: number;
-  start: number;
-  end: number | null;
-  timestamp: string | null;
-  uuid: string | null;
-  source: PromptSource;
-  /** The start of the prompt, for listing turns without reading them. */
-  preview: string;
-};
-
-/** Where a tool call and its result sit, so the result can be read back when asked for. */
-export type ToolEntry = {
-  name: string;
-  use: Span;
-  result: Span | null;
-};
-
-export type TranscriptIndexOptions = {
-  /** How many tool calls to remember where to find. */
-  toolLimit?: number;
-  /** How many turns to remember. */
-  turnLimit?: number;
-};
-
-export type TranscriptTailOptions = TranscriptIndexOptions & {
+export type TranscriptTailOptions = {
   /** Called for each complete line, in order. */
   onLine?: (line: TailLine) => void;
   /** Called when the transcript was replaced by a shorter file and is read again from the start. */
   onReset?: () => void;
 };
 
-const DEFAULT_TOOL_LIMIT = 5_000;
-const DEFAULT_TURN_LIMIT = 5_000;
-const PREVIEW_CHARS = 200;
 const NEWLINE = 0x0a;
-
-/** A prompt that starts a turn. A compaction summary continues the turn it interrupted. */
-function startsTurn(event: TranscriptEvent): event is TranscriptEvent & { kind: 'user_prompt' } {
-  return event.kind === 'user_prompt' && event.source !== 'compact';
-}
-
-/**
- * Where each turn and tool call of a transcript sits, from its lines in order.
- * It keeps spans, never the text, and a bounded number of each, so memory
- * stays flat however long the session runs.
- */
-export class TranscriptIndex {
-  private readonly turnList: TurnEntry[] = [];
-  private readonly toolMap = new Map<string, ToolEntry>();
-  private readonly toolLimit: number;
-  private readonly turnLimit: number;
-  private turnCount = 0;
-
-  constructor(opts: TranscriptIndexOptions = {}) {
-    this.toolLimit = opts.toolLimit ?? DEFAULT_TOOL_LIMIT;
-    this.turnLimit = opts.turnLimit ?? DEFAULT_TURN_LIMIT;
-  }
-
-  /** Turns since the transcript began or was last cleared, oldest first. */
-  get turns(): readonly TurnEntry[] {
-    return this.turnList;
-  }
-
-  tool(toolUseId: string): ToolEntry | undefined {
-    return this.toolMap.get(toolUseId);
-  }
-
-  add(line: TailLine): void {
-    for (const event of line.events) {
-      if (event.kind === 'clear') {
-        this.reset();
-      } else if (startsTurn(event)) {
-        // Several text blocks on one line are one prompt.
-        const last = this.turnList.at(-1);
-        if (last?.start === line.start) continue;
-        if (last) last.end = line.start;
-        this.turnList.push({
-          n: ++this.turnCount,
-          start: line.start,
-          end: null,
-          timestamp: event.timestamp,
-          uuid: event.uuid,
-          source: event.source,
-          preview: event.text.slice(0, PREVIEW_CHARS)
-        });
-        if (this.turnList.length > this.turnLimit) this.turnList.shift();
-      } else if (event.kind === 'tool_use' && event.id) {
-        this.toolMap.delete(event.id);
-        this.toolMap.set(event.id, { name: event.name, use: span(line), result: null });
-        if (this.toolMap.size > this.toolLimit) {
-          const oldest = this.toolMap.keys().next().value;
-          if (oldest !== undefined) this.toolMap.delete(oldest);
-        }
-      } else if (event.kind === 'tool_result') {
-        const entry = this.toolMap.get(event.toolUseId);
-        if (entry) entry.result = span(line);
-      }
-    }
-  }
-
-  reset(): void {
-    this.turnList.length = 0;
-    this.toolMap.clear();
-    this.turnCount = 0;
-  }
-}
 
 /**
  * Follows a transcript as it grows, reading only bytes it has not seen.
@@ -463,37 +350,18 @@ export class TranscriptIndex {
  * multi-byte character split across two reads is never mangled; an
  * unfinished last line waits for the rest. A file that got shorter was
  * replaced, and is read again from the start.
- *
- * Its `index` says where each turn and tool call sits.
  */
 export class TranscriptTail {
-  readonly index: TranscriptIndex;
   /** Bytes consumed, including an unfinished last line held in `partial`. */
   private offset = 0;
   private partial: Buffer[] = [];
   private partialStart = 0;
 
-  constructor(private readonly opts: TranscriptTailOptions = {}) {
-    this.index = new TranscriptIndex(opts);
-  }
+  constructor(private readonly opts: TranscriptTailOptions = {}) {}
 
   /** How many bytes of the file have been read. */
   get position(): number {
     return this.offset;
-  }
-
-  /** Where the complete lines read so far end; an unfinished line starts here. */
-  get lineEnd(): number {
-    return this.partial.length > 0 ? this.partialStart : this.offset;
-  }
-
-  /** Turns since the transcript began or was last cleared, oldest first. */
-  get turns(): readonly TurnEntry[] {
-    return this.index.turns;
-  }
-
-  tool(toolUseId: string): ToolEntry | undefined {
-    return this.index.tool(toolUseId);
   }
 
   /** Read whatever the file gained since the last read. */
@@ -557,69 +425,18 @@ export class TranscriptTail {
       this.partial = [];
       this.offset += nl + 1 - from;
       from = nl + 1;
-      this.line({ start, end: this.offset, events: normalizeLine(bytes.toString('utf8')) });
+      this.opts.onLine?.({
+        start,
+        end: this.offset,
+        events: normalizeLine(bytes.toString('utf8'))
+      });
     }
-  }
-
-  private line(line: TailLine): void {
-    this.index.add(line);
-    this.opts.onLine?.(line);
   }
 
   private restart(): void {
     this.offset = 0;
     this.partial = [];
     this.partialStart = 0;
-    this.index.reset();
     this.opts.onReset?.();
   }
-}
-
-function span(line: Span): Span {
-  return { start: line.start, end: line.end };
-}
-
-/**
- * Read one stretch of a transcript back, such as a turn or a tool result the
- * tail recorded. Returns the events of the whole lines in it; empty when the
- * file is gone.
- */
-export async function readTranscriptRange(path: string, span: Span): Promise<TailLine[]> {
-  let handle: FileHandle;
-  try {
-    handle = await open(path, 'r');
-  } catch {
-    return [];
-  }
-  const lines: TailLine[] = [];
-  try {
-    const length = Math.max(0, span.end - span.start);
-    const tail = new TranscriptTail({
-      onLine: (line) =>
-        lines.push({
-          start: line.start + span.start,
-          end: line.end + span.start,
-          events: line.events
-        })
-    });
-    const buffer = Buffer.alloc(Math.min(READ_CHUNK_BYTES, length));
-    let read = 0;
-    while (read < length) {
-      const { bytesRead } = await handle.read(
-        buffer,
-        0,
-        Math.min(buffer.length, length - read),
-        span.start + read
-      );
-      if (bytesRead === 0) break;
-      read += bytesRead;
-      tail.feed(buffer.subarray(0, bytesRead));
-    }
-    // A range the tail recorded ends at a newline; one that does not is cut
-    // short, and its last line is read as it is.
-    tail.feed(Buffer.from('\n'));
-  } finally {
-    await handle.close();
-  }
-  return lines.filter((l) => l.events.length > 0);
 }

@@ -53,7 +53,6 @@ const WireHookEvent = z.object({
   error_details: lenient(z.string()),
   prompt_sha256: lenient(z.string().regex(/^[0-9a-f]{64}$/)),
   runtime: lenient(z.enum(['claude', 'eva'])),
-  db_path: lenient(nonEmpty),
   permission_mode: permissionMode,
   protocol: lenient(z.number().int().positive())
 });
@@ -86,8 +85,6 @@ export type HookEvent = {
   errorDetails?: string;
   /** `UserPromptSubmit` only, from protocol 3: the sha256 of the trimmed prompt. */
   promptHash?: string;
-  /** eva only: the sessions.db it saves to, unchecked; absent when it saves nothing. */
-  dbPath?: string;
   /** A permission request the fleet-bridge mod sent: what Claude Code suggests allowing with it. */
   permissionSuggestions?: PermissionSuggestion[];
   /** From protocol 6: the session's mode as the event found it. */
@@ -128,7 +125,6 @@ export function parseHookEvent(text: string): HookEvent | null {
     error: w.error,
     errorDetails: w.error_details,
     promptHash: w.prompt_sha256,
-    dbPath: w.db_path,
     permissionMode: w.permission_mode,
     protocol: w.protocol ?? 1
   };

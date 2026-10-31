@@ -174,7 +174,7 @@ export function registerCopilotIpcHandlers(
       if (session?.waitingKind === 'question') {
         return claudeSessions.answerQuestion(args.sessionId, args.message);
       }
-      const result = await claudeSessions.sendPrompt(args.sessionId, args.message, 'user');
+      const result = await claudeSessions.sendPrompt(args.sessionId, args.message);
       if (!result.ok) {
         log.warn('message not sent', { sessionId: args.sessionId, reason: result.reason });
         return false;

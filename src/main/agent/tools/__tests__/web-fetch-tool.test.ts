@@ -18,7 +18,6 @@ const ctx = (fetchUrl: AgentUrlFetcher | null): AgentToolContext => ({
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
-  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl,
   mcp: null,
@@ -27,7 +26,6 @@ const ctx = (fetchUrl: AgentUrlFetcher | null): AgentToolContext => ({
   findSkill: null,
   findMemory: null,
   schedule: null,
-  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

@@ -2,14 +2,7 @@ import type { AgentMessage } from '../../../shared/agent-types';
 import { textMessage } from '../../../shared/agent-types';
 import type { AgentScheduleChanged, AgentScheduleRecord } from '../../../shared/agent-schedule';
 import { renderScheduleFire } from '../../../shared/agent-schedule';
-import {
-  panesOn,
-  record,
-  reportActivity,
-  turnFlags,
-  useAgentStore,
-  type PaneThread
-} from './agent-store';
+import { panesOn, record, reportActivity, useAgentStore, type PaneThread } from './agent-store';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:agent-schedule');
@@ -253,8 +246,7 @@ export function startUnpromptedTurn(
     text: '',
     attachments: [],
     todos: thread.todos,
-    ...(scheduleChainDepth === undefined ? {} : { scheduleChainDepth }),
-    ...turnFlags(paneId)
+    ...(scheduleChainDepth === undefined ? {} : { scheduleChainDepth })
   });
   return streamId;
 }

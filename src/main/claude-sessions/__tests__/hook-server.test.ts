@@ -113,7 +113,6 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     const eva = {
       ...permission,
       runtime: 'eva',
-      db_path: '/home/u/.eva/sessions.db',
       tool: 'bash',
       tool_use_id: 'call_1',
       protocol: 4
@@ -121,9 +120,7 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     const reply = sendEvent(socketPath, eva);
     await vi.waitFor(() => expect(broker.has('call_1')).toBe(true));
 
-    expect(received).toEqual([
-      expect.objectContaining({ runtime: 'eva', dbPath: '/home/u/.eva/sessions.db' })
-    ]);
+    expect(received).toEqual([expect.objectContaining({ runtime: 'eva' })]);
     expect(broker.respond('call_1', 'allow')).toBe(true);
     expect(JSON.parse(await reply)).toEqual({ decision: 'allow', reason: '' });
   });

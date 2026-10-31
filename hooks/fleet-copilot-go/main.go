@@ -26,7 +26,7 @@ const (
 	timeoutSeconds = 300
 	// protocolVersion tells Fleet which fields this binary sends. Version 2 adds
 	// pane_id, transcript_path, config_dir and source. Version 3 adds
-	// prompt_sha256. Version 4 adds runtime and db_path, for eva. Version 5
+	// prompt_sha256. Version 4 adds runtime, for eva. Version 5
 	// added spend fields that Fleet no longer reads. Version 6 adds
 	// permission_mode.
 	protocolVersion = 6
@@ -77,11 +77,9 @@ type HookInput struct {
 	// LastAssistantMessage is set on StopFailure to the API error text.
 	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 
-	// eva's own fields: its pid, its sessions.db (empty when it saves
-	// nothing), and on StopFailure the error's kind, text and the epoch
-	// second a rate limit lifts.
+	// eva's own fields: its pid, and on StopFailure the error's kind, text
+	// and the epoch second a rate limit lifts.
 	PID          int    `json:"pid,omitempty"`
-	DBPath       string `json:"db_path,omitempty"`
 	ErrorKind    string `json:"error_kind,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	RetryAfter   *int64 `json:"retry_after,omitempty"`
@@ -107,7 +105,6 @@ type State struct {
 	ErrorDetails     string                 `json:"error_details,omitempty"`
 	PromptSHA256     string                 `json:"prompt_sha256,omitempty"`
 	Runtime          string                 `json:"runtime,omitempty"`
-	DBPath           string                 `json:"db_path,omitempty"`
 	PermissionMode   string                 `json:"permission_mode,omitempty"`
 	Protocol         int                    `json:"protocol"`
 }
@@ -313,14 +310,12 @@ func newState(input *HookInput, tty *string, pid int, getenv func(string) string
 }
 
 // evaState is newState for an event eva sent: eva has no transcript file or
-// Claude config dir, names its database instead, and reports an API error
-// as a kind and a text.
+// Claude config dir, and reports an API error as a kind and a text.
 func evaState(input *HookInput, tty *string, pid int, getenv func(string) string) *State {
 	state := newState(input, tty, pid, getenv)
 	state.Runtime = "eva"
 	state.TranscriptPath = ""
 	state.ConfigDir = ""
-	state.DBPath = input.DBPath
 	if input.HookEventName == "StopFailure" {
 		state.Error = input.ErrorKind
 		state.Message = evaFailureText(input)

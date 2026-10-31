@@ -1,5 +1,12 @@
-import { oneLine } from './claude-sessions/brief';
 import type { QuitWorkItem } from '../shared/quit-confirm';
+
+// eslint-disable-next-line no-control-regex -- terminal colour codes are what it removes
+const ANSI = /\u001b\[[0-9;?]*[A-Za-z]/g;
+
+function oneLine(text: string, max: number): string {
+  const one = text.replace(ANSI, '').replace(/\s+/g, ' ').trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+}
 
 const LABEL_MAX = 80;
 

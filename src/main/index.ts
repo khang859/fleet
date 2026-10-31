@@ -46,10 +46,8 @@ import { enterDevSandbox } from './dev-sandbox';
 import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/drive-session';
 import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
-import { randomUUID } from 'node:crypto';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
 import { mainWorkItems } from './quit-work';
-import { FleetOpenTabReply } from '../shared/fleet-tools';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
 import { AnnotateService } from './annotate-service';
@@ -93,15 +91,6 @@ import {
 import { runBackfill } from './learnings/backfill';
 import { OpenRouterSecrets } from './openrouter-secrets';
 import { registerAgentIpc } from './agent/agent-ipc';
-import { createFleetHost } from './agent/fleet/host';
-import { FleetLedgerStore } from './agent/fleet/ledger-store';
-import { ActLimiter } from './agent/fleet/limiter';
-import { lazyPrompter } from './agent/fleet/send';
-import { RendererRpc } from './agent/fleet/renderer-rpc';
-import { FleetSpawns } from './agent/fleet/spawns';
-import { FleetAttention } from './agent/fleet/attention';
-import { pullDigest } from './agent/fleet/digest';
-import { createGitRunner } from './claude-sessions/git-probe';
 import { completeOnce } from './agent/completions';
 import { AgentModelCatalog } from './agent/models-catalog';
 import { AgentCatalogComposer } from './agent/catalog-composer';
@@ -114,6 +103,7 @@ import { AgentService } from './agent/agent-service';
 import { coalesceStreamDeltas } from './agent/stream-emit';
 import { AGENT_SESSIONS_DIR, AgentSessionStore } from './agent/session-store';
 import { removeAdmiralData } from './admiral-cleanup';
+import { removeOrchestratorData } from './orchestrator-cleanup';
 import { AGENT_ATTACHMENTS_DIR, AgentImageStore } from './agent/image-store';
 import { PermissionGate } from './agent/permissions/gate';
 import { classifyCommand } from './agent/permissions/classifier';
@@ -189,16 +179,7 @@ let quitRequested = false;
 
 const quitGuard = new QuitGuard(() => mainWindow);
 
-// `fleet_spawn`'s way to a new tab: the renderer opens it, and the pane's PTY
-// picks its prompt up from `fleetSpawns` when it is created.
-const fleetSpawns = new FleetSpawns();
-const fleetAttention = new FleetAttention();
-const fleetTabs = new RendererRpc(() => mainWindow);
 const worktreeService = new WorktreeService();
-ipcMain.on(IPC_CHANNELS.AGENT_FLEET_OPEN_TAB_DONE, (_event, payload: unknown) => {
-  const parsed = FleetOpenTabReply.safeParse(payload);
-  if (parsed.success) fleetTabs.settle(parsed.data);
-});
 
 const ptyManager = new PtyManager(app.getVersion());
 const layoutStore = new LayoutStore();
@@ -211,6 +192,9 @@ removeAdmiralData({
   layouts: layoutStore,
   settings: settingsStore
 }).catch((err) => log.warn('Admiral data cleanup failed', { error: String(err) }));
+removeOrchestratorData({ sessionsDir: AGENT_SESSIONS_DIR, settings: settingsStore }).catch((err) =>
+  log.warn('Orchestrator data cleanup failed', { error: String(err) })
+);
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
@@ -858,8 +842,7 @@ void app.whenReady().then(async () => {
     envSyncSecrets,
     ptyOscBridge,
     teleprompter,
-    claudeSessions,
-    fleetSpawns
+    claudeSessions
   );
 
   // Clean up old annotations based on retention settings
@@ -933,7 +916,6 @@ void app.whenReady().then(async () => {
     activityTracker.untrackPane(event.paneId);
     updateChrome();
     claudeSessions?.onPaneClosed(event.paneId);
-    fleetSpawns.settle(event.paneId);
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync
@@ -1489,10 +1471,6 @@ void app.whenReady().then(async () => {
       classifyWithDecision
     })
   });
-  // "Always for this session" lasts as long as the session does.
-  claudeSessions.registry.subscribe(({ sessionId, session }) => {
-    if (session === null || session.phase === 'ended') agentGate.dropFleetGrants(sessionId);
-  });
   // MCP servers for the Agent pane, with their own config and secret store.
   const agentMcpSecrets = new AgentMcpSecrets();
   // The authorization endpoint comes from the server's own metadata, so it is
@@ -1578,38 +1556,6 @@ void app.whenReady().then(async () => {
   // before anyone has visited settings.
   void agentEndpoints.reload();
   const agentModels = new AgentCatalogComposer(agentCatalog, agentEndpoints);
-  const fleetLedger = new FleetLedgerStore();
-  // Settle ledger entries as their sessions answer or go away, and stop
-  // reporting a spawned pane as starting once its session speaks for itself.
-  claudeSessions.registry.subscribe((change) => {
-    fleetLedger.observe(change);
-    fleetAttention.observe(change);
-    if (change.session) fleetSpawns.settle(change.session.paneId);
-  });
-  // Read through lazily: the session service is created with the window, and
-  // may not exist yet - or at all, while tracking is unsupported.
-  const fleetHost = createFleetHost({
-    sessions: {
-      snapshot: () =>
-        claudeSessions?.snapshot() ?? {
-          status: { state: 'starting' },
-          installProblems: [],
-          sessions: []
-        },
-      transcript: async (sessionId) => claudeSessions?.transcript(sessionId) ?? null,
-      inputsFor: (sessionId) => claudeSessions?.inputsFor(sessionId) ?? []
-    },
-    starting: () => fleetSpawns.starting(),
-    placeOf: (paneId) => layoutStore.placeOf(paneId),
-    git: createGitRunner()
-  });
-  // Conversations the renderer says are orchestrating. While one is and the
-  // user lets the Orchestrator answer permissions, Fleet holds permission
-  // hooks open for it; otherwise they are released for the terminal at once.
-  const orchestrating = new Set<string>();
-  claudeSessions.addPermissionAnswerer(
-    () => settingsStore.get().ai.agent.orchestrator.answerPermissions && orchestrating.size > 0
-  );
   agentService = new AgentService({
     getSettings: () => settingsStore.get().ai.agent,
     getApiKey: () => openRouterSecrets.getKey(),
@@ -1618,32 +1564,6 @@ void app.whenReady().then(async () => {
     mcp: agentMcp,
     subagents: agentSubagents,
     schedules: agentSchedules,
-    fleet: {
-      host: fleetHost,
-      ledger: fleetLedger,
-      act: {
-        // Read through lazily, for the reason the host is.
-        prompter: lazyPrompter(() => claudeSessions),
-        limiter: new ActLimiter(),
-        spawns: fleetSpawns,
-        platform: process.platform,
-        openTab: async (req) => fleetTabs.openTab(req),
-        worktrees: {
-          create: async (repoPath, branch) => worktreeService.create(repoPath, undefined, branch),
-          remove: async (path) => worktreeService.remove(path)
-        },
-        notePaneInput: (paneId, text) =>
-          claudeSessions?.registry.notePaneInput(paneId, 'orchestrator', text),
-        newPaneId: () => randomUUID(),
-        subscribe: (listener) => claudeSessions?.registry.subscribe(listener) ?? (() => {}),
-        attention: fleetAttention,
-        answers: {
-          held: (toolUseId) => claudeSessions?.broker.has(toolUseId) ?? false,
-          respond: (toolUseId, decision, reason) =>
-            claudeSessions?.respondToPermission(toolUseId, decision, reason) ?? false
-        }
-      }
-    },
     imageCapabilities: (modelId) => agentCatalog.cachedImageModel(modelId),
     emit: agentEmit
   });
@@ -1666,21 +1586,6 @@ void app.whenReady().then(async () => {
     history: new AgentHistoryStore(),
     subagents: agentSubagents,
     schedules: agentSchedules,
-    fleetLedger,
-    fleetDigests: {
-      pull: async (threadId) =>
-        pullDigest({ host: fleetHost, ledger: fleetLedger, attention: fleetAttention }, threadId),
-      setMode: (threadId, on) => {
-        if (on) {
-          fleetAttention.startAt(threadId);
-          orchestrating.add(threadId);
-        } else {
-          fleetAttention.forget(threadId);
-          orchestrating.delete(threadId);
-          claudeSessions?.releaseUnanswerable();
-        }
-      }
-    },
     mcp: {
       manager: agentMcp,
       secrets: agentMcpSecrets,

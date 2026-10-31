@@ -132,6 +132,18 @@ export class SettingsStore {
     this.store.set('settings', saved);
   }
 
+  /** Removes the setting an older Fleet saved for the Orchestrator. */
+  dropOrchestrator(): void {
+    const saved = this.store.get('settings');
+    const agent: (NonNullable<typeof saved.ai>['agent'] & { orchestrator?: unknown }) | undefined =
+      saved.ai?.agent;
+    if (agent?.orchestrator === undefined) return;
+
+    const kept = { ...agent };
+    delete kept.orchestrator;
+    this.store.set('settings', { ...saved, ai: { ...saved.ai, agent: kept } });
+  }
+
   get(): FleetSettings {
     if (this.cached !== null) return this.cached;
     const saved = this.store.get('settings');
@@ -232,11 +244,7 @@ export class SettingsStore {
               ...saved.ai?.agent?.permissions?.mcp
             }
           },
-          voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice },
-          orchestrator: {
-            ...DEFAULT_SETTINGS.ai.agent.orchestrator,
-            ...saved.ai?.agent?.orchestrator
-          }
+          voice: { ...DEFAULT_SETTINGS.ai.agent.voice, ...saved.ai?.agent?.voice }
         }
       },
       remoteSsh: {
@@ -341,11 +349,7 @@ export class SettingsStore {
             ...current.ai.agent.permissions,
             ...(partial.ai?.agent?.permissions ?? {})
           },
-          voice: { ...current.ai.agent.voice, ...(partial.ai?.agent?.voice ?? {}) },
-          orchestrator: {
-            ...current.ai.agent.orchestrator,
-            ...(partial.ai?.agent?.orchestrator ?? {})
-          }
+          voice: { ...current.ai.agent.voice, ...(partial.ai?.agent?.voice ?? {}) }
         }
       },
       remoteSsh: {

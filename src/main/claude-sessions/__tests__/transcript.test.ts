@@ -2,13 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync, appendF
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  normalizeLine,
-  readTranscriptRange,
-  TranscriptTail,
-  type TailLine,
-  type TranscriptEvent
-} from '../transcript';
+import { normalizeLine, TranscriptTail, type TailLine, type TranscriptEvent } from '../transcript';
 
 const FIXTURE = join(__dirname, 'fixtures', 'turns.jsonl');
 const fixture = readFileSync(FIXTURE);
@@ -104,7 +98,6 @@ describe('TranscriptTail', () => {
     for (let i = 0; i < fixture.length; i += 7) pieces.push(fixture.subarray(i, i + 7));
     const split = tailOf(pieces);
     expect(split.lines).toEqual(whole.lines);
-    expect(split.tail.turns).toEqual(whole.tail.turns);
     expect(whole.lines.flatMap((l) => l.events)).toEqual(allEvents(fixture.toString('utf8')));
   });
 
@@ -118,74 +111,14 @@ describe('TranscriptTail', () => {
     expect(lines.at(-1)?.end).toBe(fixture.length);
   });
 
-  it('indexes turns from each prompt, not from compaction summaries', () => {
-    const { tail } = tailOf([fixture]);
-    expect(tail.turns.map((t) => [t.n, t.uuid, t.source])).toEqual([
-      [1, 'u1', 'human'],
-      [2, 'u2', 'task'],
-      [3, 'u4', 'human'],
-      [4, 'u5', 'human'],
-      [5, 'u7', 'human']
-    ]);
-    const turns = tail.turns;
-    for (let i = 0; i < turns.length - 1; i++) expect(turns[i].end).toBe(turns[i + 1].start);
-    expect(turns.at(-1)?.end).toBeNull();
-    expect(turns[0].preview).toBe('Add a retry to fetchUser — and keep the tests green');
-  });
-
-  it('knows where each tool call and its result are', () => {
-    const { tail } = tailOf([fixture]);
-    const bash = tail.tool('t3');
-    expect(bash?.name).toBe('Bash');
-    const result = fixture.subarray(bash!.result!.start, bash!.result!.end).toString('utf8');
-    expect(result).toContain('retries twice');
-    expect(tail.tool('t5')?.result).toBeNull();
-    expect(tail.tool('nope')).toBeUndefined();
-  });
-
-  it('forgets the oldest tool calls past its limit', () => {
-    const lines = Array.from({ length: 5 }, (_, i) =>
-      JSON.stringify({
-        type: 'assistant',
-        uuid: `a${i}`,
-        message: {
-          role: 'assistant',
-          content: [{ type: 'tool_use', id: `t${i}`, name: 'Read', input: {} }]
-        }
-      })
-    );
-    const tail = new TranscriptTail({ toolLimit: 3 });
-    tail.feed(Buffer.from(`${lines.join('\n')}\n`));
-    expect(['t0', 't1', 't2', 't3', 't4'].map((id) => tail.tool(id) !== undefined)).toEqual([
-      false,
-      false,
-      true,
-      true,
-      true
-    ]);
-  });
-
   it('holds an unfinished last line until the rest arrives', () => {
     const cut = fixture.indexOf('"u4"');
     const { tail, lines } = tailOf([fixture.subarray(0, cut)]);
     const before = lines.length;
     expect(tail.position).toBe(cut);
-    expect(tail.lineEnd).toBeLessThan(cut);
     tail.feed(fixture.subarray(cut));
     expect(lines.length).toBeGreaterThan(before);
     expect(lines.map((l) => l.events.map((e) => e.uuid)).flat()).toContain('u4');
-  });
-
-  it('starts the turn index over on /clear', () => {
-    const { tail } = tailOf([
-      fixture,
-      Buffer.from(
-        `${JSON.stringify({ type: 'user', message: { role: 'user', content: '<command-name>/clear</command-name>' } })}\n` +
-          `${JSON.stringify({ type: 'user', uuid: 'n1', origin: { kind: 'human' }, message: { role: 'user', content: 'fresh' } })}\n`
-      )
-    ]);
-    expect(tail.turns.map((t) => [t.n, t.uuid])).toEqual([[1, 'n1']]);
-    expect(tail.tool('t1')).toBeUndefined();
   });
 
   describe('reading a file', () => {
@@ -226,7 +159,6 @@ describe('TranscriptTail', () => {
       await tail.read(path);
       expect(resets).toBe(1);
       expect(lines.map((l) => l.events[0]?.uuid)).toEqual(['z']);
-      expect(tail.turns.map((t) => t.uuid)).toEqual(['z']);
     });
 
     it('does nothing for a file that does not exist yet', async () => {
@@ -234,19 +166,6 @@ describe('TranscriptTail', () => {
       await tail.read(path);
       tail.readSync(path);
       expect(tail.position).toBe(0);
-    });
-
-    it('reads a recorded turn back from disk', async () => {
-      writeFileSync(path, fixture);
-      const tail = new TranscriptTail();
-      await tail.read(path);
-      const first = tail.turns[0];
-      const lines = await readTranscriptRange(path, { start: first.start, end: first.end! });
-      const kinds = lines.flatMap((l) => l.events.map((e) => e.kind));
-      expect(kinds[0]).toBe('user_prompt');
-      expect(kinds).toContain('tool_result');
-      expect(lines[0].start).toBe(first.start);
-      expect(await readTranscriptRange(join(dir, 'gone.jsonl'), { start: 0, end: 10 })).toEqual([]);
     });
   });
 });

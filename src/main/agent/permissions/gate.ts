@@ -13,7 +13,6 @@ import type {
   AgentStreamStep,
   AgentTurnUsage
 } from '../../../shared/agent-types';
-import type { FleetAsk } from '../../../shared/fleet-tools';
 import type { ClassifierVerdict } from './classifier';
 
 /**
@@ -83,11 +82,8 @@ type Pending = {
   command: string;
   /** What "always" would remember, or null when that was not offered. */
   rule: string | null;
-  /**
-   * Which list a remembered rule belongs in. A `fleet` one is never saved: it
-   * is a grant for one live session, kept in memory until the session ends.
-   */
-  rules: 'shell' | 'mcp' | 'fleet';
+  /** Which list a remembered rule belongs in. */
+  rules: 'shell' | 'mcp';
   /** Detaches this question's abort listener once it has been answered. */
   release: () => void;
 };
@@ -134,26 +130,8 @@ export type McpPermissionRequest = {
   readOnly: boolean;
 };
 
-/**
- * The Orchestrator asking to type into a Claude Code session, to start one, or
- * to answer one's permission request: a `FleetAsk`, and the call it is about.
- */
-export type FleetPermissionRequest = FleetAsk & {
-  streamId: string;
-  callId: string;
-  signal: AbortSignal;
-};
-
 export class PermissionGate {
   private readonly pending = new Map<string, Pending>();
-
-  /**
-   * Sessions the user said the Orchestrator may type into without asking,
-   * each as `send:<sessionId>`. In memory only, and dropped when the session
-   * ends: a grant is about a conversation the user watched begin, not about
-   * whatever runs in that pane next.
-   */
-  private readonly fleetGrants = new Set<string>();
 
   /**
    * What each turn has already been told no about.
@@ -305,77 +283,12 @@ export class PermissionGate {
     );
   }
 
-  /**
-   * Whether the Orchestrator may send a prompt to a session, or start one.
-   *
-   * No rule list covers these: what is being agreed to is a prompt, which no
-   * pattern describes. So a refusal this turn holds for the same prompt, full
-   * access allows it, a grant for the session allows a send, and otherwise the
-   * user is asked with the prompt in front of them. A spawn is asked about
-   * every time, since there is no session yet for a grant to name.
-   */
-  async checkFleet(req: FleetPermissionRequest): Promise<PermissionGrant> {
-    if (req.action === 'permission') return this.checkFleetAnswer(req);
-    const key = `fleet_${req.action} ${req.sessionId ?? req.target}\n${req.prompt}`;
-    if (this.wasRefused(req.streamId, key)) return 'refuse';
-    if (this.fullAccess()) return 'run';
-    const grant = req.action === 'send' && req.sessionId !== null ? `send:${req.sessionId}` : null;
-    if (grant !== null && this.fleetGrants.has(grant)) return 'run';
-
-    return this.ask(
-      { streamId: req.streamId, callId: req.callId, command: key, signal: req.signal },
-      null,
-      grant,
-      null,
-      { action: req.action, target: req.target, prompt: req.prompt, decision: null }
-    );
-  }
-
-  /**
-   * Whether the Orchestrator may answer a session's permission request.
-   *
-   * The user's own rules come first, as they do for the Agent's commands: a
-   * deny rule means the Orchestrator may never allow that command, full
-   * access or not, and a command that always asks is put to the user even
-   * under full access, since answering it for them is the judgement that list
-   * keeps for them. Otherwise full access lets it through and the user is
-   * asked. There is no "always": each request is its own question.
-   *
-   * Only a shell command has rules to match. An allow rule does not skip the
-   * question: it says what the Agent may run, not what another session may.
-   */
-  private async checkFleetAnswer(
-    req: FleetPermissionRequest & { action: 'permission' }
-  ): Promise<PermissionGrant> {
-    const key = `fleet_permission ${req.sessionId} ${req.decision}\n${req.prompt}`;
-    if (this.wasRefused(req.streamId, key)) return 'refuse';
-    const verdict =
-      req.command === null ? null : decideCommand(this.deps.getRules(), req.command, req.cwd);
-    if (req.decision === 'allow' && verdict?.kind === 'deny') return 'refuse';
-    const reason = verdict?.kind === 'ask' ? verdict.reason : null;
-    if (reason === null && this.fullAccess()) return 'run';
-
-    return this.ask(
-      { streamId: req.streamId, callId: req.callId, command: key, signal: req.signal },
-      reason,
-      null,
-      null,
-      { action: 'permission', target: req.target, prompt: req.prompt, decision: req.decision }
-    );
-  }
-
-  /** Drop what the user granted for a session, now that it has ended. */
-  dropFleetGrants(sessionId: string): void {
-    this.fleetGrants.delete(`send:${sessionId}`);
-  }
-
   /** Relay the user's click. A request that already settled is ignored. */
   decide(requestId: string, outcome: AgentPermissionOutcome): void {
     const entry = this.pending.get(requestId);
     if (entry === undefined) return;
     if (outcome === 'always' && entry.rule !== null) {
-      if (entry.rules === 'fleet') this.fleetGrants.add(entry.rule);
-      else if (entry.rules === 'mcp') this.deps.persistAllowMcp(entry.rule);
+      if (entry.rules === 'mcp') this.deps.persistAllowMcp(entry.rule);
       else this.deps.persistAllow(entry.rule);
     }
     if (outcome === 'no') {
@@ -445,8 +358,7 @@ export class PermissionGate {
     req: Question,
     reason: string | null,
     rule: string | null,
-    mcp: AgentPermissionAsk['mcp'] = null,
-    fleet: AgentPermissionAsk['fleet'] = null
+    mcp: AgentPermissionAsk['mcp'] = null
   ): Promise<PermissionGrant> {
     return new Promise<PermissionGrant>((resolve) => {
       if (req.signal.aborted) {
@@ -467,7 +379,7 @@ export class PermissionGate {
         streamId: req.streamId,
         command: req.command,
         rule,
-        rules: fleet !== null ? 'fleet' : mcp !== null ? 'mcp' : 'shell',
+        rules: mcp !== null ? 'mcp' : 'shell',
         release: () => req.signal.removeEventListener('abort', onAbort)
       });
 
@@ -478,8 +390,7 @@ export class PermissionGate {
         command: req.command,
         reason,
         rule,
-        mcp,
-        fleet
+        mcp
       } satisfies AgentPermissionAsk);
     });
   }

@@ -1,11 +1,7 @@
 import { createLogger } from '../logger';
 import { resolveClaudeConfig } from '../../shared/claude-config';
 import type { FleetSettings } from '../../shared/types';
-import type {
-  ClaudeInputOrigin,
-  PermissionSuggestion,
-  PlanApprovalMode
-} from '../../shared/claude-sessions';
+import type { PermissionSuggestion, PlanApprovalMode } from '../../shared/claude-sessions';
 import type { PriceTable } from '../../shared/claude-pricing';
 import type {
   ClaudeHookInstallProblem,
@@ -26,9 +22,8 @@ import { PromptBridge } from './prompt-bridge';
 import { registerClaudeSessionsIpc, type IpcRegistrar } from './ipc-handlers';
 import { PaneActivityBridge, type SetHookState } from './pane-activity-bridge';
 import { PaneResolver, type PaneHost, type WorkspaceLookup } from './pane-resolver';
-import { ClaudeSessionRegistry, type NotedInput } from './registry';
-import { EvaTranscripts } from './eva-transcripts';
-import { SessionTranscripts, type SessionTranscript } from './session-transcripts';
+import { ClaudeSessionRegistry } from './registry';
+import { SessionTranscripts } from './session-transcripts';
 import { SessionUsageTracker } from './session-usage';
 import { transcriptPathFor } from './transcript-path';
 
@@ -62,11 +57,6 @@ export type ClaudeSessionsDeps = {
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
   git?: GitRunner;
 };
-
-/** A permission request an answerer is asked about: whose it is, and which. */
-export type PermissionRequestContext = { sessionId: string; paneId: string; toolUseId: string };
-
-type CanAnswer = (request: PermissionRequestContext) => boolean;
 
 type GitState = {
   summary: GitSummary | null;
@@ -113,11 +103,10 @@ export class ClaudeSessionsService {
   /** The setting as last applied, so turning it off can be told from starting with it off. */
   private tracking: boolean | null = null;
   private work: Promise<void> = Promise.resolve();
-  /** The consumers that may answer a permission request, each saying whether it can answer one. */
-  private readonly answerers = new Set<{ canAnswer: CanAnswer }>();
+  /** The consumers that may answer a permission request. */
+  private readonly answerers = new Set<object>();
   private readonly usage: SessionUsageTracker;
   private readonly transcripts: SessionTranscripts;
-  private readonly evaTranscripts = new EvaTranscripts();
   private readonly git: GitRunner;
   private readonly gitStates = new Map<string, GitState>();
   private installProblems: ClaudeHookInstallProblem[] = [];
@@ -143,7 +132,6 @@ export class ClaudeSessionsService {
     );
     this.input = new PromptInput({
       session: (sessionId) => this.registry.get(sessionId),
-      noteInput: (sessionId, origin, text) => this.registry.noteInput(sessionId, origin, text),
       subscribe: (listener) => this.registry.subscribe(listener),
       write: deps.writeToPane,
       bridge: this.promptBridge
@@ -239,60 +227,23 @@ export class ClaudeSessionsService {
   }
 
   /** Type a prompt into a session and submit it, or refuse without writing; see `PromptInput`. */
-  async sendPrompt(
-    sessionId: string,
-    text: string,
-    origin: ClaudeInputOrigin
-  ): Promise<SendResult> {
-    return this.input.send(sessionId, text, origin);
-  }
-
-  /** Why `sendPrompt` would refuse this session right now, or `null`. */
-  sendRefusal(sessionId: string): string | null {
-    return this.input.refusal(sessionId);
+  async sendPrompt(sessionId: string, text: string): Promise<SendResult> {
+    return this.input.send(sessionId, text);
   }
 
   /**
    * Declare that a consumer can answer permission requests, until the returned
-   * function is called. `canAnswer` is asked as each request arrives, for a
-   * consumer that can only sometimes answer, or only some sessions. With none
-   * that can, the hook is released at once so the runtime shows its own
-   * prompt: holding one nobody can answer would stall a background subagent,
-   * whose dialog waits for the hook.
+   * function is called. With none left, every held hook is released at once so
+   * the runtime shows its own prompt: holding one nobody can answer would stall
+   * a background subagent, whose dialog waits for the hook.
    */
-  addPermissionAnswerer(canAnswer: CanAnswer = () => true): () => void {
+  addPermissionAnswerer(): () => void {
     // Its own object, so one consumer registering twice counts twice.
-    const answerer = { canAnswer };
+    const answerer = {};
     this.answerers.add(answerer);
     return () => {
-      if (this.answerers.delete(answerer)) this.releaseUnanswerable();
+      if (this.answerers.delete(answerer) && this.answerers.size === 0) this.releaseHeld();
     };
-  }
-
-  /**
-   * Release every held hook no answerer can answer any more. Call it when
-   * what an answerer's `canAnswer` reads changes, since a held hook is not
-   * asked again.
-   */
-  releaseUnanswerable(): void {
-    for (const held of this.broker.list()) {
-      const paneId = this.registry.get(held.sessionId)?.paneId;
-      if (paneId === undefined || !this.canAnswer({ ...held, paneId })) {
-        this.broker.letGo(held.toolUseId);
-      }
-    }
-  }
-
-  /** A live session's transcript, read up to now, with its brief. */
-  async transcript(sessionId: string): Promise<SessionTranscript | null> {
-    return this.registry.get(sessionId)?.runtime === 'eva'
-      ? this.evaTranscripts.read(sessionId)
-      : this.transcripts.read(sessionId);
-  }
-
-  /** Prompts typed into a session through Fleet, newest last, with who typed them. */
-  inputsFor(sessionId: string): NotedInput[] {
-    return this.registry.inputsFor(sessionId);
   }
 
   /**
@@ -418,7 +369,6 @@ export class ClaudeSessionsService {
     this.registry.clear();
     this.usage.dispose();
     this.transcripts.dispose();
-    this.evaTranscripts.dispose();
     for (const sessionId of [...this.gitStates.keys()]) this.forgetGit(sessionId);
     this.scheduleSnapshot();
     log.info('claude session tracking stopped');
@@ -431,7 +381,6 @@ export class ClaudeSessionsService {
     if (!session) {
       this.usage.forget(sessionId);
       this.transcripts.forget(sessionId);
-      this.evaTranscripts.forget(sessionId);
       this.forgetGit(sessionId);
       return;
     }
@@ -505,22 +454,17 @@ export class ClaudeSessionsService {
       return false;
     }
     const recorded = this.registry.ingest(event, placement);
-    if (event.runtime === 'eva' && this.registry.get(event.sessionId)) {
-      this.evaTranscripts.follow(event.sessionId, event.dbPath);
-    }
     const toolUseId = recorded?.toolUseId;
     if (event.status !== 'waiting_for_approval' || !toolUseId) return false;
     const session = this.registry.get(event.sessionId);
     const request = session?.pendingPermissions.find((p) => p.toolUseId === toolUseId);
     if (!session || !request) return false;
-    if (!this.canAnswer({ sessionId: session.sessionId, paneId: session.paneId, toolUseId })) {
-      return false;
-    }
+    if (this.answerers.size === 0) return false;
     this.broker.hold(event.sessionId, toolUseId, open());
     return true;
   }
 
-  private canAnswer(request: PermissionRequestContext): boolean {
-    return [...this.answerers].some((a) => a.canAnswer(request));
+  private releaseHeld(): void {
+    for (const held of this.broker.list()) this.broker.letGo(held.toolUseId);
   }
 }

@@ -44,8 +44,7 @@ const ask = (command: string): AgentPermissionAsk => ({
   command,
   reason: null,
   rule: command,
-  mcp: null,
-  fleet: null
+  mcp: null
 });
 
 const one = (running: RunningSubagent[], taskId: string): RunningSubagent => {

@@ -71,13 +71,11 @@ describe('parseHookEvent', () => {
         ...v1,
         tool: 'bash',
         runtime: 'eva',
-        db_path: '/home/u/.eva/sessions.db',
         protocol: 4
       })
     );
     expect(event).toMatchObject({
       runtime: 'eva',
-      dbPath: '/home/u/.eva/sessions.db',
       tool: 'Bash',
       protocol: 4
     });

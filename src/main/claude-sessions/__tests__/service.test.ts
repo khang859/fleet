@@ -1,6 +1,5 @@
-import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appendFileSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { request } from 'http';
 import { connect } from 'net';
 import { tmpdir } from 'os';
@@ -207,28 +206,20 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     });
   });
 
-  it('asks an answerer with the pane, and keeps a request another answerer can answer', async () => {
+  it('holds a hook until the last answerer leaves', async () => {
     await service.start();
-    const asked: unknown[] = [];
-    service.addPermissionAnswerer((request) => {
-      asked.push(request);
-      return true;
-    });
+    const stopFirst = service.addPermissionAnswerer();
+    const stopSecond = service.addPermissionAnswerer();
 
     const reply = send(socketPath, permission('tu-1'));
     await vi.waitFor(() => expect(service.broker.has('tu-1')).toBe(true));
-    expect(asked).toEqual([{ sessionId: 's1', paneId: 'pane-1', toolUseId: 'tu-1' }]);
-    service.respondToPermission('tu-1', 'deny', 'not in the plan');
-    await reply;
 
-    const second = send(socketPath, permission('tu-2'));
-    await vi.waitFor(() => expect(service.broker.has('tu-2')).toBe(true));
-    service.addPermissionAnswerer(() => false);
-    // Still answerable by the first answerer, so it stays held.
-    service.releaseUnanswerable();
-    expect(service.broker.has('tu-2')).toBe(true);
-    service.broker.letGo('tu-2');
-    expect(await second).toBe('');
+    stopFirst();
+    expect(service.broker.has('tu-1')).toBe(true);
+
+    stopSecond();
+    expect(service.broker.has('tu-1')).toBe(false);
+    expect(await reply).toBe('');
   });
 
   it('answers nothing for a question dialog, which the hook does not wait on', async () => {
@@ -243,7 +234,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
     });
 
     // An option is picked by its number, as a key press; a prompt is refused.
-    expect((await service.sendPrompt('s1', 'use Postgres', 'user')).ok).toBe(false);
+    expect((await service.sendPrompt('s1', 'use Postgres')).ok).toBe(false);
     expect(service.answerQuestion('s1', 'Postgres')).toBe(false);
     expect(service.answerQuestion('s1', '2')).toBe(true);
     expect(writeToPane.mock.calls).toEqual([['pane-1', '2\r']]);
@@ -520,32 +511,7 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
 
       appendFileSync(transcript, jsonl({ type: 'queue-operation', operation: 'dequeue' }));
       await vi.waitFor(() => expect(service.registry.get('s1')?.phase).toBe('processing'));
-      const brief = await service.transcript('s1');
-      expect(brief?.end).toBe(readFileSync(transcript).length);
     });
-  });
-
-  it("reads an eva session's turns from eva's database, and no transcript file", async () => {
-    vi.stubEnv('EVA_HOME', dir);
-    const dbPath = join(dir, 'sessions.db');
-    const eva = new Database(dbPath);
-    const fixtures = join(__dirname, 'fixtures');
-    eva.exec(readFileSync(join(fixtures, 'eva-0.3.0-tables.sql'), 'utf8'));
-    eva.exec(readFileSync(join(fixtures, 'eva-0.3.0-views.sql'), 'utf8'));
-    eva.exec(`INSERT INTO sessions (id, created_at, updated_at, model, title, uuid)
-              VALUES (1, 0, 0, 'm', 't', 's1');
-              INSERT INTO records (session_id, kind, content) VALUES (1, 'question', 'Fix the bug.');`);
-    try {
-      await service.start();
-      await send(socketPath, event({ runtime: 'eva', db_path: dbPath, protocol: 4 }));
-      expect(service.registry.get('s1')?.runtime).toBe('eva');
-      const transcript = await service.transcript('s1');
-      expect(transcript?.unreadable).toBeUndefined();
-      expect(transcript?.index.turns.map((t) => t.preview)).toEqual(['Fix the bug.']);
-    } finally {
-      eva.close();
-      vi.unstubAllEnvs();
-    }
   });
 
   it('types a prompt into the pane unless the user is typing there', async () => {
@@ -557,18 +523,17 @@ describe.skipIf(process.platform === 'win32')('ClaudeSessionsService', () => {
       }
     });
 
-    const sent = await service.sendPrompt('s1', 'Run the tests', 'user');
+    const sent = await service.sendPrompt('s1', 'Run the tests');
     expect(sent).toEqual({ ok: true, confirmed: true, text: 'Run the tests' });
     expect(writeToPane.mock.calls).toEqual([
       ['pane-1', 'Run the tests'],
       ['pane-1', '\r']
     ]);
-    expect(service.inputsFor('s1')).toEqual([expect.objectContaining({ origin: 'user' })]);
 
     await send(socketPath, event({ event: 'Stop', status: 'waiting_for_input' }));
     writeToPane.mockClear();
     service.onPaneInput('pane-1', 'half typed');
-    expect((await service.sendPrompt('s1', 'Run the tests', 'user')).ok).toBe(false);
+    expect((await service.sendPrompt('s1', 'Run the tests')).ok).toBe(false);
     expect(writeToPane).not.toHaveBeenCalled();
   });
 

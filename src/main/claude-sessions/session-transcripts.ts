@@ -1,15 +1,7 @@
 import { statSync, watch, type FSWatcher } from 'fs';
 import { createLogger } from '../logger';
-import { BriefBuilder } from './brief';
 import type { TranscriptSignal } from './phase';
-import {
-  readTranscriptRange,
-  TranscriptTail,
-  type Span,
-  type TailLine,
-  type TranscriptEvent,
-  type TranscriptIndex
-} from './transcript';
+import { TranscriptTail, type TailLine, type TranscriptEvent } from './transcript';
 
 const log = createLogger('claude-sessions:transcripts');
 
@@ -63,7 +55,6 @@ function sizeOf(path: string): number {
 type Tracked = {
   path: string;
   tail: TranscriptTail;
-  brief: BriefBuilder;
   /**
    * The transcript's size when the session's latest hook event arrived. A
    * signal only counts when written after it: the hook event already says
@@ -78,40 +69,9 @@ type Tracked = {
 export type SessionTranscriptsOptions = {
   /** The transcript showed a phase change no hook event reported. */
   onSignal: (sessionId: string, signal: TranscriptSignal) => void;
-  /** The session's brief changed. */
-  onChange?: (sessionId: string) => void;
   watchFile?: WatchFile;
   debounceMs?: number;
 };
-
-/** A session's transcript as read so far, from whichever source it has. */
-export type SessionTranscript = {
-  index: Pick<TranscriptIndex, 'turns' | 'tool'>;
-  /** Where the source has been read to; an unfinished turn runs to here. */
-  end: number;
-  brief: BriefBuilder;
-  /**
-   * The events of the whole lines or records in `span`; empty when the source
-   * is gone. A file is read with a promise, eva's database at once.
-   */
-  events(span: Span): Promise<TranscriptEvent[]> | TranscriptEvent[];
-  /** Why turns cannot be read, when they cannot. */
-  unreadable?: string;
-};
-
-/** A Claude Code transcript file, as read so far by `tail`. */
-export function claudeTranscript(
-  path: string,
-  tail: TranscriptTail,
-  brief: BriefBuilder
-): SessionTranscript {
-  return {
-    index: tail.index,
-    end: tail.lineEnd,
-    brief,
-    events: async (span) => (await readTranscriptRange(path, span)).flatMap((l) => l.events)
-  };
-}
 
 /**
  * Follows the transcript of each live session: reads it as it grows, keeps
@@ -139,14 +99,6 @@ export class SessionTranscripts {
     this.schedule(sessionId);
   }
 
-  /** The session's transcript, read up to now. */
-  async read(sessionId: string): Promise<SessionTranscript | null> {
-    const t = this.tracked.get(sessionId);
-    if (!t) return null;
-    await this.run(sessionId, t);
-    return this.tracked.get(sessionId) === t ? claudeTranscript(t.path, t.tail, t.brief) : null;
-  }
-
   forget(sessionId: string): void {
     const t = this.tracked.get(sessionId);
     if (!t) return;
@@ -163,16 +115,9 @@ export class SessionTranscripts {
     const current = this.tracked.get(sessionId);
     if (current?.path === path) return current;
     if (current) this.forget(sessionId);
-    const brief = new BriefBuilder();
     const t: Tracked = {
       path,
-      brief,
-      tail: new TranscriptTail({
-        onLine: (line) => this.onLine(sessionId, t, line),
-        onReset: () => {
-          t.brief = new BriefBuilder();
-        }
-      }),
+      tail: new TranscriptTail({ onLine: (line) => this.onLine(sessionId, t, line) }),
       mark: 0,
       unwatch: null,
       timer: null,
@@ -184,7 +129,6 @@ export class SessionTranscripts {
 
   private onLine(sessionId: string, t: Tracked, line: TailLine): void {
     for (const event of line.events) {
-      t.brief.apply(event);
       const signal = line.start >= t.mark ? signalOf(event) : null;
       if (signal) this.opts.onSignal(sessionId, signal);
     }
@@ -210,14 +154,10 @@ export class SessionTranscripts {
 
   private async readOnce(sessionId: string, t: Tracked): Promise<void> {
     if (this.tracked.get(sessionId) !== t) return;
-    const rev = t.brief.state.rev;
     try {
       await t.tail.read(t.path);
     } catch (err) {
       log.debug('could not read transcript', { sessionId, error: String(err) });
-    }
-    if (t.brief.state.rev !== rev && this.tracked.get(sessionId) === t) {
-      this.opts.onChange?.(sessionId);
     }
   }
 }

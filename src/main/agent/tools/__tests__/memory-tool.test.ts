@@ -59,7 +59,6 @@ const ctx = (cwd: string, definition: MemoryDefinition | null): AgentToolContext
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
-  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl: null,
   mcp: null,
@@ -68,7 +67,6 @@ const ctx = (cwd: string, definition: MemoryDefinition | null): AgentToolContext
   findSkill: null,
   findMemory: definition === null ? null : (name) => (name === definition.name ? definition : null),
   schedule: null,
-  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

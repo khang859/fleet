@@ -6,7 +6,7 @@ import { AGENT_TODO_INSTRUCTIONS, type AgentTodoItem } from './agent-todos';
 import { AGENT_SKILL_INSTRUCTIONS } from './agent-skills';
 import { AGENT_MEMORY_INSTRUCTIONS } from './agent-memory';
 import { AGENT_SCHEDULE_INSTRUCTIONS } from './agent-schedule';
-import { renderFleetInstructions } from './fleet-tools';
+import { FLEET_TOOLS_GONE_NOTE } from './agent-legacy-fleet';
 import { renderEnvBlock, type AgentEnvironment } from './agent-environment';
 import { DEFAULT_AGENT_PERMISSION_RULES, type AgentPermissionRules } from './agent-permissions';
 import {
@@ -435,20 +435,7 @@ export type AgentSettings = {
    * a completion's parameters.
    */
   voice: AgentVoiceSettings;
-  /** What an orchestrator pane may do beyond reading, prompting and starting sessions. */
-  orchestrator: AgentOrchestratorConfig;
 };
-
-export type AgentOrchestratorConfig = {
-  /**
-   * Whether the Orchestrator may allow or deny a Claude Code session's pending
-   * permission request. Off unless the user turns it on: it hands a model a
-   * say over what runs in sessions the user started.
-   */
-  answerPermissions: boolean;
-};
-
-export const DEFAULT_AGENT_ORCHESTRATOR: AgentOrchestratorConfig = { answerPermissions: false };
 
 export const EMPTY_AGENT_MODEL_CONFIG: AgentModelConfig = {
   model: null,
@@ -492,8 +479,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   classifierNote: null,
   titleModel: null,
   mcpServers: {},
-  voice: { ...DEFAULT_AGENT_VOICE_SETTINGS },
-  orchestrator: { ...DEFAULT_AGENT_ORCHESTRATOR }
+  voice: { ...DEFAULT_AGENT_VOICE_SETTINGS }
 };
 
 /** Capability-namespaced AI settings. Future: image, video slot in here additively. */
@@ -725,8 +711,8 @@ export function buildSystemPrompt(
     skill?: boolean;
     memory?: boolean;
     schedule?: boolean;
-    /** The fleet tools this turn offers, and whose turn it is. Absent outside orchestrator mode. */
-    fleet?: Parameters<typeof renderFleetInstructions>[0] | null;
+    /** The chat called fleet tools while the Orchestrator existed, so their absence needs saying. */
+    fleetToolsGone?: boolean;
     /**
      * Off only for a turn whose tool list has no `todo_add`. Defaults to on,
      * because a pane turn always has both task-list tools - see the note above
@@ -786,13 +772,7 @@ export function buildSystemPrompt(
   // the other way round.
   const memory = options.memory === true ? `\n\n${AGENT_MEMORY_INSTRUCTIONS}` : '';
   const schedule = options.schedule === true ? `\n\n${AGENT_SCHEDULE_INSTRUCTIONS}` : '';
-  // After the blocks for the pane's own tools, because the fleet tools are about
-  // other conversations and read best once this one's own tools are clear.
-  const fleetBlock =
-    options.fleet === undefined || options.fleet === null
-      ? ''
-      : renderFleetInstructions(options.fleet);
-  const fleet = fleetBlock === '' ? '' : `\n\n${fleetBlock}`;
+  const fleet = options.fleetToolsGone === true ? `\n\n${FLEET_TOOLS_GONE_NOTE}` : '';
   // Gated the other way round from every block above: absent only when it has
   // been asked for explicitly, so the pane's own turn cannot lose it. The rule
   // it obeys is still the one `image` obeys - instructions for a tool that is
@@ -969,11 +949,11 @@ export type AgentMessage = {
    * nobody in the room wrote, and drawing it as the user's would have the person
    * reading it looking for when they said that.
    *
-   * `fleet` is a digest of the Claude Code sessions an orchestrator pane looks
-   * after, delivered by Fleet when one of them needs attention. Distinct because
-   * nobody in the room wrote it either, and because what it carries is written by
-   * those sessions: drawn or sent as the user's, it would put their words in the
-   * user's mouth.
+   * `fleet` is a digest from the Orchestrator, which Fleet no longer has. Nothing
+   * writes one now, but saved conversations hold them. Distinct because nobody in
+   * the room wrote it either, and because what it carries was written by other
+   * sessions: drawn or sent as the user's, it would put their words in the user's
+   * mouth.
    *
    * Note that nothing here is exhaustively switched on - `role` is branched with
    * `if` chains - so adding a member compiles cleanly and silently falls through
@@ -1224,12 +1204,6 @@ export type AgentSendRequest = {
    * alternative is threading a cause through every detour a turn can take.
    */
   scheduleChainDepth?: number;
-  /**
-   * Whether the pane is in orchestrator mode, which is what offers the fleet
-   * tools. Travels on every request, like the text, because the pane owns the
-   * flag and main keeps nothing between turns.
-   */
-  orchestrator?: boolean;
 };
 
 /**
@@ -1405,23 +1379,6 @@ export type AgentPermissionAsk = {
     tool: string;
     /** The arguments as the model wrote them: JSON, and possibly malformed. */
     args: string;
-  } | null;
-  /**
-   * Set when the Orchestrator asks to type into one of the user's Claude Code
-   * sessions (`send`), to start one (`spawn`), or to answer a session's
-   * permission request (`permission`). The card shows where it goes and the
-   * prompt or request in full, since that is what is being agreed to. `rule`
-   * is then the grant "always for this session" would add, and is null for a
-   * spawn or a permission, which are only ever allowed once.
-   */
-  fleet: {
-    action: 'send' | 'spawn' | 'permission';
-    /** The session's ref and name, or the folder a spawn opens in. */
-    target: string;
-    /** The prompt as it will be typed, or the request as the session made it. */
-    prompt: string;
-    /** For a permission, how the Orchestrator would answer it; `null` otherwise. */
-    decision: 'allow' | 'deny' | null;
   } | null;
 };
 

@@ -48,7 +48,6 @@ const ctx = (definition: SkillDefinition | null): AgentToolContext => ({
   handOff: () => {},
   approve: async () => Promise.resolve(true),
   wasRefused: () => false,
-  approveFleet: async () => Promise.resolve(false),
   generateImage: null,
   fetchUrl: null,
   mcp: null,
@@ -57,7 +56,6 @@ const ctx = (definition: SkillDefinition | null): AgentToolContext => ({
   findSkill: definition === null ? null : (name) => (name === definition.name ? definition : null),
   findMemory: null,
   schedule: null,
-  fleet: null,
   todos: { list: () => [], save: () => {} }
 });
 

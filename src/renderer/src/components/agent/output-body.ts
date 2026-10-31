@@ -1,7 +1,6 @@
 import { OUTPUT_SEPARATOR, type AgentToolCall } from '../../../../shared/agent-tools';
 import { toFleetImageUrl } from '../../../../shared/path-platform';
 import { generatedImagePath } from '../../../../shared/agent-image-path';
-import { isFleetTool, unfence } from '../../../../shared/fleet-tools';
 
 /**
  * What the row shows for a call that is not a change to a file: the command's
@@ -25,7 +24,7 @@ export function outputBody(result: string): string {
 export function toolBody(call: AgentToolCall): string | null {
   if (call.error !== null) return call.error;
   if (call.result === null) return null;
-  const body = outputBody(isFleetTool(call.name) ? unfence(call.result) : call.result);
+  const body = outputBody(call.result);
   return body === '' ? null : body;
 }
 
