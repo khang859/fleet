@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.143.0
+
+- **Breaking: the Orchestrator is gone.**
+  The Agent pane no longer has orchestrator mode, its toggle, badge, command or setting.
+  The seven `fleet_*` tools, the `fleet-analyst` subagent, wakeup digests and the ledger are also gone.
+  Agent panes can no longer read or steer Claude Code sessions in other panes.
+- **Saved chats still work.**
+  Old chats open and continue.
+  Old digests show as a card, and old `fleet_*` calls show by their raw name.
+  At the first start, Fleet deletes old `.fleet.json` ledgers and the old setting (#707).
+- **Worktrees work without a setup file.**
+  If a repo has no `.fleet/worktree.toml`, Fleet uses the install command for the lockfile at the repo root and copies the git-ignored `.env` files.
+  Nothing is written to the repo.
+  A setup file still wins, and "Save to repo" in the dialog writes the detected setup to the file (#706).
+- **MCP servers no longer open your browser at launch.**
+  A missing or expired sign-in opened a sign-in page that could not finish, and the tab came back at each launch.
+  The server now waits with its Sign in button (#708).
+
 ## v2.142.0
 
 - **Breaking: the Admiral is gone.**
