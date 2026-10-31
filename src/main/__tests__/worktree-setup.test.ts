@@ -30,6 +30,8 @@ vi.mock('../../shared/fleet-home', async (importOriginal) => ({
   }
 }));
 
+vi.mock('../shell-env', () => ({ enrichProcessEnv: async (): Promise<void> => {} }));
+
 const ENV = {
   ...process.env,
   GIT_AUTHOR_NAME: 'Test',

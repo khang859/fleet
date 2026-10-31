@@ -4,8 +4,9 @@ import { useShellProfilesStore } from '../../store/shell-profiles-store';
 import { useDebouncedCallback } from '../../hooks/use-debounced-callback';
 import { SettingRow } from './SettingRow';
 import { TerminalBackgroundSettings } from './TerminalBackgroundSettings';
-import type { FontSelection } from '../../../../shared/types';
+import type { FleetSettings, FontSelection } from '../../../../shared/types';
 import { DEFAULT_SCROLLBACK, resolveFontFamily } from '../../../../shared/types';
+import { WORKTREE_AGENTS, readAgentChoice } from '../../../../shared/agents';
 import {
   ACCENT_COLORS,
   TERMINAL_THEMES,
@@ -141,6 +142,66 @@ function FontFamilyPicker({
   );
 }
 
+/** The agent each new worktree starts with, and the command behind the custom choice. */
+function DefaultAgentRows({ general }: { general: FleetSettings['general'] }): React.JSX.Element {
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const [localCommand, setLocalCommand] = useState(general.customAgentCommand);
+
+  const saveCommand = (value: string): void => {
+    void updateSettings({ general: { customAgentCommand: value } });
+  };
+  const debouncedSaveCommand = useDebouncedCallback(saveCommand, 300);
+
+  return (
+    <>
+      <SettingRow
+        label="Default Agent"
+        align="start"
+        below={
+          <p className="text-xs text-fleet-text-subtle">
+            Starts in each new worktree, after its setup. You can change it when you create one.
+          </p>
+        }
+      >
+        <select
+          value={general.defaultAgent ?? ''}
+          onChange={(e) => {
+            void updateSettings({ general: { defaultAgent: readAgentChoice(e.target.value) } });
+          }}
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong focus-ring"
+        >
+          {/* Not the same as None: the first agent picked becomes the default. */}
+          {general.defaultAgent === null && <option value="">Not set</option>}
+          <option value="none">None</option>
+          {WORKTREE_AGENTS.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.label}
+            </option>
+          ))}
+          <option value="custom">Custom command</option>
+        </select>
+      </SettingRow>
+      {general.defaultAgent === 'custom' && (
+        <SettingRow label="Custom Agent Command">
+          <input
+            type="text"
+            value={localCommand}
+            onChange={(e) => {
+              setLocalCommand(e.target.value);
+              debouncedSaveCommand(e.target.value);
+            }}
+            // This box goes away when the default changes, and a waiting save goes with it.
+            onBlur={(e) => saveCommand(e.target.value)}
+            placeholder="codex"
+            spellCheck={false}
+            className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-full border border-fleet-border-strong focus-ring"
+          />
+        </SettingRow>
+      )}
+    </>
+  );
+}
+
 export function GeneralSection(): React.JSX.Element {
   const { settings, updateSettings } = useSettingsStore();
   const shellProfiles = useShellProfilesStore((s) => s.profiles);
@@ -218,6 +279,7 @@ export function GeneralSection(): React.JSX.Element {
           </select>
         </SettingRow>
       )}
+      <DefaultAgentRows general={settings.general} />
       <SettingRow label="Font Size">
         <input
           type="number"

@@ -53,7 +53,8 @@ export function Overlay({
   useEffect(() => {
     if (!open || !closeOnEscape) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      // A Radix popover inside the panel takes the key first and marks it used.
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);

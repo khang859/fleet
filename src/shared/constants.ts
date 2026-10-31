@@ -34,7 +34,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     accentColor: DEFAULT_ACCENT_COLOR_ID,
     terminalBackground: DEFAULT_TERMINAL_BACKGROUND,
     holdBackspaceDeletesWords: true,
-    clickOpensLinks: false
+    clickOpensLinks: false,
+    defaultAgent: null,
+    customAgentCommand: ''
   },
   notifications: {
     taskComplete: { badge: true, sound: false, os: false },

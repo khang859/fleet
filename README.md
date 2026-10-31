@@ -116,6 +116,11 @@ It shows modified, added, deleted, renamed, and untracked files with line-level 
 Create, list, and remove git worktrees directly from Fleet.
 Worktree tabs are automatically grouped by parent repository in the sidebar.
 The New worktree dialog lets you name the branch (or leave it empty for a generated name) and pick the branch or commit it starts from.
+It also lets you pick an agent to start in the worktree: Claude Code, Pi, or your own command.
+The dialog marks an agent as Not found when it is not on your `PATH`.
+The first agent you pick becomes the default, and you can change it in Settings, under General.
+The agent starts after the setup below is done, even if the setup fails.
+Press Ctrl+C during the setup to stop it, and the agent does not start.
 
 A repository can commit a `.fleet/worktree.toml` to set up each new worktree:
 
