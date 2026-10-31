@@ -4,7 +4,6 @@ import type { TerminalMenuAction } from '../shared/ipc-api';
 import { safeOpenExternal } from './safe-external';
 import { collectDiagnosticsInfo, readRedactedLogTail, openLogsFolder } from './diagnostics';
 import { createLogger, logger } from './logger';
-import { enrichProcessEnv } from './shell-env';
 
 const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir, mkdir } from 'fs/promises';
@@ -122,10 +121,8 @@ async function listFilesWsl(
 import { IPC_CHANNELS, FLEET_HOME } from '../shared/constants';
 import type {
   PtyCreateRequest,
-  PtyDataPayload,
   PtyInputPayload,
   PtyResizePayload,
-  PtyExitPayload,
   LayoutSaveRequest,
   LayoutSaveResult,
   EnsureConfigDirResult,
@@ -177,6 +174,8 @@ import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
 import type { ClaudeSessionsService } from './claude-sessions';
+import type { PaneOpener } from './pane-opener';
+import type { WorkflowsService } from './workflows';
 import type { EnvSyncManager } from './env-sync/env-sync-manager';
 import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
 import { readConfig, writeConfig, findNearestConfig } from './env-sync/env-sync-config';
@@ -204,8 +203,6 @@ import type {
   EnvSyncSetAuthRequest,
   EnvSyncClearAuthRequest
 } from '../shared/ipc-api';
-import type { EnvSource } from '../shared/shell-env-types';
-import type { PtyOscBridge } from './remote-ssh/pty-osc-bridge';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -216,7 +213,6 @@ export function registerIpcHandlers(
   settingsStore: SettingsStore,
   cwdPoller: CwdPoller,
   gitService: GitService,
-  getWindow: () => BrowserWindow | null,
   activityTracker: ActivityTracker,
   worktreeService: WorktreeService,
   annotationStore: AnnotationStore,
@@ -225,9 +221,10 @@ export function registerIpcHandlers(
   wslService: WslService,
   envSyncManager: EnvSyncManager,
   envSyncSecrets: EnvSyncSecrets,
-  ptyOscBridge: PtyOscBridge,
   teleprompter: TeleprompterService,
-  claudeSessions: ClaudeSessionsService
+  claudeSessions: ClaudeSessionsService,
+  paneOpener: PaneOpener,
+  workflows: WorkflowsService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -245,93 +242,7 @@ export function registerIpcHandlers(
       cwd: req.cwd,
       shellProfileId: req.shellProfileId
     });
-
-    // A pane restored at launch is created before the login shell environment
-    // has been merged into process.env. Wait for it, or the pane inherits
-    // launchd's bare environment (no LANG, minimal PATH).
-    await enrichProcessEnv();
-
-    // Resolve Claude config: workspace override → global → default
-    const settings = settingsStore.get();
-    const wsOverride = req.workspaceId
-      ? settings.copilot.workspaceOverrides[req.workspaceId]
-      : undefined;
-    const claudeConfigDir = wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
-
-    const extraEnv: Record<string, string> = {};
-    const envSources: Record<string, EnvSource> = {};
-    if (claudeConfigDir) {
-      extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
-      envSources.CLAUDE_CONFIG_DIR = 'fleet-builtin';
-    }
-
-    // Resolve the ShellProfile (defaulting to the registry's default if not provided).
-    const profileId = req.shellProfileId ?? (await shellProfileRegistry.getDefaultProfileId());
-    const profiles = await shellProfileRegistry.enumerate();
-    const profile = profiles.find((p) => p.id === profileId);
-
-    // Env Sync: inject decrypted vars for any inject-delivery target whose dir
-    // is an ancestor of this terminal's cwd. Resolves to {} when nothing applies.
-    // Translate the cwd through the profile's context so a WSL pane's posix cwd
-    // resolves to a Windows-accessible path before findNearestConfig walks it.
-    if (req.cwd) {
-      try {
-        const cwd = resolveCtxPath(profile?.pathContext, req.cwd);
-        const syncVars = await envSyncManager.getEnvForCwd(cwd);
-        Object.assign(extraEnv, syncVars);
-        for (const k of Object.keys(syncVars)) envSources[k] = 'env-sync';
-      } catch (err) {
-        log.warn('env-sync inject failed; continuing without injected vars', {
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    }
-
-    const alreadyExisted = ptyManager.has(req.paneId);
-    const result = ptyManager.create({
-      ...req,
-      profile,
-      env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined,
-      envSources
-    });
-
-    // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
-    // duplicate onExit/onData callbacks stacking up
-    if (!alreadyExisted) {
-      activityTracker.trackPane(req.paneId);
-      ptyManager.onData(req.paneId, (data, paused) => {
-        notificationDetector.scan(req.paneId, data);
-        ptyOscBridge.scan(req.paneId, data);
-        activityTracker.onData(req.paneId);
-        const w = getWindow();
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_DATA, {
-            paneId: req.paneId,
-            data,
-            paused
-          } satisfies PtyDataPayload);
-        }
-      });
-
-      ptyManager.onExit(req.paneId, (exitCode) => {
-        cwdPoller.stopPolling(req.paneId);
-        const w = getWindow();
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
-            paneId: req.paneId,
-            exitCode
-          } satisfies PtyExitPayload);
-        }
-        eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
-      });
-
-      // Start CWD polling fallback. For WSL panes the poller no-ops — Phase 3's
-      // OSC 7 hook will drive cwd updates once the shell sources ~/.fleetrc.sh.
-      cwdPoller.startPolling(req.paneId, result.pid, profile?.pathContext ?? 'posix');
-
-      eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
-    }
-    return result;
+    return paneOpener.open(req);
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_INPUT, (_event, payload: PtyInputPayload) => {
@@ -340,6 +251,7 @@ export function registerIpcHandlers(
     notificationDetector.onUserInput(payload.paneId);
     activityTracker.onUserInput(payload.paneId);
     claudeSessions.onPaneInput(payload.paneId, payload.data);
+    workflows.onPaneInput(payload.paneId, payload.data);
     ptyManager.write(payload.paneId, payload.data);
   });
 
@@ -363,8 +275,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.PTY_ATTACH, (_event, { paneId }: { paneId: string }) => {
     const entry = ptyManager.get(paneId);
     if (!entry) return { data: '' };
-    const data = entry.outputBuffer;
-    entry.outputBuffer = '';
+    const data = ptyManager.takeForAttach(paneId);
     // Resume the PTY if it was paused due to buffer overflow (e.g. during
     // a hard refresh when the renderer wasn't consuming data).
     if (entry.paused) {

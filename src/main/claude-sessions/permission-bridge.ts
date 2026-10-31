@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { PermissionSuggestion } from '../../shared/claude-sessions';
-import { NOT_ANSWERED, POLL_HOLD_MS, reply, type BridgeRoute } from './bridge-server';
+import { NOT_ANSWERED, POLL_HOLD_MS, readBody, reply, type BridgeRoute } from './bridge-server';
 import { HOOK_PROTOCOL, lenient, nonEmpty, permissionMode, type HookEvent } from './hook-events';
 import type { HeldRequest, PermissionAnswer } from './permission-broker';
 import { toolCallKey } from './registry';
@@ -244,22 +244,7 @@ export class PermissionBridge implements BridgeRoute {
   ) {}
 
   handle(req: IncomingMessage, res: ServerResponse): void {
-    let text = '';
-    let tooLarge = false;
-    req.setEncoding('utf8');
-    req.on('data', (chunk: string) => {
-      if (tooLarge) return;
-      text += chunk;
-      if (text.length <= MAX_ASK_CHARS) return;
-      tooLarge = true;
-      text = '';
-    });
-    req.on('end', () => {
-      // Answered only once all of it is read: an answer while the mod is still
-      // sending closes the connection under it, and it sees an error, not the 413.
-      if (tooLarge) reply(res, 413);
-      else this.onAsk(text, res);
-    });
+    readBody(req, res, MAX_ASK_CHARS, (text) => this.onAsk(text, res));
   }
 
   /** Whether the mod asked about this permission request, so the Go hook's copy of it is one too many. */

@@ -6,6 +6,7 @@ import {
   Settings,
   Crosshair,
   History,
+  Workflow,
   SlidersHorizontal,
   Bot,
   Server,
@@ -67,6 +68,7 @@ import { NotesModal } from './components/notes/NotesModal';
 import { ShellEnvModal } from './components/shell-env/ShellEnvModal';
 import { ToolPaneFrame } from './components/ToolPaneFrame';
 import { AnnotateModal } from './components/AnnotateModal';
+import { WorkflowNotices } from './components/workflows/WorkflowNotices';
 import { ToastContainer } from './components/ToastContainer';
 import { RemoteRcPromptManager } from './components/ssh/RemoteRcPromptManager';
 import { QuitConfirmDialog } from './components/QuitConfirmDialog';
@@ -91,6 +93,9 @@ const AnnotateTab = lazy(async () => ({
 }));
 const SettingsTab = lazy(async () => ({
   default: (await import('./components/settings/SettingsTab')).SettingsTab
+}));
+const WorkflowsTab = lazy(async () => ({
+  default: (await import('./components/workflows/WorkflowsTab')).WorkflowsTab
 }));
 const SessionsTab = lazy(async () => ({
   default: (await import('./components/sessions/SessionsTab')).SessionsTab
@@ -252,6 +257,85 @@ function MiniRailTabList({
         />
       ))}
     </div>
+  );
+}
+
+const PINNED_TOOLS = [
+  {
+    type: 'annotate',
+    label: 'Annotate',
+    icon: Crosshair,
+    activeClass: 'bg-cyan-900/40 ring-1 ring-cyan-500/30',
+    iconClass: { active: 'text-cyan-400', idle: 'text-cyan-400/40' }
+  },
+  {
+    type: 'sessions',
+    label: 'Sessions',
+    icon: History,
+    activeClass: 'bg-blue-900/40 ring-1 ring-blue-500/30',
+    iconClass: { active: 'text-blue-400', idle: 'text-blue-400/40' }
+  },
+  {
+    type: 'workflows',
+    label: 'Workflows',
+    icon: Workflow,
+    activeClass: 'bg-violet-900/40 ring-1 ring-violet-500/30',
+    iconClass: { active: 'text-violet-400', idle: 'text-violet-400/40' }
+  }
+] as const;
+
+function isPinnedToolTab(tab: Tab): boolean {
+  return PINNED_TOOLS.some((tool) => tool.type === tab.type);
+}
+
+function PinnedToolButton({
+  tool,
+  isActive,
+  onClick
+}: {
+  tool: (typeof PINNED_TOOLS)[number];
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  const Icon = tool.icon;
+  return (
+    <MiniSidebarTooltip label={tool.label}>
+      <button
+        onClick={onClick}
+        className={`p-1.5 rounded transition-colors active:scale-90 ${
+          isActive ? tool.activeClass : 'hover:bg-fleet-surface-2'
+        }`}
+      >
+        <Icon size={16} className={isActive ? tool.iconClass.active : tool.iconClass.idle} />
+      </button>
+    </MiniSidebarTooltip>
+  );
+}
+
+function PinnedToolButtons({
+  tabs,
+  activeTabId,
+  onSelect
+}: {
+  tabs: Tab[];
+  activeTabId: string | null;
+  onSelect: (tabId: string) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      {PINNED_TOOLS.map((tool) => {
+        const tab = tabs.find((t) => t.type === tool.type);
+        if (!tab) return null;
+        return (
+          <PinnedToolButton
+            key={tab.id}
+            tool={tool}
+            isActive={tab.id === activeTabId}
+            onClick={() => onSelect(tab.id)}
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -811,6 +895,9 @@ export function App(): React.JSX.Element {
       }
       if (!tab) return;
 
+      // Main owns a run's tab, and it sends the new pane list after every exit.
+      if (tab.workflowRunId) return;
+
       // Background workspace tabs: close without undo toast (user isn't looking at them)
       if (isBackground) {
         state.closeTab(tab.id);
@@ -861,8 +948,7 @@ export function App(): React.JSX.Element {
   // The collapsed rail splits its icons the same way the expanded sidebar does:
   // agents are a pinned run of their own rather than mixed into the tab list.
   const miniRailTabs = workspace.tabs.filter(
-    (t) =>
-      t.type !== 'settings' && t.type !== 'annotate' && t.type !== 'sessions' && t.type !== 'agent'
+    (t) => t.type !== 'settings' && t.type !== 'agent' && !isPinnedToolTab(t)
   );
   const miniRailAgentTabs = workspace.tabs.filter((t) => t.type === 'agent');
 
@@ -958,55 +1044,12 @@ export function App(): React.JSX.Element {
               className="shrink-0 max-h-[33%]"
             />
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
-            {workspace.tabs.some((t) => t.type === 'annotate' || t.type === 'sessions') && (
-              <RailDivider />
-            )}
-            {/* Annotate pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'annotate')
-              .map((tab) => {
-                const isAnnotateActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Annotate" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors active:scale-90 ${
-                        isAnnotateActive
-                          ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <Crosshair
-                        size={16}
-                        className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {/* Sessions pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'sessions')
-              .map((tab) => {
-                const isSessionsActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Sessions" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors active:scale-90 ${
-                        isSessionsActive
-                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <History
-                        size={16}
-                        className={isSessionsActive ? 'text-blue-400' : 'text-blue-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
+            {workspace.tabs.some(isPinnedToolTab) && <RailDivider />}
+            <PinnedToolButtons
+              tabs={workspace.tabs}
+              activeTabId={activeTabId}
+              onSelect={setActiveTab}
+            />
             <RailDivider />
             {/* Configure tools */}
             <MiniSidebarTooltip label="Configure tools">
@@ -1108,6 +1151,7 @@ export function App(): React.JSX.Element {
                       {tab.type === 'annotate' && <AnnotateTab />}
                       {tab.type === 'settings' && <SettingsTab />}
                       {tab.type === 'sessions' && <SessionsTab />}
+                      {tab.type === 'workflows' && <WorkflowsTab />}
                     </Suspense>
                   </ToolPaneFrame>
                 </div>
@@ -1234,6 +1278,7 @@ export function App(): React.JSX.Element {
         onClose={() => setShellEnvOpen(false)}
         paneId={activePaneId}
       />
+      <WorkflowNotices />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <RemoteRcPromptManager />

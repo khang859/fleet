@@ -295,6 +295,20 @@ export function createCommandRegistry(): Command[] {
       }
     },
     {
+      id: 'open-workflows',
+      label: 'Open Workflows',
+      category: 'Tabs',
+      keywords: ['workflow', 'run', 'agents', 'automatic'],
+      execute: () => {
+        const ws = useWorkspaceStore.getState();
+        ws.setToolVisible('workflows', true);
+        const workflows = useWorkspaceStore
+          .getState()
+          .workspace.tabs.find((t) => t.type === 'workflows');
+        if (workflows) ws.setActiveTab(workflows.id);
+      }
+    },
+    {
       id: 'teleprompter-toggle',
       label: 'Show / Hide Teleprompter',
       category: 'View',

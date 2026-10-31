@@ -16,7 +16,7 @@ import type {
 import { createGitRunner, probeGit, type GitRunner } from './git-probe';
 import type { HookEvent } from './hook-events';
 import * as hookInstaller from './hook-installer';
-import { BridgeServer } from './bridge-server';
+import { BridgeServer, type BridgeRoute } from './bridge-server';
 import { HookServer, SocketHold } from './hook-server';
 import { PermissionBridge } from './permission-bridge';
 import { PermissionBroker, type HeldRequest } from './permission-broker';
@@ -60,6 +60,8 @@ export type ClaudeSessionsDeps = {
   installer?: Pick<typeof hookInstaller, 'ensureHooks' | 'uninstall'>;
   /** Adds and removes Fleet's Pi extension along with the Claude hooks. */
   piExtension?: { ensure: () => void; remove: () => void };
+  /** More routes on the bridge socket, such as the workflow tools. */
+  bridgeRoutes?: Record<string, BridgeRoute>;
   git?: GitRunner;
 };
 
@@ -131,7 +133,8 @@ export class ClaudeSessionsService {
     this.bridgeServer = new BridgeServer(
       {
         'GET /prompt': this.promptBridge,
-        'POST /permission': this.permissionBridge
+        'POST /permission': this.permissionBridge,
+        ...deps.bridgeRoutes
       },
       deps.bridgeSocketPath
     );
@@ -177,6 +180,11 @@ export class ClaudeSessionsService {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  /** Whether an agent can reach Fleet's tools now. */
+  get bridgeReady(): boolean {
+    return this.bridgeServer.isListening;
   }
 
   get status(): ClaudeTrackingStatus {
@@ -320,7 +328,7 @@ export class ClaudeSessionsService {
     const turnedOff = this.tracking === true && !wanted;
     this.tracking = wanted;
 
-    if (!this.supported) return;
+    if (!this.supported) return this.startWindowsBridge();
 
     if (!wanted) {
       this.installProblems = [];
@@ -369,6 +377,17 @@ export class ClaudeSessionsService {
     this.running = true;
     this.scheduleSnapshot();
     log.info('claude session tracking started', { configDirs: dirs });
+  }
+
+  /** Windows has no session tracking, but a workflow's Pi agents still need the bridge. */
+  private async startWindowsBridge(): Promise<void> {
+    this.ensurePiExtension();
+    if (this.bridgeServer.isListening) return;
+    try {
+      await this.bridgeServer.start();
+    } catch (err) {
+      log.warn('fleet-bridge pipe did not start', { error: String(err) });
+    }
   }
 
   private ensurePiExtension(): void {

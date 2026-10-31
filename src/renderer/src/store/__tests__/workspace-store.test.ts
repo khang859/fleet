@@ -154,7 +154,10 @@ describe('switchWorkspace', () => {
 
   it('does not create a scratch conversation when opening an empty workspace', () => {
     useWorkspaceStore.getState().switchWorkspace({ id: 'ws-empty', label: 'Empty', tabs: [] });
-    expect(useWorkspaceStore.getState().workspace.tabs.map((t) => t.type)).toEqual(['annotate']);
+    expect(useWorkspaceStore.getState().workspace.tabs.map((t) => t.type)).toEqual([
+      'workflows',
+      'annotate'
+    ]);
   });
 
   describe('scratch chat creation', () => {

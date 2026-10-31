@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../store/settings-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { useWorkspaceListStore } from '../../store/workspace-list-store';
 import { useToastStore } from '../../store/toast-store';
+import { isRunActive, useWorkflowsStore } from '../../store/workflows-store';
 import { createConfigFolderChoice } from '../../lib/config-folder-choice';
 import type { ConfigFolderChoice } from '../../lib/config-folder-choice';
 import { resolveClaudeConfig } from '../../../../shared/claude-config';
@@ -109,6 +110,14 @@ export function WorkspacesSection({
     for (const folder of Object.keys(hooks.byFolder)) hooks.check(folder);
   };
 
+  // Workflow agents reach Fleet through these hooks, so a run stops working without them.
+  const onTrackingChange = (trackSessions: boolean): void => {
+    const running = useWorkflowsStore.getState().state.runs.filter(isRunActive).length;
+    const warning = 'A workflow is running. Its agents lose their Fleet tools. Turn tracking off?';
+    if (!trackSessions && running > 0 && !window.confirm(warning)) return;
+    void setTracking(trackSessions);
+  };
+
   const commitDefault = (value: string): void => {
     const trimmed = value.trim();
     setDefaultDraft(null);
@@ -175,7 +184,7 @@ export function WorkspacesSection({
             type="checkbox"
             disabled={!HOOKS_SUPPORTED}
             checked={HOOKS_SUPPORTED && settings.claudeSessions.trackSessions}
-            onChange={(e) => void setTracking(e.target.checked)}
+            onChange={(e) => onTrackingChange(e.target.checked)}
             className="fleet-accent-input"
           />
           Track Claude Code and Pi sessions

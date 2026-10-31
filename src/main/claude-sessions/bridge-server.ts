@@ -25,6 +25,33 @@ export function reply(res: ServerResponse, status: number, body?: string): void 
   else res.writeHead(status, { 'content-type': 'application/json' }).end(body);
 }
 
+/**
+ * Read a request's whole body. Answered only once all of it is read: an answer
+ * while the mod is still sending closes the connection under it, and it sees an
+ * error, not the 413.
+ */
+export function readBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  maxChars: number,
+  onBody: (text: string) => void
+): void {
+  let text = '';
+  let tooLarge = false;
+  req.setEncoding('utf8');
+  req.on('data', (chunk: string) => {
+    if (tooLarge) return;
+    text += chunk;
+    if (text.length <= maxChars) return;
+    tooLarge = true;
+    text = '';
+  });
+  req.on('end', () => {
+    if (tooLarge) reply(res, 413);
+    else onBody(text);
+  });
+}
+
 /** One thing the fleet-bridge mod asks Fleet for, such as a prompt. */
 export type BridgeRoute = {
   handle(req: IncomingMessage, res: ServerResponse, url: URL): void;
@@ -46,6 +73,11 @@ export class BridgeServer {
     private readonly socketPath: string = BRIDGE_SOCKET_PATH
   ) {
     this.routes = new Map(Object.entries(routes));
+  }
+
+  /** Whether the socket is open, as a tool call needs it to be. */
+  get isListening(): boolean {
+    return this.server?.listening ?? false;
   }
 
   async start(): Promise<void> {

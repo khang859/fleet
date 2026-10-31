@@ -28,13 +28,19 @@ function isFleets(text: string): boolean {
   return text.split('\n', 1)[0].includes(MARKER);
 }
 
-/** The extension Fleet ships, or null when it is not found. */
-function bundledExtension(): string | null {
+/** Where the extension Fleet ships is, or null when it is not found. */
+export function bundledExtensionPath(): string | null {
   const mainDir = dirname(fileURLToPath(import.meta.url));
   const source = [
     join(mainDir, '..', '..', 'resources', 'pi-extensions', 'fleet.js'),
     join(process.resourcesPath, 'resources', 'pi-extensions', 'fleet.js')
   ].find((path) => existsSync(path));
+  return source ?? null;
+}
+
+/** The extension Fleet ships, or null when it is not found. */
+function bundledExtension(): string | null {
+  const source = bundledExtensionPath();
   return source ? readFileSync(source, 'utf8') : null;
 }
 

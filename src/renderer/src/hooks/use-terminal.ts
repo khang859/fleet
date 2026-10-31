@@ -150,6 +150,11 @@ function flushDraft(paneId: string): void {
   window.fleet.pty.input({ paneId, data: CLEAR_LINE + command });
 }
 
+/** Main opened this pane, so the terminal attaches to it instead of making one. */
+export function markPtyCreated(paneId: string): void {
+  createdPtys.add(paneId);
+}
+
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
   shellSpoke.delete(paneId);

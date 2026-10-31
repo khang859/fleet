@@ -4,12 +4,17 @@
 // hook socket takes (src/main/claude-sessions/hook-events.ts). It only reports:
 // it never stops a tool, and nothing here may break Pi, so each handler swallows
 // its errors. Outside a Fleet pane it does nothing.
+//
+// It also gives Pi this pane's workflow tools. They come from Fleet at each
+// session start, so this file holds no name or schema (src/main/workflows/tools.ts).
 
 import { createHash } from 'node:crypto';
+import { request } from 'node:http';
 import { connect } from 'node:net';
 
 const PROTOCOL = 6;
 const SEND_TIMEOUT_MS = 1000;
+const BRIDGE_TIMEOUT_MS = 30_000;
 
 /** Fleet's name for each reason Pi starts a session. */
 const SOURCES = {
@@ -35,6 +40,93 @@ function deliver(socketPath, payload) {
   });
 }
 
+/** Ask Fleet's bridge for something, and answer its JSON, or null when it refuses. */
+function askBridge(method, path, headers, body) {
+  return new Promise((resolve) => {
+    const socketPath = process.env.FLEET_BRIDGE_SOCKET;
+    const req = request(
+      { socketPath, method, path, headers, timeout: BRIDGE_TIMEOUT_MS },
+      (res) => {
+        let text = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => (text += chunk));
+        res.on('end', () => {
+          try {
+            resolve(res.statusCode === 200 ? JSON.parse(text) : null);
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+    req.end(body);
+  });
+}
+
+function postToBridge(name, fields) {
+  const body = JSON.stringify({
+    paneId: process.env.FLEET_PANE_ID,
+    token: process.env.FLEET_PANE_TOKEN,
+    ...fields
+  });
+  return askBridge('POST', `/workflows/${name}`, { 'content-type': 'application/json' }, body);
+}
+
+/** A tool that runs in Fleet. Fleet checks this pane and does the work. */
+function bridgeTool(tool) {
+  return {
+    name: tool.name,
+    label: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema,
+    async execute(_id, args) {
+      const reply = await postToBridge(tool.name, { args });
+      if (!reply) throw new Error('Fleet did not answer.');
+      if (!reply.ok) throw new Error(reply.message);
+      return { content: [{ type: 'text', text: JSON.stringify(reply.data) }], details: {} };
+    }
+  };
+}
+
+/** What Fleet needs from a pane that is an agent in a run. */
+function runLink(pi) {
+  /** Tools once per process: a new session in the same Pi keeps them. */
+  const registered = new Set();
+  /** This pane is an agent in a run, so Fleet wants its turns. */
+  let inRun = false;
+
+  /** Tell Fleet of a turn. Its reply can hold a reminder for this agent. */
+  const report = async (event, ctx, fields = {}) => {
+    if (!inRun) return;
+    const session = {
+      sessionId: ctx.sessionManager.getSessionId(),
+      transcriptPath: ctx.sessionManager.getSessionFile()
+    };
+    const reply = await postToBridge('events', { event, ...session, ...fields });
+    // After this event, so the settled run is over before the next one starts.
+    const reminder = reply?.data?.reminder;
+    if (reminder) setTimeout(() => pi.sendUserMessage(reminder), 0);
+  };
+
+  const loadTools = async () => {
+    if (!process.env.FLEET_PANE_TOKEN || !process.env.FLEET_BRIDGE_SOCKET) return;
+    const path = `/workflows/tools?pane=${encodeURIComponent(process.env.FLEET_PANE_ID)}`;
+    const headers = { 'x-fleet-token': process.env.FLEET_PANE_TOKEN };
+    const list = await askBridge('GET', path, headers);
+    if (!list) return;
+    inRun = list.run;
+    for (const tool of list.tools) {
+      if (registered.has(tool.name)) continue;
+      registered.add(tool.name);
+      pi.registerTool(bridgeTool(tool));
+    }
+  };
+
+  return { report, loadTools };
+}
+
 /** Why the run failed, from its messages, or null when it did not. */
 function failureOf(messages) {
   const last = messages?.filter((m) => m.role === 'assistant').at(-1);
@@ -44,6 +136,8 @@ function failureOf(messages) {
 export default function fleet(pi) {
   const socketPath = process.env.FLEET_COPILOT_SOCKET;
   if (!process.env.FLEET_SESSION || !socketPath) return;
+
+  const run = runLink(pi);
 
   // One at a time, so events reach Fleet in the order they happened.
   let queue = Promise.resolve();
@@ -88,8 +182,10 @@ export default function fleet(pi) {
     });
   };
 
-  on('session_start', (event, ctx) => {
+  on('session_start', async (event, ctx) => {
     send(ctx, 'SessionStart', 'waiting_for_input', { source: SOURCES[event.reason] });
+    await run.loadTools();
+    await run.report('session_start', ctx);
   });
 
   on('input', (event) => {
@@ -105,6 +201,7 @@ export default function fleet(pi) {
     const hash = submitted ?? (event.prompt ? hashPrompt(event.prompt) : undefined);
     submitted = undefined;
     send(ctx, 'UserPromptSubmit', 'processing', { prompt_sha256: hash });
+    void run.report('turn_start', ctx);
   });
 
   on('tool_execution_start', (event, ctx) => {
@@ -129,8 +226,10 @@ export default function fleet(pi) {
   on('agent_settled', (event, ctx) => {
     if (failure && !event.aborted) {
       send(ctx, 'StopFailure', 'api_error', { error: 'unknown', message: failure });
+      void run.report('api_error', ctx, { message: failure });
     } else {
       send(ctx, 'Stop', 'waiting_for_input');
+      void run.report('turn_end', ctx);
     }
     failure = null;
     submitted = undefined;
