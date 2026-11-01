@@ -109,7 +109,7 @@ function makeWorld(): World {
     openFolders: () => folders,
     tokenOf: () => TOKEN,
     lastOutputAt: () => 0,
-    sendPrompt: async () => Promise.resolve(),
+    sendPrompt: async () => Promise.resolve(true),
     addPermissionAnswerer: () => () => undefined,
     answerPermission: () => true,
     subscribeSessions: () => undefined,

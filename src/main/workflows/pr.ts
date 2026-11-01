@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 import { FLEET_HOME } from '../../shared/constants';
+import type { RunBranch } from '../../shared/workflows';
 
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
@@ -206,6 +207,160 @@ export async function makePrWorktree(
 
 export async function removeWorktree(exec: Exec, projectPath: string, path: string): Promise<void> {
   await exec('git', ['worktree', 'remove', '--force', path], projectPath);
+}
+
+/** Where a run's own worktree lives: one folder per project. */
+function runWorktreePath(projectPath: string, runId: string, base: string): string {
+  const folder = join(base, basename(projectPath));
+  mkdirSync(folder, { recursive: true });
+  return join(folder, `run-${runId.slice(0, 8)}`);
+}
+
+/** The default branch, with the ref to start from. A repo with no remote uses HEAD. */
+async function startPoint(exec: Exec, cwd: string): Promise<{ base: string; ref: string }> {
+  try {
+    const ref = await exec('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], cwd);
+    const base = ref.trim().replace(/^origin\//, '');
+    await exec('git', ['fetch', 'origin', base], cwd).catch(() => undefined);
+    return { base, ref: ref.trim() };
+  } catch {
+    const head = (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd)).trim();
+    return { base: head, ref: head };
+  }
+}
+
+async function branchExists(exec: Exec, cwd: string, name: string): Promise<boolean> {
+  try {
+    await exec('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`], cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type BranchSpec = {
+  projectPath: string;
+  runId: string;
+  slug: string;
+  base?: string;
+  /** The run's branch, to open its worktree again. */
+  existing?: RunBranch;
+};
+
+/** A new worktree on a new branch `fleet/<slug>`, from the default branch. */
+export async function makeBranchWorktree(
+  exec: Exec,
+  spec: BranchSpec
+): Promise<{ path: string; branch: RunBranch }> {
+  const { projectPath, runId, slug, existing } = spec;
+  const path = runWorktreePath(projectPath, runId, spec.base ?? join(FLEET_HOME, 'worktrees'));
+  if (existing) {
+    await exec('git', ['worktree', 'add', path, existing.name], projectPath);
+    return { path, branch: existing };
+  }
+  const { base, ref } = await startPoint(exec, projectPath);
+  const taken = await branchExists(exec, projectPath, `fleet/${slug}`);
+  const name = taken ? `fleet/${slug}-${runId.slice(0, 6)}` : `fleet/${slug}`;
+  await exec('git', ['worktree', 'add', '-b', name, path, ref], projectPath);
+  const baseSha = (await exec('git', ['rev-parse', ref], projectPath)).trim();
+  return { path, branch: { name, base, baseSha } };
+}
+
+/** The change in a folder from a commit, with work that nobody committed yet. */
+export async function changesSince(exec: Exec, cwd: string, sha: string): Promise<string> {
+  const diff = await exec('git', ['diff', sha], cwd);
+  const added = await exec('git', ['ls-files', '--others', '--exclude-standard'], cwd);
+  if (!added.trim()) return diff;
+  return `${diff}\n# New files with no commit. Read them in the project folder:\n${added}`;
+}
+
+/** The commit a folder split from the default branch, or null when none is known. */
+export async function forkPoint(exec: Exec, cwd: string): Promise<string | null> {
+  try {
+    const { ref } = await startPoint(exec, cwd);
+    return (await exec('git', ['merge-base', 'HEAD', ref], cwd)).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** The remote that takes the push. In a fork it is the person's own, as `origin` is. */
+async function pushRemote(exec: Exec, cwd: string): Promise<string> {
+  const chosen = await exec('git', ['config', '--get', 'remote.pushDefault'], cwd).catch(() => '');
+  if (chosen.trim()) return chosen.trim();
+  const remotes = await exec('git', ['remote'], cwd);
+  return remotes.split('\n').includes('origin') ? 'origin' : prRemote(exec, cwd);
+}
+
+/** The head for `gh`. A branch in a fork needs its owner, as `gh` reads the upstream repo. */
+async function prHead(exec: Exec, cwd: string, remote: string, name: string): Promise<string> {
+  const slug = slugOfUrl((await exec('git', ['remote', 'get-url', remote], cwd)).trim());
+  if (!slug || slug === (await repoSlug(exec, cwd)).toLowerCase()) return name;
+  return `${slug.split('/')[0]}:${name}`;
+}
+
+export type BranchPrSpec = {
+  projectPath: string;
+  worktreePath: string | null;
+  branch: RunBranch;
+  body: string;
+};
+
+export type BranchPrResult = { ok: true; number: number; url: string } | { ok: false; why: string };
+
+async function unsavedWork(exec: Exec, worktreePath: string | null): Promise<boolean> {
+  if (!worktreePath) return false;
+  return (await exec('git', ['status', '--porcelain'], worktreePath)).trim() !== '';
+}
+
+/** The first commit subject. It comes from git, so no TOML text reaches `gh`. */
+async function prTitle(exec: Exec, cwd: string, { baseSha, name }: RunBranch): Promise<string> {
+  const log = await exec('git', ['log', '--reverse', '--format=%s', `${baseSha}..${name}`], cwd);
+  return log.split('\n')[0];
+}
+
+function prOfUrl(url: string): { number: number; url: string } {
+  return { number: Number(/\/pull\/(\d+)/.exec(url)?.[1] ?? 0), url };
+}
+
+/** The PR of a branch, when one is open already: a retry after a lost answer. */
+async function openPrOf(exec: Exec, cwd: string, head: string): Promise<string | null> {
+  try {
+    const url = await exec('gh', ['pr', 'view', head, '--json', 'url', '-q', '.url'], cwd);
+    return url.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** What stops a PR, or null: no commits, or work that nobody committed. */
+async function prBlocker(exec: Exec, spec: BranchPrSpec): Promise<string | null> {
+  const { projectPath, worktreePath, branch } = spec;
+  const range = `${branch.baseSha}..${branch.name}`;
+  const count = await exec('git', ['rev-list', '--count', range], projectPath);
+  if (Number(count.trim()) === 0) return 'The branch has no commits.';
+  if (await unsavedWork(exec, worktreePath)) {
+    return 'The worktree has changes with no commit. Commit them, then try again.';
+  }
+  return null;
+}
+
+/** Push the branch of a run, and open its PR. All arguments come from git and from Fleet. */
+export async function openBranchPr(exec: Exec, spec: BranchPrSpec): Promise<BranchPrResult> {
+  const { projectPath, branch, body } = spec;
+  const why = await prBlocker(exec, spec);
+  if (why) return { ok: false, why };
+
+  const remote = await pushRemote(exec, projectPath);
+  await exec('git', ['push', '--set-upstream', remote, branch.name], projectPath);
+  const head = await prHead(exec, projectPath, remote, branch.name);
+  const open = await openPrOf(exec, projectPath, head);
+  if (open) return { ok: true, ...prOfUrl(open) };
+
+  const title = await prTitle(exec, projectPath, branch);
+  const args = ['pr', 'create', '--head', head, '--base', branch.base];
+  const out = await exec('gh', [...args, '--title', title, '--body-file', '-'], projectPath, body);
+  return { ok: true, ...prOfUrl(out.trim()) };
 }
 
 /** The hidden mark in a posted comment, so a crash can never post an item twice. */

@@ -51,6 +51,47 @@ program = "pi"
 prompt = "Look."
 `;
 
+const TALKING = `name = "Talk"
+
+[[stages]]
+name = "Talk"
+
+[[stages.agents]]
+role = "Talker"
+program = "pi"
+talks = true
+prompt = "Talk."
+`;
+
+const PLANNING = `name = "Plan"
+
+[[stages]]
+name = "Plan"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+plan = true
+prompt = "Plan."
+`;
+
+const BRANCHING = `name = "Branch"
+workspace = "new-branch"
+
+[[stages]]
+name = "Build"
+
+[[stages.agents]]
+role = "Lead"
+program = "pi"
+access = "write"
+prompt = "Build."
+
+[finish]
+action = "open-pr"
+`;
+
 const OPTIONS = { origin: 'manual' as const, ruleId: null, focus: true };
 
 function wirePr(fields: Partial<PrWire> = {}): PrWire {
@@ -378,6 +419,53 @@ describe('WorkflowStarts', () => {
       await flush();
 
       expect(h.opened[0].line).not.toContain(`'--approve'`);
+    });
+  });
+
+  describe('stage files', () => {
+    const automatic = { ...OPTIONS, origin: 'automatic' as const };
+
+    it('refuses an automatic start of a file that talks', async () => {
+      saveApproved('talk', TALKING);
+
+      const result = await makeStarts().start(request('talk', {}), automatic);
+
+      expect(result).toMatchObject({ ok: false, code: 'needs-person' });
+    });
+
+    it('refuses an automatic start of a file with a plan', async () => {
+      saveApproved('plan', PLANNING);
+
+      const result = await makeStarts().start(request('plan', {}), automatic);
+
+      expect(result).toMatchObject({ ok: false, code: 'needs-person' });
+    });
+
+    it('starts a talking file for a person', async () => {
+      saveApproved('talk', TALKING);
+
+      const result = await makeStarts().start(request('talk', {}), OPTIONS);
+
+      expect(result).toMatchObject({ ok: true });
+    });
+
+    it('checks the program of each stage', async () => {
+      saveApproved('plan', PLANNING);
+      const hasProgram = async (program: string): Promise<boolean> =>
+        Promise.resolve(program !== 'claude');
+
+      const result = await makeStarts({ hasProgram }).start(request('plan', {}), OPTIONS);
+
+      expect(result).toMatchObject({ ok: false });
+    });
+
+    it('needs gh for an open-pr file', async () => {
+      saveApproved('branch', BRANCHING);
+      const exec: Exec = async () => Promise.reject(new Error('no gh'));
+
+      const result = await makeStarts({ exec }).start(request('branch', {}), OPTIONS);
+
+      expect(result).toMatchObject({ ok: false });
     });
   });
 

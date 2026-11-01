@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   fillPlaceholders,
   findWorkflowFiles,
+  hashText,
   parseWorkflow,
   PROJECT_WORKFLOWS_DIR,
   readWorkflowFile,
@@ -13,6 +14,7 @@ import {
   targetOf,
   WorkflowFileError
 } from '../config';
+import { STARTERS } from '../starters';
 import { makeDef } from './helpers';
 
 const VALID = `name = "Research"
@@ -299,4 +301,154 @@ describe('workflow files', () => {
     expect(first.text).toBe('one');
     expect(first.hash).not.toBe(second.hash);
   });
+});
+
+const STAGE_FILE = `name = "Build"
+workspace = "new-branch"
+
+[[stages]]
+name = "Lead"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+talks = true
+plan = true
+prompt = "Plan and build."
+
+[[stages]]
+name = "Review"
+
+[[stages.agents]]
+role = "Bugs"
+program = "pi"
+prompt = "Look for bugs."
+
+[[stages.agents]]
+role = "Tests"
+program = "pi"
+prompt = "Look at tests."
+
+[[stages]]
+name = "Fix"
+only_with_findings = true
+
+[[stages.agents]]
+role = "Lead"
+resume = "Lead"
+prompt = "Fix them."
+
+[finish]
+action = "open-pr"
+`;
+
+describe('stage files', () => {
+  it('reads stages in order, with the access default', () => {
+    const def = parseWorkflow(STAGE_FILE);
+
+    expect(def.agents).toEqual([]);
+    expect(def.stages?.map((stage) => stage.name)).toEqual(['Lead', 'Review', 'Fix']);
+    expect(def.stages?.[1].agents[0].access).toBe('read');
+  });
+
+  it('gives a returning agent the program and access of the named agent', () => {
+    const [fixer] = parseWorkflow(STAGE_FILE).stages?.[2].agents ?? [];
+
+    expect(fixer.program).toBe('claude');
+    expect(fixer.access).toBe('write');
+  });
+
+  it('refuses agents and stages in one file', () => {
+    const agent = '[[agents]]\nrole = "A"\nprogram = "pi"\nprompt = "x"\n\n';
+    const both = STAGE_FILE.replace('[[stages]]', `${agent}[[stages]]`);
+
+    expect(errorOf(both)).toContain('stages or agents, not both');
+  });
+
+  it('refuses a file with no agents and no stages', () => {
+    expect(errorOf('name = "Empty"\n')).toBe('A workflow needs stages or agents.');
+  });
+
+  it('refuses plan with read access', () => {
+    const text = STAGE_FILE.replace('access = "write"\n', '');
+
+    expect(errorOf(text)).toContain('Lead has plan = true');
+  });
+
+  it('refuses a resume with no earlier agent', () => {
+    expect(errorOf(STAGE_FILE.replace('resume = "Lead"', 'resume = "Nobody"'))).toContain(
+      'no earlier stage'
+    );
+  });
+
+  it('refuses a resume that is not earlier', () => {
+    const text = STAGE_FILE.replace('role = "Bugs"', 'role = "Bugs"\nresume = "Tests"');
+
+    expect(errorOf(text)).toContain('no earlier stage');
+  });
+
+  it('refuses a resume with another program', () => {
+    const text = STAGE_FILE.replace('resume = "Lead"', 'resume = "Lead"\nprogram = "pi"');
+
+    expect(errorOf(text)).toContain('must use the program of Lead');
+  });
+
+  it('refuses a repeated role with no resume', () => {
+    const text = STAGE_FILE.replace('role = "Bugs"', 'role = "Tests"');
+
+    expect(errorOf(text)).toContain('same role');
+  });
+
+  it('refuses a skippable first stage', () => {
+    const text = STAGE_FILE.replace(
+      'name = "Lead"\n',
+      'name = "Lead"\nonly_with_findings = true\n'
+    );
+
+    expect(errorOf(text)).toContain('first stage');
+  });
+
+  it('refuses only_with_findings with no board', () => {
+    const text = STAGE_FILE.replace('workspace =', 'board = false\nworkspace =');
+
+    expect(errorOf(text)).toContain('needs board = true');
+  });
+
+  it('refuses a finish after a stage of many agents', () => {
+    const noFix = `${STAGE_FILE.slice(0, STAGE_FILE.indexOf('[[stages]]\nname = "Fix"'))}[finish]\naction = "open-pr"\n`;
+
+    expect(errorOf(noFix)).toContain('last stage must have one agent');
+  });
+
+  it('refuses open-pr with no new branch', () => {
+    expect(errorOf(STAGE_FILE.replace('workspace = "new-branch"\n', ''))).toContain(
+      'needs workspace = "new-branch"'
+    );
+  });
+
+  it('finds a placeholder with no input in a stage prompt', () => {
+    expect(errorOf(STAGE_FILE.replace('Fix them.', 'Fix {{nope}}.'))).toContain('{{nope}}');
+  });
+});
+
+/** Approval is tied to these hashes, so a new one would ask each person to approve again. */
+const OLD_STARTER_HASHES = {
+  'pr-review': '4d792e886a0de72124f6dd300cc9d4300603844d03bb1bac89af413d7bff61d0',
+  research: '45bb8946c6f4b81594876d964b0639c046589c8967d59d3e547ab670296c3371',
+  'agent-task': '20df39b42cd4b7314f2b45e64b9d6ac6ad03b27a532ba39e9accdd633af64399'
+};
+
+describe('old starters', () => {
+  for (const [id, hash] of Object.entries(OLD_STARTER_HASHES)) {
+    const starter = STARTERS.find((each) => each.id === id);
+
+    it(`keeps ${id} as an agents file`, () => {
+      expect(parseWorkflow(starter?.text ?? '').stages).toBeUndefined();
+    });
+
+    it(`keeps the approval of ${id}`, () => {
+      expect(hashText(starter?.text ?? '')).toBe(hash);
+    });
+  }
 });

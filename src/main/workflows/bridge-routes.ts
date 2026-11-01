@@ -94,7 +94,7 @@ export class WorkflowsBridge {
       reply(res, 403);
       return;
     }
-    const body = { tools: toolsFor(kind), run: kind !== 'outside' };
+    const body = { tools: toolsFor(kind), run: kind === 'run' || kind === 'last' };
     reply(res, 200, JSON.stringify(body));
   }
 

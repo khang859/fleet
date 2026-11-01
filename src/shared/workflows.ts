@@ -9,14 +9,33 @@ export type WorkflowInput = {
   required: boolean;
 };
 
+/** What an agent may do. Fleet enforces it with program flags, not with prompt text. */
+export type WorkflowAccess = 'read' | 'write';
+
 export type WorkflowAgentDef = {
   role: string;
   program: WorkflowProgram;
   prompt: string;
+  /** Only in a stage file. An old file's agents can always change code. */
+  access?: WorkflowAccess;
+  /** It talks with a person, so a turn end waits for them. */
+  talks?: boolean;
+  /** A person approves its plan before it changes code. */
+  plan?: boolean;
+  /** The role of an earlier agent whose session this agent goes on with. */
+  resume?: string;
+};
+
+/** Agents in one stage run at the same time. The next stage waits for all of them. */
+export type WorkflowStageDef = {
+  name: string;
+  agents: WorkflowAgentDef[];
+  /** Skip this stage when the board is empty. */
+  only_with_findings?: boolean;
 };
 
 export type WorkflowFinish = {
-  action: 'save-report' | 'post-pr';
+  action: 'save-report' | 'post-pr' | 'open-pr';
   path?: string;
 };
 
@@ -24,12 +43,42 @@ export type WorkflowDef = {
   name: string;
   shared: string;
   board: boolean;
-  workspace: 'current' | 'pr-worktree';
+  workspace: 'current' | 'pr-worktree' | 'new-branch';
   inputs: WorkflowInput[];
+  /** Empty in a stage file. Use `stagesOf` to read a file of either shape. */
   agents: WorkflowAgentDef[];
   judge?: WorkflowAgentDef;
+  /** Set only in a stage file. */
+  stages?: WorkflowStageDef[];
   finish?: WorkflowFinish;
 };
+
+/** Every file as stages. An old file's bytes do not change, so its approval holds. */
+export function stagesOf(def: WorkflowDef): WorkflowStageDef[] {
+  if (def.stages) return def.stages;
+  const writers = (agents: WorkflowAgentDef[]): WorkflowAgentDef[] =>
+    agents.map((agent) => ({ ...agent, access: 'write' }));
+  const first = { name: 'Agents', agents: writers(def.agents) };
+  return def.judge ? [first, { name: 'Last agent', agents: writers([def.judge]) }] : [first];
+}
+
+/** Every agent in run order, in a file of either shape. */
+export function agentsOf(def: WorkflowDef): WorkflowAgentDef[] {
+  return stagesOf(def).flatMap((stage) => stage.agents);
+}
+
+/** A file that stops for a person. It cannot run with nobody there. */
+/** A role can repeat, so `resume` means the latest agent with that name. */
+export function latestWithRole(
+  stages: WorkflowStageDef[],
+  role: string
+): WorkflowAgentDef | undefined {
+  return stages.flatMap((stage) => stage.agents).findLast((agent) => agent.role === role);
+}
+
+export function needsPersonAtRun(def: WorkflowDef): boolean {
+  return agentsOf(def).some((agent) => agent.talks === true || agent.plan === true);
+}
 
 export type WorkflowScope = 'project' | 'personal';
 
@@ -105,11 +154,45 @@ export type RunAgent = {
   /** The pane that stayed open, or opened again, after the run ended. */
   keptPaneId: string | null;
   autoRetried: boolean;
+  /** Its stage skipped itself, so nothing went wrong. */
+  stageSkipped?: boolean;
   sessionId: string | null;
   transcriptPath: string | null;
   /** A permission request Fleet can answer for this agent. */
   pendingPermission: { toolUseId: string; tool: string } | null;
+  /** Its place in the run order. A run from an older Fleet has no value here. */
+  stage?: number;
+  access?: WorkflowAccess;
+  talks?: boolean;
+  /** Its plan needs a person's approval before it can change code. */
+  plan?: boolean;
+  /** A person approved its plan. It is saved, so a restart keeps the limit until then. */
+  planApproved?: boolean;
+  /** The plan that waits for a person. */
+  pendingPlan?: PendingPlan | null;
+  /** Each plan the agent sent, oldest first. */
+  plans?: PlanVersion[];
+  /** The build mode a person chose for a Claude Code plan. */
+  buildMode?: PlanBuildMode;
+  /** The role of the agent whose session this agent goes on with. */
+  resumes?: string;
 };
+
+export type PlanVersion = { version: number; path: string; at: number };
+
+/** The mode a person approves a Claude Code plan into. */
+export type PlanBuildMode = 'auto' | 'acceptEdits' | 'default';
+
+export type PendingPlan = {
+  version: number;
+  /** The Claude Code request to answer. Pi has none. */
+  toolUseId: string | null;
+};
+
+/** A person's answer on the plan page. */
+export type PlanAnswer =
+  | { kind: 'approve'; mode?: PlanBuildMode }
+  | { kind: 'change'; text: string };
 
 export type BoardItem = {
   id: string;
@@ -184,6 +267,33 @@ export type WorkflowRun = {
   keptPanes: string[];
   /** A team's PR in its own worktree, so agents approve their own tools. */
   teamPr: boolean;
+  /** Stage names in run order. A run from an older Fleet has none. */
+  stages?: string[];
+  /** The workflow file has `stages`, and not the old `agents` shape. */
+  stageFile?: boolean;
+  /** The branch of a `new-branch` run. */
+  branch?: RunBranch;
+  /** The pull request an `open-pr` run opened. */
+  openedPr?: { number: number; url: string };
+  /** Why an `open-pr` run opened no pull request. */
+  prProblem?: string;
+};
+
+/** A run from an older Fleet has no stage: its last agent came after all others. */
+export function stageOf(agent: RunAgent): number {
+  return agent.stage ?? (agent.isLast ? 1 : 0);
+}
+
+export function agentsInStage(run: WorkflowRun, stage: number): RunAgent[] {
+  return run.agents.filter((agent) => stageOf(agent) === stage);
+}
+
+export type RunBranch = {
+  name: string;
+  /** The default branch, for the pull request. */
+  base: string;
+  /** The commit the branch started from. */
+  baseSha: string;
 };
 
 /** Where to find a run's panes on screen. */
@@ -195,7 +305,28 @@ export type RunTab = {
   paneIds: string[];
   /** A manual start opens its tab in front. */
   focus: boolean;
+  /** A builder tab: its second split shows this session's draft. */
+  builderId?: string;
 };
+
+/** A builder pane and the one draft it makes. */
+export type BuilderInfo = {
+  id: string;
+  projectPath: string;
+  program: WorkflowProgram;
+  /** The file name without `.toml`. Null until the first save. */
+  draftId: string | null;
+};
+
+/** A saved agent definition, for the job list of Add agent. */
+export type SavedAgent = {
+  name: string;
+  description: string;
+  prompt: string;
+  access: WorkflowAccess;
+};
+
+export type BuilderStart = { ok: true; id: string } | { ok: false; message: string };
 
 export type RuleTrigger =
   | { kind: 'time'; at: string; days: number[] }
@@ -251,6 +382,8 @@ export type WorkflowNotice = {
   ask?: { path: string; hash: string };
   /** The file that an agent made, on an `agent-create` notice. */
   workflowId?: string;
+  /** The agent whose plan waits, on a `needs-you` notice. */
+  planAgentId?: string;
 };
 
 export type WorkflowsState = {
@@ -379,6 +512,17 @@ export type WorkflowsApi = {
   openAgent: (runId: string, agentId: string) => Promise<OpenAgentResult>;
   retryPrepare: (runId: string) => void;
   answerPermission: (toolUseId: string, decision: 'allow' | 'deny') => boolean;
+  /** What is wrong in a file, in the words that Save would use. */
+  check: (text: string) => string | null;
+  savedAgents: (projectPath: string) => Promise<SavedAgent[]>;
+  startBuilder: (projectPath: string, program: WorkflowProgram) => Promise<BuilderStart>;
+  reopenBuilder: (projectPath: string, draftId: string) => Promise<BuilderStart>;
+  builderInfo: (id: string) => BuilderInfo | null;
+  draftsWithBuilder: (projectPath: string) => string[];
+  programs: () => Promise<Record<WorkflowProgram, boolean>>;
+  answerPlan: (runId: string, agentId: string, answer: PlanAnswer) => Promise<boolean>;
+  readPlan: (runId: string, version: number) => string | null;
+  retryPr: (runId: string) => Promise<void>;
   reportPath: (runId: string) => string | null;
   saveReport: (runId: string, path: string, replace: boolean) => SaveReportResult;
   pickReportPath: (runId: string) => Promise<SaveReportResult | null>;

@@ -22,9 +22,12 @@ type WorkflowsStore = {
   view: WorkflowsView;
   /** The run shown in full, in place of the Runs list. */
   openRunId: string | null;
+  /** The agent whose plan fills the run page. */
+  planAgentId: string | null;
   connect: () => () => void;
   setView: (view: WorkflowsView) => void;
   openRun: (runId: string | null) => void;
+  openPlan: (agentId: string | null) => void;
   loadProjects: (paths: string[]) => Promise<void>;
   setProject: (path: string) => Promise<void>;
   addProject: () => Promise<void>;
@@ -70,6 +73,12 @@ export function showRun(runId: string): void {
   store.openRun(runId);
 }
 
+/** The page of one agent's plan. */
+export function showPlan(runId: string, agentId: string): void {
+  showRun(runId);
+  useWorkflowsStore.getState().openPlan(agentId);
+}
+
 function isShowingRun(runId: string): boolean {
   const { workspace, activeTabId } = useWorkspaceStore.getState();
   return workspace.tabs.find((tab) => tab.id === activeTabId)?.workflowRunId === runId;
@@ -88,7 +97,7 @@ function applyRunTab(tab: RunTab): void {
   const wasShowing = isShowingRun(tab.runId);
   useWorkspaceStore.getState().syncRunTab(tab, tab.focus);
   // The last pane closed under a person who was looking, so they get the report.
-  if (wasShowing && tab.paneIds.length === 0) showRun(tab.runId);
+  if (wasShowing && tab.paneIds.length === 0 && !tab.builderId) showRun(tab.runId);
 }
 
 function dropClosedPanes(previous: WorkflowRun[], next: WorkflowRun[]): void {
@@ -113,6 +122,7 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
   entries: [],
   view: 'workflows',
   openRunId: null,
+  planAgentId: null,
 
   connect: () => {
     const applyState = (state: WorkflowsState): void => {
@@ -141,9 +151,11 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
     };
   },
 
-  setView: (view) => set({ view, openRunId: null }),
+  setView: (view) => set({ view, openRunId: null, planAgentId: null }),
 
-  openRun: (openRunId) => set({ openRunId, view: 'runs' }),
+  openRun: (openRunId) => set({ openRunId, view: 'runs', planAgentId: null }),
+
+  openPlan: (planAgentId) => set({ planAgentId }),
 
   loadProjects: async (paths) => {
     // The project on show stays listed. A person can add one that has no open pane.
@@ -155,7 +167,7 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
 
   setProject: async (projectPath) => {
     const entries = projectPath === get().projectPath ? get().entries : [];
-    set({ projectPath, entries, openRunId: null });
+    set({ projectPath, entries, openRunId: null, planAgentId: null });
     await get().refresh();
   },
 

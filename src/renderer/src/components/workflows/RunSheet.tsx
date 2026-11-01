@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { CircleAlert, CircleCheck } from 'lucide-react';
-import type {
-  StartRunRequest,
-  WorkflowCheck,
-  WorkflowEntry,
-  WorkflowPreview,
-  WorkflowProgram
+import {
+  agentsOf,
+  stagesOf,
+  type StartRunRequest,
+  type WorkflowCheck,
+  type WorkflowEntry,
+  type WorkflowPreview,
+  type WorkflowProgram
 } from '../../../../shared/workflows';
+import { whereText } from './workflow-review';
 import { callWorkflows, showWorkflowError, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
@@ -84,13 +87,17 @@ function usePreview(request: StartRunRequest | null): WorkflowPreview | null {
 function planLines(entry: WorkflowEntry): string[] {
   const { def } = entry;
   if (!def) return [];
-  const count = def.agents.length + (def.judge ? 1 : 0);
+  const stages = stagesOf(def);
+  const count = agentsOf(def).length;
+  const last = stages[stages.length - 1].agents;
   return [
-    def.workspace === 'pr-worktree'
-      ? 'Make a new worktree for this PR.'
-      : 'Work in the current folder.',
-    `Open ${count} ${count === 1 ? 'pane' : 'panes'}, one for each agent.`,
-    def.judge ? `${def.judge.role} goes last and writes the report.` : 'Join the agent summaries.'
+    `${whereText(def)}.`,
+    stages.length > 1 && def.stages
+      ? `Run ${stages.length} stages in order: ${stages.map((stage) => stage.name).join(', ')}.`
+      : `Open ${count} ${count === 1 ? 'pane' : 'panes'}, one for each agent.`,
+    last.length === 1 && (def.judge || def.stages)
+      ? `${last[0].role} goes last and writes the report.`
+      : 'Join the agent summaries.'
   ];
 }
 

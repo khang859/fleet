@@ -52,15 +52,28 @@ function addLeaf(root: PaneNode | null, leaf: PaneLeaf): PaneNode {
   return { ...root, children: [root.children[0], addToRow(lastRow, leaf)] };
 }
 
+/** The panel beside a builder's terminal. It goes when the terminal goes. */
+function draftLeaf(run: RunTab): PaneLeaf | null {
+  if (!run.builderId || run.paneIds.length === 0) return null;
+  return {
+    type: 'leaf',
+    id: `draft-${run.builderId}`,
+    cwd: run.cwd,
+    paneType: 'workflow-draft',
+    builderId: run.builderId
+  };
+}
+
 /** The split tree for a run, keeping what a person already resized. */
 export function runTabRoot(current: PaneNode | null, run: RunTab): PaneNode | null {
+  const draft = draftLeaf(run);
   let root = current;
   for (const id of current ? collectPaneIds(current) : []) {
-    if (!run.paneIds.includes(id) && root) root = removeLeaf(root, id);
+    if (!run.paneIds.includes(id) && id !== draft?.id && root) root = removeLeaf(root, id);
   }
   const held = root ? collectPaneIds(root) : [];
   for (const id of run.paneIds) {
     if (!held.includes(id)) root = addLeaf(root, { type: 'leaf', id, cwd: run.cwd });
   }
-  return root;
+  return draft && !held.includes(draft.id) ? addLeaf(root, draft) : root;
 }

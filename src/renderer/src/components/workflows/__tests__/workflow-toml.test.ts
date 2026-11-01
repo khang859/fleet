@@ -192,3 +192,54 @@ describe('round trip', () => {
     expect(formToToml(form)).toBe(EDITOR_FILE);
   });
 });
+
+const STAGE_FILE = `name = "Build"
+shared = ""
+board = true
+workspace = "new-branch"
+inputs = []
+
+[[stages]]
+name = "Lead"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+talks = true
+plan = true
+prompt = "Plan."
+
+[[stages]]
+name = "Fix"
+only_with_findings = true
+
+[[stages.agents]]
+role = "Lead"
+access = "write"
+resume = "Lead"
+prompt = "Fix."
+
+[finish]
+action = "open-pr"
+`;
+
+describe('stage files', () => {
+  it('reads what main reads', () => {
+    const def = parseToForm(STAGE_FILE);
+
+    expect(def.workspace).toBe('new-branch');
+    expect(def.finish?.action).toBe('open-pr');
+    expect(def.stages?.[1].only_with_findings).toBe(true);
+    expect(def.stages?.[1].agents[0]).toMatchObject({ program: 'claude', resume: 'Lead' });
+  });
+
+  it('writes the same file back', () => {
+    expect(formToToml(parseToForm(STAGE_FILE)).trim()).toBe(STAGE_FILE.trim());
+  });
+
+  it('keeps the old shape for an old file', () => {
+    expect(formToToml(FULL)).toContain('[[agents]]');
+    expect(formToToml(FULL)).not.toContain('stages');
+  });
+});

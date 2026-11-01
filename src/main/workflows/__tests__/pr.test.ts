@@ -8,7 +8,10 @@ import {
   ghStatus,
   isTeamPr,
   listOpenPrs,
+  makeBranchWorktree,
   makePrWorktree,
+  openBranchPr,
+  changesSince,
   parsePrInput,
   repoRoot,
   reportMarker,
@@ -248,6 +251,154 @@ describe('makePrWorktree', () => {
 
     expect(again.sha).toBe(first);
     expect(git(again.path, 'rev-parse', 'HEAD')).toBe(first);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('new branch runs', () => {
+  function git(cwd: string, ...args: string[]): string {
+    const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+    return execFileSync('git', [...identity, ...args], { cwd, encoding: 'utf8' }).trim();
+  }
+
+  /** A project with one commit and an origin, and a `gh` that only records calls. */
+  function makeProject(): { dir: string; project: string; calls: string[][]; exec: Exec } {
+    const dir = mkdtempSync(join(tmpdir(), 'fleet-wf-branch-'));
+    const origin = join(dir, 'acme', 'app.git');
+    const project = join(dir, 'project');
+    execFileSync('git', ['init', '--bare', '-b', 'main', origin]);
+    execFileSync('git', ['clone', origin, project], { stdio: 'ignore' });
+    writeFileSync(join(project, 'file.txt'), 'one');
+    git(project, 'add', '.');
+    git(project, 'commit', '-m', 'start');
+    git(project, 'push', 'origin', 'HEAD:main');
+    git(project, 'remote', 'set-head', 'origin', 'main');
+    const calls: string[][] = [];
+    const exec: Exec = async (command, args, cwd, input) => {
+      if (command !== 'gh') return runProgram(command, args, cwd, input);
+      calls.push([...args, input ?? '']);
+      if (args[0] === 'pr' && args[1] === 'view') return Promise.reject(new Error('no PR'));
+      if (args[0] === 'pr') return Promise.resolve('https://github.com/acme/app/pull/31\n');
+      return Promise.resolve('acme/app');
+    };
+    return { dir, project, calls, exec };
+  }
+
+  async function branchOf(
+    project: string,
+    dir: string,
+    exec: Exec
+  ): ReturnType<typeof makeBranchWorktree> {
+    const spec = { projectPath: project, runId: 'abcdef123', slug: 'task', base: dir };
+    return makeBranchWorktree(exec, spec);
+  }
+
+  function commit(path: string): void {
+    writeFileSync(join(path, 'new.txt'), 'two');
+    git(path, 'add', '.');
+    git(path, 'commit', '-m', 'Add the new file');
+  }
+
+  it('makes a branch from the default branch', async () => {
+    const { dir, project, exec } = makeProject();
+
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+
+    expect(branch).toMatchObject({ name: 'fleet/task', base: 'main' });
+    expect(git(path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('fleet/task');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('takes a new name when the branch exists', async () => {
+    const { dir, project, exec } = makeProject();
+    git(project, 'branch', 'fleet/task');
+
+    const { branch } = await branchOf(project, join(dir, 'trees'), exec);
+
+    expect(branch.name).toBe('fleet/task-abcdef');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('shows work with no commit in the diff', async () => {
+    const { dir, project, exec } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    writeFileSync(join(path, 'file.txt'), 'changed');
+
+    expect(await changesSince(exec, path, branch.baseSha)).toContain('+changed');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('names new files that have no commit', async () => {
+    const { dir, project, exec } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    writeFileSync(join(path, 'added.txt'), 'new');
+
+    expect(await changesSince(exec, path, branch.baseSha)).toContain('added.txt');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('pushes a fork to its own remote, and names the owner in the head', async () => {
+    const { dir, project, exec, calls } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    commit(path);
+    const fork = join(dir, 'me', 'app.git');
+    execFileSync('git', ['init', '--bare', '-b', 'main', fork]);
+    git(project, 'remote', 'rename', 'origin', 'upstream');
+    git(project, 'remote', 'add', 'origin', fork);
+    const spec = { projectPath: project, worktreePath: path, branch, body: 'Report' };
+
+    await openBranchPr(exec, spec);
+
+    const create = calls.find((call) => call[1] === 'create') ?? [];
+    expect(create).toContain(`me:${branch.name}`);
+    expect(git(fork, 'branch', '--list', branch.name)).toContain(branch.name);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('opens no PR for a branch with no commits', async () => {
+    const { dir, project, exec, calls } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    const spec = { projectPath: project, worktreePath: path, branch, body: 'Report' };
+
+    expect(await openBranchPr(exec, spec)).toEqual({
+      ok: false,
+      why: 'The branch has no commits.'
+    });
+    expect(calls).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('opens no PR with work that nobody committed', async () => {
+    const { dir, project, exec } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    commit(path);
+    writeFileSync(join(path, 'more.txt'), 'three');
+    const spec = { projectPath: project, worktreePath: path, branch, body: 'Report' };
+
+    const result = await openBranchPr(exec, spec);
+
+    expect(result).toMatchObject({ ok: false, why: expect.stringContaining('no commit') });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('sends the report through stdin, and the title from git', async () => {
+    const { dir, project, exec, calls } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    commit(path);
+    const body = '--title is not a flag here';
+    const spec = { projectPath: project, worktreePath: path, branch, body };
+
+    const result = await openBranchPr(exec, spec);
+
+    expect(result).toEqual({
+      ok: true,
+      number: 31,
+      url: 'https://github.com/acme/app/pull/31'
+    });
+    const create = calls.find((call) => call[1] === 'create') ?? [];
+    expect(create).toContain('Add the new file');
+    expect(create.at(-1)).toBe(body);
+    expect(create.slice(0, -1)).not.toContain(body);
     rmSync(dir, { recursive: true, force: true });
   });
 });

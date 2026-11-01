@@ -87,7 +87,71 @@ action = "save-report"
 path = "docs/tasks/{{slug}}.md"
 `;
 
+const BUILD_FEATURE = `name = "Build a feature"
+shared = "The task: {{task}}"
+board = true
+workspace = "new-branch"
+
+[[inputs]]
+name = "task"
+label = "What to build"
+type = "text"
+
+[[stages]]
+name = "Talk, plan and build"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+talks = true
+plan = true
+prompt = """
+Read the code first.
+Ask the person questions until you agree on what to build.
+Then write the plan.
+After a person approves it, build it, run the tests and commit your work.
+"""
+
+[[stages]]
+name = "Review"
+
+[[stages.agents]]
+role = "Correctness"
+program = "pi"
+prompt = "Compare the change with the plan. Look for logic bugs and wrong edge cases."
+
+[[stages.agents]]
+role = "Best practices"
+program = "pi"
+prompt = "Look for code in the change that does not follow the patterns of this repo."
+
+[[stages.agents]]
+role = "Tests"
+program = "pi"
+prompt = "Look for changed behavior that has no test, and for weak tests."
+
+[[stages]]
+name = "Fix"
+only_with_findings = true
+
+[[stages.agents]]
+role = "Lead"
+resume = "Lead"
+access = "write"
+prompt = "Read the board. Fix the real problems, run the tests and commit your work."
+
+[finish]
+action = "open-pr"
+`;
+
 export const STARTERS: WorkflowStarter[] = [
+  {
+    id: 'build-feature',
+    label: 'Build a feature',
+    description: 'One agent talks, plans and builds. Three agents review, then a PR opens.',
+    text: BUILD_FEATURE
+  },
   {
     id: 'pr-review',
     label: 'PR review',

@@ -173,7 +173,7 @@ export function makeHarness(dir: string, overrides: Partial<RunDeps> = {}): Harn
       killed.push(paneId);
     },
     lastOutputAt: () => clock.now,
-    sendPrompt: async () => Promise.resolve(undefined),
+    sendPrompt: async () => Promise.resolve(true),
     makeWorktree: async () => Promise.resolve({ path: '/worktrees/run', sha: 'new-sha' }),
     removeWorktree: async () => Promise.resolve(undefined),
     onRun: () => undefined,
@@ -184,6 +184,13 @@ export function makeHarness(dir: string, overrides: Partial<RunDeps> = {}): Harn
     onEnded: (run) => {
       ended.push(run);
     },
+    makeBranch: async () =>
+      Promise.resolve({
+        path: '/worktrees/branch',
+        branch: { name: 'fleet/review', base: 'main', baseSha: 'base-sha' }
+      }),
+    diffOf: async () => Promise.resolve('diff --git a b'),
+    answerRequest: () => true,
     maxAgents: () => 12,
     devExtension: null,
     parse: () => makeDef(),

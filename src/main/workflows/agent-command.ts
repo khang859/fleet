@@ -1,8 +1,12 @@
 import type { WorkflowProgram } from '../../shared/workflows';
 import { posixShellQuote } from '../remote-ssh/ssh-quote';
 
-/** How much an agent may do. See the Limits part of the design doc. */
-export type AgentMode = 'normal' | 'team-pr' | 'locked';
+/**
+ * How much an agent may do. See the Limits part of the design doc.
+ * `write` is an agent in a stage file. It has no person at its start, so Pi must
+ * not stop at its trust question, which Fleet cannot see.
+ */
+export type AgentMode = 'normal' | 'team-pr' | 'locked' | 'write';
 
 export type AgentCommand = {
   program: WorkflowProgram;
@@ -15,24 +19,45 @@ export type AgentCommand = {
   resume: string | null;
   /** A dev app does not install the Pi extension, so it names its own. */
   devExtension: string | null;
+  /** A folder Claude Code reads with no permission stop. */
+  addDir?: string;
+  /** The agent talks with a person, so read-only Claude Code keeps its question tool. */
+  talks?: boolean;
+  /** The Claude Code mode to start in. */
+  permissionMode?: 'plan' | 'auto' | 'acceptEdits' | 'default';
 };
+
+/** A resumed Pi takes back its old tool list, unless the write tools are named. */
+const PI_WRITE_TOOLS = '+edit,+write,+bash';
+
+function piAccessArgs(cmd: AgentCommand): string[] {
+  if (cmd.mode === 'team-pr') return ['--approve'];
+  if (cmd.mode === 'locked') {
+    return ['--no-approve', '--tools', 'read,grep,find,ls,fleet_*', '--exclude-tools', 'mcp__*'];
+  }
+  if (cmd.mode !== 'write') return [];
+  return cmd.resume ? ['--no-approve', '--tools', PI_WRITE_TOOLS] : ['--no-approve'];
+}
 
 function piArgs(cmd: AgentCommand): string[] {
   const args = cmd.devExtension ? ['-ne', '-e', cmd.devExtension] : [];
   if (cmd.resume) args.push('--session', cmd.resume);
   args.push('--append-system-prompt', cmd.briefPath);
-  if (cmd.mode === 'team-pr') args.push('--approve');
-  if (cmd.mode === 'locked') {
-    args.push('--no-approve', '--tools', 'read,grep,find,ls,fleet_*', '--exclude-tools', 'mcp__*');
-  }
-  return args;
+  return [...args, ...piAccessArgs(cmd)];
+}
+
+function claudeReadTools(cmd: AgentCommand): string {
+  return cmd.talks ? 'Read,Grep,Glob,AskUserQuestion' : 'Read,Grep,Glob';
 }
 
 function claudeArgs(cmd: AgentCommand): string[] {
-  const args = ['--append-system-prompt-file', cmd.briefPath];
+  // `--add-dir` takes many values, so a later flag must stop it before the message.
+  const args = cmd.addDir ? ['--add-dir', cmd.addDir] : [];
+  args.push('--append-system-prompt-file', cmd.briefPath);
   if (cmd.resume) args.push('--resume', cmd.resume);
+  if (cmd.permissionMode) args.push('--permission-mode', cmd.permissionMode);
   if (cmd.mode === 'locked') {
-    args.push('--tools', 'Read,Grep,Glob', '--setting-sources', 'user', '--strict-mcp-config');
+    args.push('--tools', claudeReadTools(cmd), '--setting-sources', 'user', '--strict-mcp-config');
   }
   return args;
 }

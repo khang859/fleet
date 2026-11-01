@@ -77,4 +77,51 @@ describe('agentCommandLine', () => {
 
     expect(line).toBe(`pi '--append-system-prompt' 'C:\\it''s\\brief.md' 'Start now.'; exit`);
   });
+
+  describe('stage files', () => {
+    it('lets a Pi reader use only read tools and Fleet tools', () => {
+      const line = agentCommandLine(command({ mode: 'locked' }), 'linux');
+
+      expect(line).toContain(`'--no-approve' '--tools' 'read,grep,find,ls,fleet_*'`);
+      expect(line).toContain(`'--exclude-tools' 'mcp__*'`);
+    });
+
+    it('stops Pi from its trust question for a writer', () => {
+      expect(agentCommandLine(command({ mode: 'write' }), 'linux')).toContain(`'--no-approve'`);
+    });
+
+    it('brings back the write tools when Pi resumes', () => {
+      const line = agentCommandLine(command({ mode: 'write', resume: '/t/a.jsonl' }), 'linux');
+
+      expect(line).toContain(`'--tools' '+edit,+write,+bash'`);
+      expect(line).toContain(`'--session' '/t/a.jsonl'`);
+    });
+
+    it('starts a Claude Code plan agent in plan mode', () => {
+      const cmd = command({ program: 'claude', mode: 'write', permissionMode: 'plan' });
+
+      expect(agentCommandLine(cmd, 'linux')).toContain(`'--permission-mode' 'plan'`);
+    });
+
+    it('never lets add-dir take the message', () => {
+      const cmd = command({ program: 'claude', mode: 'locked', addDir: '/runs/one' });
+      const line = agentCommandLine(cmd, 'linux');
+
+      expect(line.indexOf(`'--add-dir' '/runs/one'`)).toBeLessThan(line.indexOf('--append'));
+      expect(line.endsWith(`'Start now.'`)).toBe(true);
+      expect(line).not.toMatch(/'--add-dir' '[^']+' 'Start now\.'/);
+    });
+
+    it('gives a talking Claude Code reader the question tool', () => {
+      const cmd = command({ program: 'claude', mode: 'locked', talks: true });
+
+      expect(agentCommandLine(cmd, 'linux')).toContain('AskUserQuestion');
+    });
+
+    it('gives a silent Claude Code reader no question tool', () => {
+      const cmd = command({ program: 'claude', mode: 'locked' });
+
+      expect(agentCommandLine(cmd, 'linux')).not.toContain('AskUserQuestion');
+    });
+  });
 });

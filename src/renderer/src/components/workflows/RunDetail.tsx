@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
   agentChatHandle,
+  agentsInStage,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -17,6 +18,8 @@ import { useToastStore } from '../../store/toast-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
 import { Overlay } from '../Overlay';
 import { AgentBadge, Badge, Button, RunBadge, SectionTitle } from './parts';
+import { PlanPage } from './PlanPage';
+import { StageColumns, type MapColumn } from './StageMap';
 import { formatSpan } from './workflow-format';
 import { SaveReportDialog } from './SaveReportDialog';
 
@@ -52,7 +55,7 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
   const canAct = isRunActive(run);
   const stuck = state === 'failed' || agent.needsPerson || silent;
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className="flex flex-wrap gap-1">
       {pendingPermission && (
         <>
           <Button
@@ -71,6 +74,14 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
             Deny
           </Button>
         </>
+      )}
+      {agent.plans && agent.plans.length > 0 && (
+        <Button
+          tone={agent.pendingPlan ? 'primary' : 'plain'}
+          onClick={() => useWorkflowsStore.getState().openPlan(agent.id)}
+        >
+          Read the plan
+        </Button>
       )}
       {paneId && <Button onClick={() => openPane(paneId)}>Open pane</Button>}
       {!paneId && canOpenAgent(run, agent) && (
@@ -100,28 +111,52 @@ function summaryLine(agent: RunAgent): string | undefined {
   return agent.isLast ? undefined : agent.summary?.replaceAll('`', '');
 }
 
-function AgentRow({ run, agent }: { run: WorkflowRun; agent: RunAgent }): React.JSX.Element {
+function AgentCard({ run, agent }: { run: WorkflowRun; agent: RunAgent }): React.JSX.Element {
   const line = agent.pendingPermission
     ? `Asks to use ${agent.pendingPermission.tool}.`
     : (agent.note ?? summaryLine(agent));
   return (
-    <div className="flex items-start gap-3 border-b border-fleet-border px-3 py-2 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-xs font-medium text-fleet-text">{agent.role}</span>
-          {run.state === 'stopped' && agent.state === 'failed' ? (
-            <Badge tone="gray">Stopped</Badge>
-          ) : (
-            <AgentBadge state={agent.state} />
-          )}
-          {agent.needsPerson && <Badge tone="amber">Needs you</Badge>}
-          {agent.silent && <Badge tone="amber">Quiet for 5 min</Badge>}
-        </div>
-        {line && <p className="mt-0.5 text-[11px] text-fleet-text-subtle">{line}</p>}
+    <div className="space-y-1.5 rounded-md border border-fleet-border bg-fleet-surface p-2">
+      <div className="truncate text-xs font-medium text-fleet-text">{agent.role}</div>
+      <div className="flex flex-wrap gap-1">
+        {run.state === 'stopped' && agent.state === 'failed' ? (
+          <Badge tone="gray">Stopped</Badge>
+        ) : (
+          <AgentBadge state={agent.state} />
+        )}
+        {agent.needsPerson && <Badge tone="amber">Needs you</Badge>}
+        {agent.silent && <Badge tone="amber">Quiet for 5 min</Badge>}
       </div>
+      {line && (
+        <p className="line-clamp-4 break-words text-[11px] text-fleet-text-subtle">{line}</p>
+      )}
       <AgentActions run={run} agent={agent} />
     </div>
   );
+}
+
+function stageNames(run: WorkflowRun): string[] {
+  if (run.stages) return run.stages;
+  return run.agents.some((agent) => agent.isLast) ? ['Agents', 'Last agent'] : ['Agents'];
+}
+
+function stageNote(agents: RunAgent[]): string | undefined {
+  if (agents.length > 0 && agents.every((agent) => agent.state === 'skipped')) return 'Skipped';
+  return undefined;
+}
+
+/** The same map as the editor, with the state of each agent on its card. */
+function RunStages({ run }: { run: WorkflowRun }): React.JSX.Element {
+  const columns = stageNames(run).map((name, index): MapColumn => {
+    const agents = agentsInStage(run, index);
+    return {
+      key: `${index}`,
+      title: name,
+      note: stageNote(agents),
+      children: agents.map((agent) => <AgentCard key={agent.id} run={run} agent={agent} />)
+    };
+  });
+  return <StageColumns columns={columns} />;
 }
 
 function BoardRow({ item }: { item: BoardItem }): React.JSX.Element {
@@ -305,6 +340,14 @@ function RunNotes({ run }: { run: WorkflowRun }): React.JSX.Element {
   const hitLimit = run.limitReachedAt !== null && isRunActive(run);
   return (
     <>
+      {run.prProblem && (
+        <div className="flex items-center justify-between gap-3 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+          <span>No pull request yet: {run.prProblem}</span>
+          {!run.report?.incomplete && (
+            <Button onClick={async () => callWorkflows('retryPr', run.id)}>Try again</Button>
+          )}
+        </div>
+      )}
       {run.problem && (
         <div className="flex items-center justify-between gap-3 rounded border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-200">
           <span>{run.problem}</span>
@@ -368,6 +411,11 @@ function RunHeader({
           #{run.pr.number} <ExternalLink size={11} />
         </button>
       )}
+      {run.openedPr && (
+        <Button tone="primary" onClick={() => window.open(run.openedPr?.url)}>
+          Open PR #{run.openedPr.number} <ExternalLink size={11} />
+        </Button>
+      )}
       <div className="flex-1" />
       <span className="text-[11px] tabular-nums text-fleet-text-subtle">
         {formatSpan(run.activeMs)}
@@ -397,6 +445,7 @@ export function RunDetail({
   onBack: () => void;
 }): React.JSX.Element {
   const notices = useWorkflowsStore((s) => s.state.notices);
+  const planAgentId = useWorkflowsStore((s) => s.planAgentId);
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -425,17 +474,24 @@ export function RunDetail({
     else await close(false);
   };
 
+  const planAgent = run.agents.find((agent) => agent.id === planAgentId);
+  if (planAgent) {
+    return (
+      <PlanPage
+        run={run}
+        agent={planAgent}
+        onBack={() => useWorkflowsStore.getState().openPlan(null)}
+      />
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4">
+    <div className="mx-auto max-w-6xl space-y-4 p-4">
       <RunHeader run={run} onBack={onBack} onClose={askClose} />
       <RunNotes run={run} />
       <section>
-        <SectionTitle>Agents</SectionTitle>
-        <div className="rounded-md border border-fleet-border">
-          {run.agents.map((agent) => (
-            <AgentRow key={agent.id} run={run} agent={agent} />
-          ))}
-        </div>
+        <SectionTitle>Stages</SectionTitle>
+        <RunStages run={run} />
       </section>
       <ReportSection run={run} onSave={() => setSaving(true)} onPost={() => setPosting(true)} />
       {run.usesBoard && <SharedBoard run={run} />}

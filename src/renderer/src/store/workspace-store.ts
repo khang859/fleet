@@ -637,7 +637,12 @@ export function isTerminalLeaf(leaf: PaneLeaf): boolean {
  * the folder: closing it deletes that folder from under them.
  */
 export function canMovePane(tab: Tab): boolean {
+  if (collectPaneLeafs(tab.splitRoot).some(isDraftLeaf)) return false;
   return tab.splitRoot.type === 'split' && !tab.worktreePath && !isPinnedTab(tab);
+}
+
+function isDraftLeaf(leaf: PaneLeaf): boolean {
+  return leaf.paneType === 'workflow-draft';
 }
 
 /** A file or SSH tab left holding only terminals split off it is a terminal tab. */
@@ -680,6 +685,7 @@ function tabFromLeaf(leaf: PaneLeaf, source: Tab): Tab {
   if (isTerminal) {
     return { ...tab, pathContext, shellProfileId: leaf.shellProfileId ?? source.shellProfileId };
   }
+  if (leaf.paneType === 'workflow-draft') return tab;
   return { ...tab, type: leaf.paneType, ...(leaf.paneType === 'agent' ? { pathContext } : {}) };
 }
 

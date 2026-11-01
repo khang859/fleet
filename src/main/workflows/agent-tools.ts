@@ -20,6 +20,8 @@ export type AgentToolDeps = {
   /** The folder of each open pane. */
   openFolders: () => string[];
   notify: (notice: Omit<WorkflowNotice, 'id'>) => void;
+  /** Save the draft of a builder pane. */
+  saveDraft: (paneId: string, toml: string) => unknown;
 };
 
 type InRun = Extract<PaneIdentity, { runId: string }>;
@@ -53,6 +55,10 @@ export class WorkflowAgentTools {
         return { guide: workflowGuide() };
       case 'fleet_workflow_create':
         return this.create(paneId, TOOLS[tool].args.parse(args));
+      case 'fleet_plan_submit':
+        return this.submitPlan(this.inRun(identity), TOOLS[tool].args.parse(args));
+      case 'fleet_draft_save':
+        return this.deps.saveDraft(paneId, TOOLS[tool].args.parse(args).toml);
     }
   }
 
@@ -76,6 +82,12 @@ export class WorkflowAgentTools {
     const refused = this.deps.runs.finishAgent(pane.runId, pane.agentId, args.summary);
     if (refused) throw new ToolRefused('refused', refused);
     return { done: true };
+  }
+
+  private submitPlan(pane: InRun, args: ToolArgs['fleet_plan_submit']): unknown {
+    const refused = this.deps.runs.submitPlan(pane.runId, pane.agentId, args.plan);
+    if (refused) throw new ToolRefused('refused', refused);
+    return { saved: true, next: 'End your turn now. A person reads the plan in Fleet.' };
   }
 
   private async projectOf(paneId: string, named: string | undefined): Promise<string> {

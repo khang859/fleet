@@ -1,3 +1,4 @@
+import { DraftPane } from './workflows/DraftPane';
 import { Suspense, lazy, memo, useCallback, useRef } from 'react';
 import type { PaneLeaf, TerminalBackground, FileOpenTarget } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
@@ -309,6 +310,8 @@ function PaneContent({
           />
         </div>
       );
+    case 'workflow-draft':
+      return <DraftPane builderId={node.builderId ?? ''} />;
     case 'agent':
       return (
         <AgentPane
