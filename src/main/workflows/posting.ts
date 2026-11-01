@@ -1,116 +1,48 @@
-import {
-  postsLeft,
-  type BoardItem,
-  type WorkflowProgram,
-  type WorkflowRun
-} from '../../shared/workflows';
-import { agentCommandLine } from './agent-command';
-import { itemMarker, listCommentBodies, postComment, type Exec } from './pr';
-import { postBrief, START_MESSAGE } from './prompts';
-import type { RunStore } from './run-store';
+import type { PrRef, RunReport } from '../../shared/workflows';
+import { listCommentBodies, postComment, reportMarker, type Exec } from './pr';
 import type { WorkflowRunManager } from './run-manager';
-import { ToolRefused } from './bridge-routes';
 
 export type PostingDeps = {
   runs: WorkflowRunManager;
-  store: RunStore;
   exec: Exec;
-  devExtension: string | null;
 };
 
-function commentBody(run: WorkflowRun, item: BoardItem): string {
-  const place = item.file ? `\`${item.file}${item.line ? `:${item.line}` : ''}\`\n\n` : '';
-  return `**${item.kind}** ${place}${item.text}\n\n${itemMarker(run.id, item.id)}`;
-}
+type Postable = { projectPath: string; pr: PrRef; report: RunReport };
 
 /**
- * Posts stored findings to a PR. The agent only names ids: main runs `gh` with
- * the stored text on the run's own PR, so text in a finding steers nothing.
+ * Posts a run's final report to its PR as one comment, so the PR gets the same
+ * text a person read. Main runs `gh` with the stored text: no agent takes part.
  */
 export class WorkflowPosting {
-  /** The ids a person confirmed, per run. A post tool can post nothing else. */
-  private readonly allowed = new Map<string, Set<string>>();
+  private readonly busy = new Set<string>();
 
   constructor(private readonly deps: PostingDeps) {}
 
-  private requireRun(runId: string): WorkflowRun {
+  private postable(runId: string): Postable {
     const run = this.deps.runs.get(runId);
-    if (!run) throw new ToolRefused('not-found', 'This run is gone.');
-    return run;
+    if (!run) throw new Error('This run is gone.');
+    const { projectPath, pr, report } = run;
+    if (!pr) throw new Error('This run has no pull request.');
+    if (!report) throw new Error('This run has no report.');
+    if (report.incomplete) throw new Error('This report is incomplete.');
+    return { projectPath, pr, report };
   }
 
-  private async commentsOf(run: WorkflowRun, prNumber: number): Promise<string> {
-    return listCommentBodies(this.deps.exec, run.projectPath, prNumber);
-  }
+  /** A person confirmed. The mark on the PR stops a second comment after a lost answer. */
+  async post(runId: string): Promise<void> {
+    const { projectPath, pr, report } = this.postable(runId);
+    if (report.posted || this.busy.has(runId)) return;
 
-  /**
-   * A crash can stop a `posting` item, and a timeout can hide that a `failed`
-   * item went out. Only the PR itself can say.
-   */
-  private async settleUnsure(run: WorkflowRun): Promise<void> {
-    const unsure = run.board.filter((item) => item.post === 'posting' || item.post === 'failed');
-    if (unsure.length === 0 || !run.pr) return;
-    const comments = await this.commentsOf(run, run.pr.number);
-    for (const item of unsure) {
-      const posted = comments.includes(itemMarker(run.id, item.id));
-      this.deps.runs.markPost(run.id, item.id, posted ? 'posted' : 'failed');
-    }
-  }
-
-  /** A person confirmed. Open the pane that posts what is left. */
-  async start(runId: string): Promise<number> {
-    const run = this.requireRun(runId);
-    if (!run.pr) throw new ToolRefused('no-pr', 'This run has no pull request.');
-    await this.settleUnsure(run);
-    const ids = postsLeft(run).map((item) => item.id);
-    if (ids.length === 0) return 0;
-    this.allowed.set(runId, new Set(ids));
-
-    const program: WorkflowProgram = run.agents[0].program;
-    const name = `post-${Date.now()}.md`;
-    const briefPath = this.deps.store.writePrompt(runId, name, postBrief(program, ids));
-    const line = agentCommandLine({
-      program,
-      mode: 'post',
-      briefPath,
-      message: START_MESSAGE,
-      resume: null,
-      devExtension: program === 'pi' ? this.deps.devExtension : null
-    });
-    await this.deps.runs.openPostPane(runId, line);
-    return ids.length;
-  }
-
-  /** The post tool. Each item goes once, and a mark on disk proves it. */
-  async postItem(runId: string, id: string): Promise<{ posted: string }> {
-    const run = this.requireRun(runId);
-    if (!run.pr) throw new ToolRefused('no-pr', 'This run has no pull request.');
-    if (!this.allowed.get(runId)?.has(id)) {
-      throw new ToolRefused('not-allowed', `Item ${id} was not confirmed for posting.`);
-    }
-    const item = run.board.find((candidate) => candidate.id === id);
-    if (!item) throw new ToolRefused('not-found', `No item with id ${id}.`);
-    if (item.post === 'posted') return { posted: id };
-    if (item.post === 'posting') throw new ToolRefused('posting', `Item ${id} is posting now.`);
-
-    const retry = item.post === 'failed';
-    this.deps.runs.markPost(runId, id, 'posting');
+    this.busy.add(runId);
     try {
-      const comments = retry ? await this.commentsOf(run, run.pr.number) : '';
-      if (!comments.includes(itemMarker(runId, id))) {
-        await postComment(this.deps.exec, run.projectPath, run.pr.number, commentBody(run, item));
+      const marker = reportMarker(runId);
+      const comments = await listCommentBodies(this.deps.exec, projectPath, pr.number);
+      if (!comments.includes(marker)) {
+        await postComment(this.deps.exec, projectPath, pr.number, `${report.text}\n\n${marker}`);
       }
-    } catch (err) {
-      this.deps.runs.markPost(runId, id, 'failed');
-      throw new ToolRefused('post-failed', `Item ${id} did not post: ${String(err)}`);
+      this.deps.runs.updateReport(runId, { posted: true });
+    } finally {
+      this.busy.delete(runId);
     }
-    this.deps.runs.markPost(runId, id, 'posted');
-    if (this.allPosted(run)) this.deps.runs.finishPostPane(runId);
-    return { posted: id };
-  }
-
-  private allPosted(run: WorkflowRun): boolean {
-    const ids = this.allowed.get(run.id);
-    return run.board.every((item) => !ids?.has(item.id) || item.post === 'posted');
   }
 }

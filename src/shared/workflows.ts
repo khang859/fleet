@@ -78,11 +78,6 @@ export const ACTIVE_RUN_STATES: readonly RunState[] = [
   'needs-you'
 ];
 
-/** The findings a post would send. An item that was posted never goes again. */
-export function postsLeft(run: WorkflowRun): BoardItem[] {
-  return run.board.filter((item) => item.mergedInto === undefined && item.post !== 'posted');
-}
-
 /** What a stopped agent can go on from: a file for Pi, a session id for Claude Code. */
 export function agentChatHandle(agent: RunAgent): string | null {
   return agent.program === 'pi' ? agent.transcriptPath : agent.sessionId;
@@ -128,7 +123,6 @@ export type BoardItem = {
   mergedFrom?: string[];
   /** Replaced by a merged item, so it no longer counts. */
   mergedInto?: string;
-  post?: 'posting' | 'posted' | 'failed';
 };
 
 export type RunReport = {
@@ -137,6 +131,8 @@ export type RunReport = {
   /** The agents with no summary, for an Incomplete report. */
   missing: string[];
   savedTo: string | null;
+  /** It went to the PR. A run from an older Fleet has no value here. */
+  posted: boolean;
 };
 
 export type PrRef = {
@@ -186,8 +182,6 @@ export type WorkflowRun = {
   sleptMs: number;
   /** Panes a person kept open after an automatic run. */
   keptPanes: string[];
-  /** The agent that posts findings, while one is open. */
-  postPaneId: string | null;
   /** A team's PR in its own worktree, so agents approve their own tools. */
   teamPr: boolean;
 };
@@ -388,7 +382,7 @@ export type WorkflowsApi = {
   reportPath: (runId: string) => string | null;
   saveReport: (runId: string, path: string, replace: boolean) => SaveReportResult;
   pickReportPath: (runId: string) => Promise<SaveReportResult | null>;
-  post: (runId: string) => Promise<number>;
+  post: (runId: string) => Promise<void>;
   dismissNotice: (id: string) => void;
   answerAsk: (id: string, allow: boolean) => void;
   saveRule: (rule: RuleInput) => WorkflowRule;

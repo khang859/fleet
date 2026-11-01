@@ -101,7 +101,6 @@ export function makeRun(overrides: Partial<WorkflowRun> = {}): WorkflowRun {
     limitReachedAt: null,
     sleptMs: 0,
     keptPanes: [],
-    postPaneId: null,
     teamPr: false,
     ...overrides
   };

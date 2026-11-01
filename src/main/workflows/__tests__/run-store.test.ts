@@ -48,9 +48,9 @@ describe('RunStore', () => {
 
   it('lets a later change of an item win', () => {
     store.appendBoard(RUN, item(1));
-    store.appendBoard(RUN, item(1, { post: 'posted' }));
+    store.appendBoard(RUN, item(1, { mergedInto: '2' }));
 
-    expect(store.loadBoard(RUN)).toEqual([item(1, { post: 'posted' })]);
+    expect(store.loadBoard(RUN)).toEqual([item(1, { mergedInto: '2' })]);
   });
 
   it('ignores half a line at the end of the log', () => {
@@ -88,12 +88,12 @@ describe('RunStore', () => {
 
     const next = new RunStore(dir);
     next.appendBoard(RUN, item(51));
-    next.appendBoard(RUN, item(1, { post: 'failed' }));
+    next.appendBoard(RUN, item(1, { mergedInto: '51' }));
 
     const board = new RunStore(dir).loadBoard(RUN);
 
     expect(board).toHaveLength(51);
-    expect(board[0].post).toBe('failed');
+    expect(board[0].mergedInto).toBe('51');
   });
 
   it('saves a run with no board in its record', () => {

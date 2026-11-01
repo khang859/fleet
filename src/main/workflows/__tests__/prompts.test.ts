@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agentBrief, placeholderValues, postBrief, reminderText } from '../prompts';
+import { agentBrief, placeholderValues, reminderText } from '../prompts';
 import { makeDef, makeRun, SAMPLE_PR } from './helpers';
 
 const WORKER = { role: 'Reader', program: 'pi' as const, prompt: 'Read {{topic}}.', isLast: false };
@@ -63,11 +63,5 @@ describe('small helpers', () => {
     const run = makeRun({ inputs: { a: '1' }, slug: 's' });
 
     expect(placeholderValues(run)).toEqual({ a: '1', slug: 's' });
-  });
-
-  it('names the ids to post', () => {
-    expect(postBrief('pi', ['1', '4'])).toContain(
-      'fleet_post_item once for each of these ids, in order: 1, 4.'
-    );
   });
 });

@@ -44,12 +44,6 @@ describe('agentCommandLine', () => {
     expect(line).toContain(`'--exclude-tools' 'mcp__*'`);
   });
 
-  it('leaves pi only the post tool in post mode', () => {
-    const line = agentCommandLine(command({ mode: 'post' }), 'linux');
-
-    expect(line).toContain(`'--tools' 'fleet_post_item'`);
-  });
-
   it('runs claude with the brief file and a resume id', () => {
     const line = agentCommandLine(command({ program: 'claude', resume: 'abc' }), 'darwin');
 
@@ -70,12 +64,6 @@ describe('agentCommandLine', () => {
 
     expect(line).toContain(`'--tools' 'Read,Grep,Glob'`);
     expect(line).toContain(`'--strict-mcp-config'`);
-  });
-
-  it('keeps one tool for claude in post mode', () => {
-    const line = agentCommandLine(command({ program: 'claude', mode: 'post' }), 'linux');
-
-    expect(line).toContain(`'--tools' 'Read'`);
   });
 
   it('never passes the dev extension when a program has none', () => {

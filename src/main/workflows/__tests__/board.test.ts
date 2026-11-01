@@ -102,15 +102,6 @@ describe('Board', () => {
 
     expect(board.add('A', { kind: 'bug', text: 'new' })).toMatchObject({ item: { id: '10' } });
   });
-
-  it('marks a post state', () => {
-    const board = new Board();
-    board.add('A', { kind: 'bug', text: 'one' });
-
-    board.mark('1', 'posted');
-
-    expect(board.get('1')?.post).toBe('posted');
-  });
 });
 
 describe('boardText', () => {

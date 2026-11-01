@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** The kind of pane that asks. Main decides what each kind may do. */
-export type PaneKind = 'outside' | 'run' | 'last' | 'post';
+export type PaneKind = 'outside' | 'run' | 'last';
 
 const NewItem = {
   kind: z.string().min(1).max(60).describe('Short type, such as bug, style or note.'),
@@ -44,11 +44,6 @@ export const TOOLS = {
     args: z.strictObject({
       summary: z.string().min(1).max(200_000).describe('What you did and what you found.')
     })
-  },
-  fleet_post_item: {
-    panes: ['post'],
-    description: 'Post one stored finding to the pull request, by its id.',
-    args: z.strictObject({ id: z.string().min(1) })
   },
   fleet_workflow_list: {
     panes: ['outside', 'run', 'last'],

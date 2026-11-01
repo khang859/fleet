@@ -209,8 +209,8 @@ export async function removeWorktree(exec: Exec, projectPath: string, path: stri
 }
 
 /** The hidden mark in a posted comment, so a crash can never post an item twice. */
-export function itemMarker(runId: string, itemId: string): string {
-  return `<!-- fleet:item:${runId}:${itemId} -->`;
+export function reportMarker(runId: string): string {
+  return `<!-- fleet:report:${runId} -->`;
 }
 
 export async function postComment(
@@ -222,7 +222,7 @@ export async function postComment(
   await exec('gh', ['pr', 'comment', String(prNumber), '--body-file', '-'], cwd, body);
 }
 
-/** Every comment on the PR, to look for the marks of items that may have gone out. */
+/** Every comment on the PR, to look for the mark of a report that may have gone out. */
 export async function listCommentBodies(
   exec: Exec,
   cwd: string,

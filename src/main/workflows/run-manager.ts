@@ -74,7 +74,7 @@ export type RunPlan = {
 
 export type PaneIdentity =
   | { kind: Extract<PaneKind, 'outside'> }
-  | { kind: Exclude<PaneKind, 'outside'>; runId: string; agentId: string | null }
+  | { kind: Exclude<PaneKind, 'outside'>; runId: string; agentId: string }
   | { kind: 'old-attempt' };
 
 type Located = { run: WorkflowRun; agent: RunAgent };
@@ -139,7 +139,7 @@ function newAgent(role: string, program: WorkflowProgram, isLast: boolean): RunA
 export function buildReport(run: WorkflowRun, why?: string): RunReport {
   const last = run.agents.find((agent) => agent.isLast);
   if (last?.summary) {
-    return { text: last.summary, incomplete: false, missing: [], savedTo: null };
+    return { text: last.summary, incomplete: false, missing: [], savedTo: null, posted: false };
   }
   const missing = run.agents
     .filter((agent) => !agent.summary && agent.state !== 'skipped')
@@ -148,13 +148,20 @@ export function buildReport(run: WorkflowRun, why?: string): RunReport {
     .filter((agent) => agent.summary)
     .map((agent) => `## ${agent.role}\n\n${agent.summary}`);
   if (!last && missing.length === 0 && summaries.length > 0) {
-    return { text: summaries.join('\n\n'), incomplete: false, missing, savedTo: null };
+    return {
+      text: summaries.join('\n\n'),
+      incomplete: false,
+      missing,
+      savedTo: null,
+      posted: false
+    };
   }
   return {
     text: incompleteText(run, missing, summaries, why),
     incomplete: true,
     missing,
-    savedTo: null
+    savedTo: null,
+    posted: false
   };
 }
 
@@ -184,13 +191,11 @@ export class WorkflowRunManager {
   /** Runs whose tab opens in front. */
   private readonly focus = new Map<string, boolean>();
   /** Pane id to the agent in it. A pane leaves this map when it stops counting. */
-  private readonly panes = new Map<string, { runId: string; agentId: string | null }>();
+  private readonly panes = new Map<string, { runId: string; agentId: string }>();
   /** Panes of older attempts. Their calls are refused. */
   private readonly oldPanes = new Set<string>();
   /** Runs that are opening an agent again. Two at once would fight over the worktree. */
   private readonly opening = new Set<string>();
-  /** Post panes a person typed in. These stay open after the last post. */
-  private readonly typedPostPanes = new Set<string>();
   private readonly startedAt = new Map<string, number>();
   /** Agents whose current turn a person started, by agent id. */
   private readonly personTurns = new Set<string>();
@@ -253,7 +258,6 @@ export class WorkflowRunManager {
     if (this.oldPanes.has(paneId)) return { kind: 'old-attempt' };
     const pane = this.panes.get(paneId);
     if (!pane) return { kind: 'outside' };
-    if (pane.agentId === null) return { kind: 'post', runId: pane.runId, agentId: null };
     const located = this.locate(paneId);
     return {
       kind: located?.agent.isLast ? 'last' : 'run',
@@ -264,7 +268,7 @@ export class WorkflowRunManager {
 
   private locate(paneId: string): Located | null {
     const pane = this.panes.get(paneId);
-    if (!pane?.agentId) return null;
+    if (!pane) return null;
     const run = this.runs.get(pane.runId);
     const agent = run?.agents.find((a) => a.id === pane.agentId);
     return run && agent ? { run, agent } : null;
@@ -330,7 +334,6 @@ export class WorkflowRunManager {
       limitReachedAt: null,
       sleptMs: 0,
       keptPanes: [],
-      postPaneId: null,
       teamPr: plan.teamPr
     };
   }
@@ -592,7 +595,6 @@ export class WorkflowRunManager {
   /** A person typed in a pane. Enter sends a turn, so that turn is theirs. */
   onPersonInput(paneId: string, data: string): void {
     if (!isPersonInput(data)) return;
-    if (this.panes.get(paneId)?.agentId === null) this.typedPostPanes.add(paneId);
     const located = this.locate(paneId);
     if (!located) return;
     const { agent, run } = located;
@@ -614,19 +616,12 @@ export class WorkflowRunManager {
 
   private onCountedPaneClosed(
     paneId: string,
-    pane: { runId: string; agentId: string | null },
+    pane: { runId: string; agentId: string },
     killed: boolean
   ): void {
     const run = this.runs.get(pane.runId);
     this.panes.delete(paneId);
     if (!run) return;
-    if (run.postPaneId === paneId) {
-      run.postPaneId = null;
-      this.typedPostPanes.delete(paneId);
-      this.emitTab(run);
-      this.commit(run);
-      return;
-    }
     const agent = run.agents.find((candidate) => candidate.id === pane.agentId);
     if (!agent) return;
     agent.paneId = null;
@@ -654,7 +649,7 @@ export class WorkflowRunManager {
 
   // --- Tools ---
 
-  private located(runId: string, agentId: string | null): Located | null {
+  private located(runId: string, agentId: string): Located | null {
     const run = this.runs.get(runId);
     const agent = run?.agents.find((candidate) => candidate.id === agentId);
     return run && agent ? { run, agent } : null;
@@ -664,7 +659,7 @@ export class WorkflowRunManager {
     this.deps.store.appendBoard(run.id, item);
   }
 
-  private boardOf(runId: string, agentId: string | null): Located & { board: Board } {
+  private boardOf(runId: string, agentId: string): Located & { board: Board } {
     const located = this.located(runId, agentId);
     const board = this.boards.get(runId);
     if (!located || !board) throw new Error('This pane is not in a run.');
@@ -676,7 +671,7 @@ export class WorkflowRunManager {
     this.deps.onRun(run);
   }
 
-  addFinding(runId: string, agentId: string | null, item: NewItem): ReturnType<Board['add']> {
+  addFinding(runId: string, agentId: string, item: NewItem): ReturnType<Board['add']> {
     const { run, agent, board } = this.boardOf(runId, agentId);
     const result = board.add(agent.role, item);
     if (result.added) {
@@ -690,7 +685,7 @@ export class WorkflowRunManager {
     return this.boards.get(runId)?.list() ?? [];
   }
 
-  mergeFindings(runId: string, agentId: string | null, ids: string[], item: NewItem): BoardItem {
+  mergeFindings(runId: string, agentId: string, ids: string[], item: NewItem): BoardItem {
     const { run, agent, board } = this.boardOf(runId, agentId);
     const merged = board.merge(agent.role, ids, item);
     for (const id of ids) {
@@ -703,7 +698,7 @@ export class WorkflowRunManager {
   }
 
   /** A finish call. Answers why it is refused, or null. */
-  finishAgent(runId: string, agentId: string | null, summary: string): string | null {
+  finishAgent(runId: string, agentId: string, summary: string): string | null {
     const located = this.located(runId, agentId);
     if (!located) return 'This pane is not in a run.';
     const { run, agent } = located;
@@ -884,7 +879,6 @@ export class WorkflowRunManager {
     for (const agent of run.agents) this.stopAgent(agent);
     for (const paneId of run.keptPanes) this.deps.killPane(paneId);
     this.forgetKeptPanes(run);
-    this.closePostPane(run);
     if (removeWorktree) this.dropWorktree(run);
     run.state = 'closed';
     this.emitTab(run);
@@ -896,13 +890,6 @@ export class WorkflowRunManager {
     for (const agent of run.agents) agent.keptPaneId = null;
   }
 
-  private closePostPane(run: WorkflowRun): void {
-    if (run.postPaneId === null) return;
-    this.typedPostPanes.delete(run.postPaneId);
-    this.dropPane(run.postPaneId);
-    run.postPaneId = null;
-  }
-
   private dropWorktree(run: WorkflowRun): void {
     if (!run.worktreePath) return;
     void this.deps.removeWorktree(run).catch((err: unknown) => {
@@ -912,51 +899,11 @@ export class WorkflowRunManager {
     run.cwd = run.projectPath;
   }
 
-  /** Open a pane that can only post stored findings. */
-  async openPostPane(runId: string, line: string): Promise<void> {
-    const run = this.runs.get(runId);
-    if (!run) return;
-    this.closePostPane(run);
-    const paneId = randomUUID();
-    run.postPaneId = paneId;
-    this.panes.set(paneId, { runId, agentId: null });
-    try {
-      await this.deps.openPane({ paneId, cwd: run.cwd, line });
-    } catch (err) {
-      this.panes.delete(paneId);
-      run.postPaneId = null;
-      this.commit(run);
-      throw err;
-    }
-    this.emitTab(run);
-    this.commit(run);
-  }
-
-  /** The last post went out, so the post pane is done, unless a person typed in it. */
-  finishPostPane(runId: string): void {
-    const run = this.runs.get(runId);
-    if (!run?.postPaneId || this.typedPostPanes.has(run.postPaneId)) return;
-    this.closePostPane(run);
-    this.emitTab(run);
-    this.commit(run);
-  }
-
-  /** Mark an item, safe on disk before the call returns. */
-  markPost(runId: string, id: string, post: BoardItem['post']): void {
-    const run = this.runs.get(runId);
-    const board = this.boards.get(runId);
-    const item = board?.get(id);
-    if (!run || !item) return;
-    item.post = post;
-    this.persistItem(run, item);
-    run.board = board?.all() ?? [];
-    this.deps.onRun(run);
-  }
-
-  setSavedTo(runId: string, path: string): void {
+  /** Note where a report went: a file, or the PR. */
+  updateReport(runId: string, change: Pick<Partial<RunReport>, 'savedTo' | 'posted'>): void {
     const run = this.runs.get(runId);
     if (!run?.report) return;
-    run.report = { ...run.report, savedTo: path };
+    run.report = { ...run.report, ...change };
     this.commit(run);
   }
 
@@ -1161,7 +1108,6 @@ export class WorkflowRunManager {
 
   private emitTab(run: WorkflowRun): void {
     const paneIds = run.agents.flatMap((agent) => (agent.paneId ? [agent.paneId] : []));
-    if (run.postPaneId) paneIds.push(run.postPaneId);
     paneIds.push(...run.keptPanes);
     this.deps.onTab({
       runId: run.id,

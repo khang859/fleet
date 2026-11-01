@@ -28,8 +28,7 @@ const BOARD_ITEM = z.object({
   line: z.number().optional(),
   source: z.string().optional(),
   mergedFrom: z.array(z.string()).optional(),
-  mergedInto: z.string().optional(),
-  post: z.enum(['posting', 'posted', 'failed']).optional()
+  mergedInto: z.string().optional()
 }) satisfies z.ZodType<BoardItem>;
 
 const LOG_ENTRY = z.object({ seq: z.number(), item: BOARD_ITEM });

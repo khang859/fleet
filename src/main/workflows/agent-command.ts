@@ -2,7 +2,7 @@ import type { WorkflowProgram } from '../../shared/workflows';
 import { posixShellQuote } from '../remote-ssh/ssh-quote';
 
 /** How much an agent may do. See the Limits part of the design doc. */
-export type AgentMode = 'normal' | 'team-pr' | 'locked' | 'post';
+export type AgentMode = 'normal' | 'team-pr' | 'locked';
 
 export type AgentCommand = {
   program: WorkflowProgram;
@@ -25,9 +25,6 @@ function piArgs(cmd: AgentCommand): string[] {
   if (cmd.mode === 'locked') {
     args.push('--no-approve', '--tools', 'read,grep,find,ls,fleet_*', '--exclude-tools', 'mcp__*');
   }
-  if (cmd.mode === 'post') {
-    args.push('--no-approve', '--tools', 'fleet_post_item', '--exclude-tools', 'mcp__*');
-  }
   return args;
 }
 
@@ -36,10 +33,6 @@ function claudeArgs(cmd: AgentCommand): string[] {
   if (cmd.resume) args.push('--resume', cmd.resume);
   if (cmd.mode === 'locked') {
     args.push('--tools', 'Read,Grep,Glob', '--setting-sources', 'user', '--strict-mcp-config');
-  }
-  // `--tools ""` refuses a mod's tool, so one tool stays and the mod blocks it.
-  if (cmd.mode === 'post') {
-    args.push('--tools', 'Read', '--setting-sources', 'user', '--strict-mcp-config');
   }
   return args;
 }

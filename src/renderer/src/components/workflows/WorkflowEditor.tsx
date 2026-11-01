@@ -141,7 +141,7 @@ function FinishFields({
     <section className="space-y-2">
       <Field label="At the end">
         <select className={FIELD_CLASS} value={action} onChange={(e) => setAction(e.target.value)}>
-          <option value="post-pr">Post comments on the PR</option>
+          <option value="post-pr">Post the report on the PR</option>
           <option value="save-report">Save a report file</option>
           <option value="none">Do nothing</option>
         </select>

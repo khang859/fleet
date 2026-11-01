@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
   agentChatHandle,
-  postsLeft,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -43,7 +42,7 @@ function canOpenAgent(run: WorkflowRun, agent: RunAgent): boolean {
 
 /** Whether a run still holds anything that Close run would close. */
 function holdsAnything(run: WorkflowRun): boolean {
-  const pane = run.postPaneId ?? run.agents.find((agent) => agent.paneId)?.paneId;
+  const pane = run.agents.find((agent) => agent.paneId)?.paneId;
   return pane != null || run.keptPanes.length > 0 || run.worktreePath !== null;
 }
 
@@ -96,10 +95,15 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
   );
 }
 
+/** The last agent's summary is the report, which has its own section. */
+function summaryLine(agent: RunAgent): string | undefined {
+  return agent.isLast ? undefined : agent.summary?.replaceAll('`', '');
+}
+
 function AgentRow({ run, agent }: { run: WorkflowRun; agent: RunAgent }): React.JSX.Element {
   const line = agent.pendingPermission
     ? `Asks to use ${agent.pendingPermission.tool}.`
-    : (agent.note ?? agent.summary?.replaceAll('`', ''));
+    : (agent.note ?? summaryLine(agent));
   return (
     <div className="flex items-start gap-3 border-b border-fleet-border px-3 py-2 last:border-b-0">
       <div className="min-w-0 flex-1">
@@ -120,12 +124,6 @@ function AgentRow({ run, agent }: { run: WorkflowRun; agent: RunAgent }): React.
   );
 }
 
-const POST_LABEL: Record<NonNullable<BoardItem['post']>, string> = {
-  posting: 'Posting',
-  posted: 'Posted',
-  failed: 'Not posted'
-};
-
 function BoardRow({ item }: { item: BoardItem }): React.JSX.Element {
   const place = item.file ? `${item.file}${item.line ? `:${item.line}` : ''}` : (item.source ?? '');
   return (
@@ -134,9 +132,6 @@ function BoardRow({ item }: { item: BoardItem }): React.JSX.Element {
         <span className="text-fleet-text-muted">{item.kind}</span>
         <span>{item.agent}</span>
         {place && <span className="truncate font-mono">{place}</span>}
-        {item.post && (
-          <Badge tone={item.post === 'posted' ? 'green' : 'gray'}>{POST_LABEL[item.post]}</Badge>
-        )}
       </div>
       <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-fleet-text-secondary">
         {item.text}
@@ -172,6 +167,12 @@ function SharedBoard({ run }: { run: WorkflowRun }): React.JSX.Element {
   );
 }
 
+/** A person posts a finished report once. An incomplete one stays here. */
+function canPost(run: WorkflowRun): boolean {
+  const { pr, report } = run;
+  return pr !== null && report !== null && !report.incomplete && !report.posted;
+}
+
 /** A report sits in a page section, so its headings stay small. */
 const REPORT_CLASS =
   'text-xs leading-relaxed [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs';
@@ -198,7 +199,7 @@ function ReportSection({
             >
               {report.savedTo ? 'Save again' : 'Save report'}
             </Button>
-            {run.pr && postsLeft(run).length > 0 && (
+            {canPost(run) && (
               <Button tone={finish?.action === 'post-pr' ? 'primary' : 'plain'} onClick={onPost}>
                 Post
               </Button>
@@ -216,26 +217,15 @@ function ReportSection({
       {report.savedTo && (
         <p className="pb-2 text-[11px] text-fleet-text-subtle">Saved to {report.savedTo}</p>
       )}
+      {report.posted && (
+        <p className="pb-2 text-[11px] text-fleet-text-subtle">Posted to PR #{run.pr?.number}</p>
+      )}
       <div className="rounded-md border border-fleet-border p-3">
         <AgentMarkdown streaming={false} className={REPORT_CLASS}>
           {report.text}
         </AgentMarkdown>
       </div>
     </section>
-  );
-}
-
-/** What a post sends, word for word, so a person can read it first. */
-function PostPreview({ run }: { run: WorkflowRun }): React.JSX.Element {
-  const items = postsLeft(run);
-  return (
-    <ul className="mt-3 max-h-60 space-y-2 overflow-y-auto rounded border border-fleet-border p-2 text-[11px] text-fleet-text-secondary">
-      {items.map((item) => (
-        <li key={item.id} className="whitespace-pre-wrap break-words">
-          <span className="font-medium text-fleet-text">{item.kind}</span> {item.text}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -265,6 +255,49 @@ function ConfirmDialog({
       {body}
       <div className="mt-4 flex justify-end gap-2">{children}</div>
     </Overlay>
+  );
+}
+
+function PostDialog({
+  run,
+  open,
+  onClose
+}: {
+  run: WorkflowRun;
+  open: boolean;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [sending, setSending] = useState(false);
+
+  const post = async (): Promise<void> => {
+    setSending(true);
+    try {
+      await callWorkflows('post', run.id);
+      onClose();
+    } catch (err) {
+      showWorkflowError(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <ConfirmDialog
+      open={open}
+      title={`Post the report to PR #${run.pr?.number ?? ''}?`}
+      detail="Fleet posts this report as one comment, word for word."
+      onClose={onClose}
+      body={
+        <div className="mt-3 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded border border-fleet-border p-2 text-[11px] text-fleet-text-secondary">
+          {run.report?.text}
+        </div>
+      }
+    >
+      <Button onClick={onClose}>Cancel</Button>
+      <Button tone="primary" disabled={sending} onClick={post}>
+        {sending ? 'Posting' : 'Post'}
+      </Button>
+    </ConfirmDialog>
   );
 }
 
@@ -382,12 +415,6 @@ export function RunDetail({
     if (reportNotice) callWorkflows('dismissNotice', reportNotice.id).catch(showWorkflowError);
   }, [reportNotice]);
 
-  const post = async (): Promise<void> => {
-    // The dialog stays open with its button off, so nobody can post twice.
-    await callWorkflows('post', run.id);
-    setPosting(false);
-  };
-
   const close = async (removeWorktree: boolean): Promise<void> => {
     setClosing(false);
     await callWorkflows('close', run.id, removeWorktree);
@@ -397,8 +424,6 @@ export function RunDetail({
     if (run.worktreePath) setClosing(true);
     else await close(false);
   };
-
-  const postCount = postsLeft(run).length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4">
@@ -416,18 +441,7 @@ export function RunDetail({
       {run.usesBoard && <SharedBoard run={run} />}
 
       <SaveReportDialog run={run} open={saving} onClose={() => setSaving(false)} />
-      <ConfirmDialog
-        open={posting}
-        title={`Post ${postCount === 1 ? '1 finding' : `${postCount} findings`} to PR #${run.pr?.number ?? ''}?`}
-        detail="An agent pane opens. It can post only these stored findings. Anything already posted stays out."
-        onClose={() => setPosting(false)}
-        body={<PostPreview run={run} />}
-      >
-        <Button onClick={() => setPosting(false)}>Cancel</Button>
-        <Button tone="primary" disabled={postCount === 0} onClick={post}>
-          Post
-        </Button>
-      </ConfirmDialog>
+      <PostDialog run={run} open={posting} onClose={() => setPosting(false)} />
       <ConfirmDialog
         open={closing}
         title="Remove this run's worktree?"
