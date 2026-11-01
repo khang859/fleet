@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.147.0
+
+- **Breaking: Fleet now needs macOS 13 or newer.**
+  Fleet moves from Electron 39 to Electron 45, and 32-bit builds are gone.
+  Copies on macOS 12 stay on their current version and do not get this update (#739).
+- **A Keychain prompt on the first launch.**
+  macOS treats the new Electron as a new app, so it asks for Keychain access once.
+  No window opens until you answer, so look for the prompt if Fleet seems stuck.
+- **Security upgrades.**
+  `npm audit` no longer reports critical or high problems, and Fleet's main dependencies are up to date (#739).
+- **Dialogs start in Downloads.**
+  Open and save dialogs with no default folder now start in Downloads.
+- **The Workflows page stays live.**
+  The list and open dialogs now update by themselves, so you no longer need to switch tabs to see a new status.
+  This release also fixes the wrong project list, rule form overwrites, a stuck Start button, silent errors, and Allow and Deny buttons that stay (#740).
+- **A new `fleet_workflow_guide` tool.**
+  An agent can now use it to learn the workflow file format (#740).
+
 ## v2.146.0
 
 - **Saved multi-agent workflows.**
