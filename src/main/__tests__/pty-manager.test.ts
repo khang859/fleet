@@ -106,6 +106,9 @@ describe('PtyManager', () => {
 
 import * as ptyModule from 'node-pty';
 
+/** One chunk larger than the buffer limit. */
+const OVERFLOW = 'x'.repeat(257 * 1024);
+
 describe('PtyManager batching and cleanup', () => {
   let manager: PtyManager;
 
@@ -138,26 +141,211 @@ describe('PtyManager batching and cleanup', () => {
     expect(mockPty.write.mock.calls).toEqual([['setup\r'], ['\x03']]);
   });
 
-  it('batches onData output and flushes after 16ms', () => {
+  /** Create a pane, and return its mock PTY and what its output callback got. */
+  const openPane = (
+    paneId = 'pane-1'
+  ): {
+    mockPty: {
+      pause: ReturnType<typeof vi.fn>;
+      resume: ReturnType<typeof vi.fn>;
+      onExit: ReturnType<typeof vi.fn>;
+    };
+    print: (data: string) => void;
+    received: string[];
+  } => {
+    manager.create({ paneId, cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    const received: string[] = [];
+    manager.onData(paneId, (data) => received.push(data));
+    return { mockPty, print: mockPty.onData.mock.calls[0][0], received };
+  };
+
+  it('runs no timer while a pane has no output', () => {
+    openPane();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('sends the first chunk at once', () => {
+    const { print, received } = openPane();
+
+    print('x');
+
+    expect(received).toEqual(['x']);
+  });
+
+  it('batches the chunks that follow the first, and flushes them after 16ms', () => {
+    const { print, received } = openPane();
+
+    print('first');
+    print('hello ');
+    print('world');
+    expect(received).toEqual(['first']);
+
+    vi.advanceTimersByTime(16);
+    expect(received).toEqual(['first', 'hello world']);
+  });
+
+  it('keeps every chunk in order through a long burst', () => {
+    const { print, received } = openPane();
+    const chunks = Array.from({ length: 200 }, (_, i) => `${i},`);
+
+    for (const chunk of chunks) {
+      print(chunk);
+      vi.advanceTimersByTime(3);
+    }
+    vi.advanceTimersByTime(32);
+
+    expect(received.join('')).toBe(chunks.join(''));
+    expect(received.length).toBeLessThan(chunks.length / 3);
+  });
+
+  it('stops its timer once the output goes quiet', () => {
+    const { print } = openPane();
+
+    print('first');
+    print('second');
+    vi.advanceTimersByTime(32);
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('sends the first chunk at once again after a quiet period', () => {
+    const { print, received } = openPane();
+
+    print('before');
+    vi.advanceTimersByTime(16);
+    print('after');
+
+    expect(received).toEqual(['before', 'after']);
+  });
+
+  it('does not make one pane wait for the batch of another', () => {
+    const busy = openPane('pane-1');
+    const quiet = openPane('pane-2');
+
+    busy.print('a');
+    busy.print('b');
+    quiet.print('keystroke');
+
+    expect(quiet.received).toEqual(['keystroke']);
+    expect(busy.received).toEqual(['a']);
+  });
+
+  it('holds output until a callback is registered, with no timer until then', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    const print = mockPty.onData.mock.calls[0][0];
+
+    print('early');
+    expect(vi.getTimerCount()).toBe(0);
 
     const received: string[] = [];
     manager.onData('pane-1', (data) => received.push(data));
 
-    // Get the callback registered on the mock PTY
-    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
-    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
+    expect(received).toEqual(['early']);
+  });
 
-    ptyDataCallback('hello ');
-    ptyDataCallback('world');
+  it('pauses the PTY before it flushes the overflow', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    let pausedAtFlush = false;
 
-    // Not flushed yet
-    expect(received).toHaveLength(0);
+    manager.onData('pane-1', () => {
+      pausedAtFlush = mockPty.pause.mock.calls.length > 0;
+    });
+    mockPty.onData.mock.calls[0][0](OVERFLOW);
 
-    // After 16ms flush
-    vi.advanceTimersByTime(16);
-    expect(received).toHaveLength(1);
-    expect(received[0]).toBe('hello world');
+    expect(pausedAtFlush).toBe(true);
+  });
+
+  it('stays running when a consumer resumes inside the overflow flush', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+
+    manager.onData('pane-1', () => manager.resume('pane-1'));
+    mockPty.onData.mock.calls[0][0](OVERFLOW);
+
+    const lastPause = mockPty.pause.mock.invocationCallOrder.at(-1);
+    const lastResume = mockPty.resume.mock.invocationCallOrder.at(-1);
+
+    expect(lastResume).toBeGreaterThan(lastPause);
+    expect(manager.get('pane-1')?.paused).toBe(false);
+  });
+
+  it('resumes a paused pane after 250ms with no drain, and not before', () => {
+    const { mockPty, print } = openPane();
+
+    print(OVERFLOW);
+    vi.advanceTimersByTime(249);
+    expect(mockPty.resume).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(mockPty.resume).toHaveBeenCalledTimes(1);
+    expect(manager.get('pane-1')?.paused).toBe(false);
+  });
+
+  it('sends what arrived during a pause before it resumes without a drain', () => {
+    const { mockPty, print, received } = openPane();
+    let textAtResume = '';
+    mockPty.resume.mockImplementation(() => {
+      textAtResume = received.join('');
+    });
+
+    print(OVERFLOW);
+    vi.advanceTimersByTime(240);
+    print('first');
+    print('second');
+    vi.advanceTimersByTime(10);
+
+    expect(textAtResume.endsWith('firstsecond')).toBe(true);
+  });
+
+  it('does not resume twice when the drain beats the 250ms limit', () => {
+    const { mockPty, print } = openPane();
+
+    print(OVERFLOW);
+    vi.advanceTimersByTime(100);
+    manager.resume('pane-1');
+    vi.advanceTimersByTime(1000);
+
+    expect(mockPty.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one 250ms limit when a pane overflows twice', () => {
+    const { mockPty, print } = openPane();
+
+    print(OVERFLOW);
+    vi.advanceTimersByTime(100);
+    print(OVERFLOW);
+    vi.advanceTimersByTime(249);
+    expect(mockPty.resume).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1000);
+    expect(mockPty.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the flush and resume timers when a pane is killed', () => {
+    const { print } = openPane();
+
+    print(OVERFLOW);
+    print('more');
+    expect(vi.getTimerCount()).toBe(2);
+
+    manager.kill('pane-1');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the flush and resume timers when a pane exits', () => {
+    const { mockPty, print } = openPane();
+    manager.onExit('pane-1', vi.fn());
+
+    print(OVERFLOW);
+    print('more');
+    expect(vi.getTimerCount()).toBe(2);
+
+    mockPty.onExit.mock.calls.at(-1)?.[0]({ exitCode: 0 });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('disposes data listener when pane is killed', () => {
@@ -281,8 +469,12 @@ describe('PtyManager batching and cleanup', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     manager.create({ paneId: 'pane-2', cwd: '/tmp', shell: '/bin/zsh' });
 
+    const [first, second] = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.slice(-2);
+
     manager.onData('pane-1', vi.fn());
     manager.onData('pane-2', vi.fn());
+    first.value.onData.mock.calls[0][0]('hello');
+    second.value.onData.mock.calls[0][0]('hello');
 
     // Flush timer should be running
     expect(vi.getTimerCount()).toBeGreaterThan(0);
@@ -331,6 +523,7 @@ describe('PtyManager batching and cleanup', () => {
 
     manager.onData('pane-1', vi.fn());
     manager.onExit('pane-1', vi.fn());
+    mockPty.onData.mock.calls[0][0]('hello');
 
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 

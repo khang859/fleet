@@ -8,11 +8,11 @@ Where the throughput falls off between layers names the guilty one.
 
 On an 8-core M1, unthrottled ANSI-heavy output:
 
-| layer | 1 pane | 2 | 4 | 8 |
-| --- | --- | --- | --- | --- |
+| layer  | 1 pane    | 2    | 4    | 8    |
+| ------ | --------- | ---- | ---- | ---- |
 | ingest | 23.7 MB/s | 35.8 | 48.7 | 66.9 |
-| ipc | 22.9 | 34.0 | 46.0 | 59.7 |
-| full | 16.1 | 30.2 | 43.1 | 57.6 |
+| ipc    | 22.9      | 34.0 | 46.0 | 59.7 |
+| full   | 16.1      | 30.2 | 43.1 | 57.6 |
 
 IPC costs 3-10%.
 xterm costs the rest.
@@ -25,10 +25,10 @@ So any plan that moves PTY reading or flushing off the main thread is optimising
 
 Paced generators, full path, per-agent byte budget swept:
 
-| KB/s per agent | 8 panes | 16 | 32 | 48 |
-| --- | --- | --- | --- | --- |
-| 50 | 60fps / echo 18ms | 60fps / 25ms | 60fps / 51ms | 46fps / 93ms |
-| 200 | 60fps / 23ms | 60fps / 34ms | 59fps / 54ms | 44fps / 83ms |
+| KB/s per agent | 8 panes           | 16           | 32           | 48           |
+| -------------- | ----------------- | ------------ | ------------ | ------------ |
+| 50             | 60fps / echo 18ms | 60fps / 25ms | 60fps / 51ms | 46fps / 93ms |
+| 200            | 60fps / 23ms      | 60fps / 34ms | 59fps / 54ms | 44fps / 83ms |
 
 Quadrupling the data per agent barely moved anything; going from 32 to 48 panes cost a third of the frame rate at both rates.
 Generators achieved 100% of their target rate in every paced run, so Fleet never fell behind on throughput at all - it degraded on per-pane fixed overhead.
@@ -39,7 +39,7 @@ Hidden panes are cheaper still (they coalesce to 250ms in `use-terminal.ts`) and
 ## Two things that bite when measuring this
 
 **`LOG_LEVEL` defaults to `debug` whenever Electron is unpackaged.**
-`logger.ts` derives it from `app.isPackaged`, so under `npm run dev` every backpressure pause and every resume writes a formatted winston line to the console *and* to the daily file.
+`logger.ts` derives it from `app.isPackaged`, so under `npm run dev` every backpressure pause and every resume writes a formatted winston line to the console _and_ to the daily file.
 That is a per-event cost on the hot path in dev only - packaged builds get `info`, and the pty logs are all `debug`.
 Any throughput measurement taken in dev without `LOG_LEVEL=info` is measuring winston.
 
@@ -57,8 +57,8 @@ Pace with `setImmediate` and let the blocking write supply the backpressure.
 ```ts
 entry.paused = true;
 entry.pausedAt = Date.now();
-this.flushPane(opts.paneId);   // invokes the consumer callback SYNCHRONOUSLY
-proc.pause();                  // ...and only then pauses
+this.flushPane(opts.paneId); // invokes the consumer callback SYNCHRONOUSLY
+proc.pause(); // ...and only then pauses
 ```
 
 If any consumer ever calls `resume()` synchronously from inside that flush callback, the `resume()` is undone by the `pause()` that follows it, while `entry.paused` has been reset to `false`.
@@ -69,28 +69,61 @@ The hazard is that the safety depends entirely on that asynchrony, and nothing i
 Cost me a debugging cycle when the benchmark's in-process consumer acked synchronously.
 Either pause before flushing, or note the requirement where the pause is applied.
 
+**Fixed in #717:** `pausePane` now pauses, arms the resume timer, and then flushes, so a synchronous `resume()` is the last word.
+
+## The fixed flush tick cost more than it looked (#717)
+
+The shared 16ms interval ran while any pane existed, so it woke main about 63 times a second with every pane idle.
+It also made each keystroke echo wait for the next tick.
+Each pane now has its own one-shot timer: the first chunk after a quiet period goes out at once, and the rest batch at 16ms.
+
+Measured in the dev app, main process, with a `cat` pane and input timed to `PTY_DATA` in the renderer:
+
+|                                          | before         | after         |
+| ---------------------------------------- | -------------- | ------------- |
+| idle wakes per second, 2 panes           | ~63            | ~1            |
+| echo mean / p95, quiet                   | 8.2ms / 16.8ms | 1.1ms / 1.6ms |
+| echo mean / p95, neighbor pane streaming | 8.7ms / 16.6ms | 0.8ms / 1.9ms |
+
+The timer must be per pane.
+With one shared one-shot timer, a streaming neighbor keeps the timer open, so the focused pane is never quiet and its echo gains nothing.
+
+`top -stats pid,cpu,idlew` shows the wakes for one process, per sample.
+
+## `seq` does not reach the backpressure path
+
+At about 6 MB/s, `seq 1 500000` never holds 256KB in one 16ms window, so it never pauses.
+To force a pause, print long lines: `seq -f %0400.0f 1 25000`.
+A renderer listener that sends no drain then exercises the 250ms self-heal.
+
+## `npm ci` can leave Electron without its binary
+
+In a fresh worktree `npm ci` finished, but `npm run drive -- up` failed with `Error: Electron uninstall`.
+`node_modules/electron/dist` did not exist.
+Run `node node_modules/electron/install.js` to download it.
+
 ## Measured against Rust, because the first version of this was inference
 
 The first pass of this document argued about Rust without measuring any.
 So: identical 64 MB byte corpora fed into `alacritty_terminal` 0.26 (the crate Alacritty and Zed's terminal are built on) and into `@xterm/headless` 5.5 - the same parser and buffer Fleet ships, with the renderer removed so both sides are parse-into-grid and nothing else.
 Both at 80x24 with 3000 lines of scrollback, release build, three iterations, mean MB/s:
 
-| | scroll 4K | scroll 64K | tui 4K | tui 64K |
-| --- | --- | --- | --- | --- |
-| rust / alacritty_terminal | 171.4 | 179.1 | 214.7 | 215.8 |
-| js / xterm (flow-controlled) | 79.2 | 74.9 | 94.5 | 95.1 |
-| js / xterm (await each chunk) | 2.9 | 21.2 | 4.4 | 37.3 |
+|                               | scroll 4K | scroll 64K | tui 4K | tui 64K |
+| ----------------------------- | --------- | ---------- | ------ | ------- |
+| rust / alacritty_terminal     | 171.4     | 179.1      | 214.7  | 215.8   |
+| js / xterm (flow-controlled)  | 79.2      | 74.9       | 94.5   | 95.1    |
+| js / xterm (await each chunk) | 2.9       | 21.2       | 4.4    | 37.3    |
 
 Rust is **2.2-2.3x** faster at parsing. Not 10x, not 100x.
 
 Peak RSS for N terminals each filled to a full 3000-line scrollback, same corpus, `/usr/bin/time -l`:
 
-| terminals | rust | node |
-| --- | --- | --- |
+| terminals                            | rust  | node   |
+| ------------------------------------ | ----- | ------ |
 | 0 (floor, includes the 64 MB corpus) | 66 MB | 183 MB |
-| 8 | 114 | 300 |
-| 16 | 163 | 346 |
-| 32 | 260 | 479 |
+| 8                                    | 114   | 300    |
+| 16                                   | 163   | 346    |
+| 32                                   | 260   | 479    |
 
 Slope: **~6.1 MB per terminal in Rust, ~7.5 MB in JS.** About 1.2-1.5x.
 
@@ -114,7 +147,7 @@ Hit while writing the benchmark, by pushing a corpus in without honouring flow c
 Fleet is a well-behaved consumer - one write per flush, drain ack on the callback - so this needs a pane whose renderer has been stalled for tens of seconds while output keeps arriving before 50 MB could pile up in one terminal.
 Two things make it worth writing down anyway.
 `writeToTerm` in `use-terminal.ts` does not wrap `term.write` in a try/catch, so if it ever did throw, the throw lands in an IPC event handler.
-And `RESUME_WITHOUT_DRAIN_MS` deliberately resumes a paused PTY *without* the renderer having acknowledged anything, which is the one mechanism in the system that can keep feeding a renderer that is not keeping up.
+And `RESUME_WITHOUT_DRAIN_MS` deliberately resumes a paused PTY _without_ the renderer having acknowledged anything, which is the one mechanism in the system that can keep feeding a renderer that is not keeping up.
 Not reproduced in Fleet itself - only in a harness that deliberately broke the contract.
 
 ## Garbage, not a leak

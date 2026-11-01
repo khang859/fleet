@@ -60,8 +60,10 @@ type PtyEntry = {
   cwd: string;
   outputBuffer: string;
   paused: boolean;
-  /** When the pause started, for the self-heal in `flushAll`. Null when running. */
-  pausedAt: number | null;
+  /** Set while this pane is in a batch window. Unset when the pane is quiet. */
+  flushTimer?: ReturnType<typeof setTimeout>;
+  /** Set while this pane is paused. See RESUME_WITHOUT_DRAIN_MS. */
+  resumeTimer?: ReturnType<typeof setTimeout>;
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
   snapshot: ShellEnvSnapshot | null;
@@ -75,6 +77,14 @@ type PtyEntry = {
   replay: string | null;
 };
 
+/**
+ * How long a pane batches output after a flush.
+ *
+ * The first chunk after a quiet period is often a keystroke echo, so it goes out
+ * at once and only what follows waits here. Each pane has its own window, or a
+ * streaming pane would hold back the echo of the pane beside it. A window that
+ * ends with nothing to send opens no other, so an idle pane runs no timer.
+ */
 const FLUSH_INTERVAL_MS = 16;
 const BUFFER_OVERFLOW_BYTES = 256 * 1024;
 /** The most output kept for a pane that no screen has attached to. */
@@ -98,6 +108,11 @@ const MAX_REPLAY_CHARS = 512 * 1024;
  * it resumes immediately when it arrives, and the shell runs again shortly
  * after regardless. A quarter second is long enough that a renderer keeping up
  * is never second-guessed, and short enough that nobody reads it as a hang.
+ *
+ * The buffer is flushed before this resume, so the pane resumes into an empty
+ * one - if the producer is genuinely faster than the renderer, the next burst
+ * simply pauses it again, which is the behaviour wanted: output arrives in
+ * bursts rather than stopping dead.
  */
 const RESUME_WITHOUT_DRAIN_MS = 250;
 
@@ -165,7 +180,6 @@ export class PtyManager {
 
   private ptys = new Map<string, PtyEntry>();
   private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
-  private flushTimer: ReturnType<typeof setInterval> | null = null;
   private closeListeners: Array<(paneId: string, killed: boolean) => void> = [];
 
   create(opts: PtyCreateOptions): PtyCreateResult {
@@ -254,7 +268,6 @@ export class PtyManager {
       cwd: opts.cwd,
       outputBuffer: '',
       paused: false,
-      pausedAt: null,
       dataDisposable: null,
       exitDisposable: null,
       token,
@@ -273,16 +286,8 @@ export class PtyManager {
     // the IDisposable is captured and can be disposed during kill().
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
-      if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
-        log.debug('backpressure pause', {
-          paneId: opts.paneId,
-          bufferBytes: entry.outputBuffer.length
-        });
-        entry.paused = true;
-        entry.pausedAt = Date.now();
-        this.flushPane(opts.paneId);
-        proc.pause();
-      }
+      if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) this.pausePane(entry);
+      else this.flushSoon(entry);
     });
 
     if (opts.typeOnStart) entry.stopTyping = typeWhenReady(proc, opts.typeOnStart);
@@ -323,7 +328,8 @@ export class PtyManager {
   /** Drop a PTY that was killed or exited, and what was kept for it. */
   private forget(entry: PtyEntry, killed: boolean): void {
     this.ptys.delete(entry.paneId);
-    this.clearFlushTimerIfEmpty();
+    clearTimeout(entry.flushTimer);
+    clearTimeout(entry.resumeTimer);
     for (const listener of this.closeListeners) listener(entry.paneId, killed);
   }
 
@@ -357,10 +363,6 @@ export class PtyManager {
   killAll(): void {
     for (const [paneId] of this.ptys) {
       this.kill(paneId);
-    }
-    if (this.flushTimer) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
     }
   }
 
@@ -411,9 +413,9 @@ export class PtyManager {
   }
 
   /**
-   * Register a callback that receives batched PTY output every ~16ms.
+   * Register a callback that receives batched PTY output. See `flushSoon`.
    * The internal process.onData listener is already registered at create() time;
-   * this method wires up the flush callback and starts the shared flush timer.
+   * this method wires up the flush callback and sends what arrived before it.
    */
   onData(paneId: string, callback: (data: string, paused: boolean) => void): void {
     const entry = this.ptys.get(paneId);
@@ -427,9 +429,7 @@ export class PtyManager {
     }
 
     this.dataCallbacks.set(paneId, callback);
-
-    // Start shared flush timer if not already running
-    this.flushTimer ??= setInterval(() => this.flushAll(), FLUSH_INTERVAL_MS);
+    this.flushSoon(entry);
   }
 
   /** Resume a paused PTY (called by renderer after consuming a batch). */
@@ -438,7 +438,8 @@ export class PtyManager {
     if (entry) {
       log.debug('resume', { paneId });
       entry.paused = false;
-      entry.pausedAt = null;
+      clearTimeout(entry.resumeTimer);
+      entry.resumeTimer = undefined;
       entry.process.resume();
     }
   }
@@ -458,11 +459,33 @@ export class PtyManager {
     }
   }
 
-  private clearFlushTimerIfEmpty(): void {
-    if (this.ptys.size === 0 && this.flushTimer) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
-    }
+  /** Send a quiet pane's output at once, and batch what follows. See FLUSH_INTERVAL_MS. */
+  private flushSoon(entry: PtyEntry): void {
+    if (entry.flushTimer !== undefined || !entry.outputBuffer) return;
+    if (!this.dataCallbacks.has(entry.paneId)) return;
+
+    // Set before the flush, so `forget` can clear it if the callback closes the pane.
+    entry.flushTimer = setTimeout(() => {
+      entry.flushTimer = undefined;
+      this.flushSoon(entry);
+    }, FLUSH_INTERVAL_MS);
+
+    this.flushPane(entry.paneId);
+  }
+
+  /** Pause before the flush, or a `resume()` inside the callback would be undone. */
+  private pausePane(entry: PtyEntry): void {
+    log.debug('backpressure pause', {
+      paneId: entry.paneId,
+      bufferBytes: entry.outputBuffer.length
+    });
+    entry.paused = true;
+    entry.process.pause();
+
+    clearTimeout(entry.resumeTimer);
+    entry.resumeTimer = setTimeout(() => this.resumeIfStuck(entry), RESUME_WITHOUT_DRAIN_MS);
+
+    this.flushPane(entry.paneId);
   }
 
   private flushPane(paneId: string): void {
@@ -475,30 +498,10 @@ export class PtyManager {
     }
   }
 
-  private flushAll(): void {
-    for (const paneId of this.ptys.keys()) {
-      this.flushPane(paneId);
-      this.resumeIfStuck(paneId);
-    }
-  }
-
-  /**
-   * Let a pane that has been paused too long start reading again.
-   *
-   * Runs on the flush tick rather than on a timer of its own, so a pane is
-   * reconsidered every 16ms while paused and costs nothing while it is not.
-   * The buffer has just been flushed by the time this is reached, so resuming
-   * here is resuming into an empty one - if the producer is genuinely faster
-   * than the renderer, the next burst simply pauses it again, which is the
-   * behaviour wanted: output arrives in bursts rather than stopping dead.
-   *
-   * See RESUME_WITHOUT_DRAIN_MS for why this exists at all.
-   */
-  private resumeIfStuck(paneId: string): void {
-    const entry = this.ptys.get(paneId);
-    if (entry === undefined || !entry.paused || entry.pausedAt === null) return;
-    if (Date.now() - entry.pausedAt < RESUME_WITHOUT_DRAIN_MS) return;
-    log.debug('resuming without a drain', { paneId, pausedMs: Date.now() - entry.pausedAt });
-    this.resume(paneId);
+  /** Let a pane that has been paused too long read again. See RESUME_WITHOUT_DRAIN_MS. */
+  private resumeIfStuck(entry: PtyEntry): void {
+    log.debug('resuming without a drain', { paneId: entry.paneId });
+    this.flushPane(entry.paneId);
+    this.resume(entry.paneId);
   }
 }
