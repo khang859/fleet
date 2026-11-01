@@ -13,6 +13,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { DEFAULT_SCROLLBACK } from '../../../shared/types';
+import { cancelPaintTick, onNextPaintTick } from '../lib/terminal-paint-tick';
 import { resolveXtermTheme } from '../lib/theme';
 import {
   PathLinkProvider,
@@ -61,10 +62,9 @@ export type UseTerminalOptions = {
   backgroundImageActive?: boolean;
 };
 
-// While a pane is hidden (display:none background/inactive tab), coalesce PTY
-// output and write it to xterm at most this often instead of on every ~16ms PTY
-// flush. Cuts xterm parse+render work for terminals nobody is looking at.
-const HIDDEN_FLUSH_INTERVAL_MS = 250;
+// Output one pane may hold for the next paint tick. Past it, output takes the
+// normal path, where the drain waits for xterm and so slows the PTY down.
+const MAX_DEFERRED_CHARS = 1024 * 1024;
 
 // Memory one pane may spend on inline images. Past it, the oldest images drop
 // out and leave a placeholder.
@@ -466,28 +466,30 @@ function createTerminal(
       window.fleet.ptyDrain(options.paneId);
     });
   };
-  // Hidden-pane write coalescing. Background-workspace (and inactive) tabs stay
-  // mounted but display:none so their PTYs remain warm. Feeding xterm on every
-  // ~16ms PTY flush forces escape-sequence parsing and rAF rendering for a
-  // redraw-heavy TUI nobody is looking at — the dominant renderer CPU cost when
-  // many background Claude sessions stream at once. While hidden we buffer output
-  // and write it in one batch at most every HIDDEN_FLUSH_INTERVAL_MS (keeping the
-  // buffer current and bounded), then flush immediately when the pane becomes
-  // visible. Permission/notification detection is unaffected — it runs in the
-  // main process before IPC.
-  let hiddenBuffer = '';
-  let hiddenFlushTimer: ReturnType<typeof setTimeout> | null = null;
-  const flushHiddenBuffer = (): void => {
-    if (hiddenFlushTimer !== null) {
-      clearTimeout(hiddenFlushTimer);
-      hiddenFlushTimer = null;
-    }
-    if (hiddenBuffer) {
-      const data = hiddenBuffer;
-      hiddenBuffer = '';
+  // Write coalescing for panes the user is not typing in. Background-workspace
+  // (and inactive) tabs stay mounted but display:none so their PTYs remain warm,
+  // and split panes stay visible without focus. Feeding xterm on every ~16ms PTY
+  // flush forces escape-sequence parsing and rendering for a redraw-heavy TUI,
+  // and a spinner in each of many agent panes is the dominant CPU cost. These
+  // panes buffer output and write it on the shared paint tick (keeping the buffer
+  // current and bounded), then flush immediately when the pane becomes visible or
+  // takes focus. The focused pane always writes at once. Permission/notification
+  // detection is unaffected - it runs in the main process before IPC.
+  let deferredOutput = '';
+  const flushDeferredOutput = (): void => {
+    cancelPaintTick(flushDeferredOutput);
+    if (deferredOutput) {
+      const data = deferredOutput;
+      deferredOutput = '';
       writeToTerm(data);
     }
   };
+
+  // offsetParent is null inside a display:none subtree - the idiom used
+  // throughout this file to detect a hidden pane.
+  const canDeferOutput = (chars: number): boolean =>
+    (container.offsetParent === null || document.activeElement !== term.textarea) &&
+    deferredOutput.length + chars < MAX_DEFERRED_CHARS;
 
   log.debug('registerPaneData', { paneId: options.paneId });
   const ipcUnsubscribe = window.fleet.pty.registerPaneData(options.paneId, (data) => {
@@ -496,32 +498,34 @@ function createTerminal(
       pendingLiveData.push(data);
       return;
     }
-    // offsetParent is null inside a display:none subtree — the idiom used
-    // throughout this file to detect a hidden pane.
-    if (container.offsetParent === null) {
+    if (canDeferOutput(data.length)) {
       // Take the data off the IPC path now (resumes the PTY if backpressure
-      // paused it) but defer the costly xterm write to the slow flush.
+      // paused it) but defer the costly xterm write to the paint tick.
       window.fleet.ptyDrain(options.paneId);
-      hiddenBuffer += data;
-      hiddenFlushTimer ??= setTimeout(flushHiddenBuffer, HIDDEN_FLUSH_INTERVAL_MS);
+      deferredOutput += data;
+      onNextPaintTick(flushDeferredOutput);
       return;
     }
-    // Visible: drain anything buffered while hidden first to preserve order.
-    if (hiddenBuffer) flushHiddenBuffer();
+    // Write anything deferred first to preserve order.
+    if (deferredOutput) flushDeferredOutput();
     writeToTerm(data);
   });
 
   // Flush buffered output the instant a hidden pane becomes visible (e.g. tab or
   // workspace switch), so it shows current content without waiting for new PTY
-  // output or the slow timer.
+  // output or the paint tick.
   const visibilityObserver = new IntersectionObserver((entries) => {
-    if (entries.some((e) => e.isIntersecting)) flushHiddenBuffer();
+    if (entries.some((e) => e.isIntersecting)) flushDeferredOutput();
   });
   visibilityObserver.observe(container);
 
+  // Same for a pane taking focus, with no wait before the first keystroke shows.
+  term.textarea?.addEventListener('focus', flushDeferredOutput);
+
   const ipcCleanup = (): void => {
     visibilityObserver.disconnect();
-    if (hiddenFlushTimer !== null) clearTimeout(hiddenFlushTimer);
+    term.textarea?.removeEventListener('focus', flushDeferredOutput);
+    cancelPaintTick(flushDeferredOutput);
     ipcUnsubscribe();
   };
 
