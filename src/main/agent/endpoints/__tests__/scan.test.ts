@@ -26,7 +26,7 @@ const probing = (found: Record<string, boolean>): typeof probeEndpoint =>
         ? { ok: true as const, fingerprint: 'llamacpp' as const, models: [model], sleeping: false }
         : { ok: false as const, reason: 'refused' as const, detail: null }
     )
-  ) as unknown as typeof probeEndpoint;
+  );
 
 describe('scanLocalPorts', () => {
   it('offers the addresses that answered and nothing else', async () => {

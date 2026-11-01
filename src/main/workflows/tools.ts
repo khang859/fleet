@@ -115,7 +115,7 @@ export function toolsFor(kind: PaneKind): ToolListing[] {
     .map((name) => ({
       name,
       description: TOOLS[name].description,
-      inputSchema: z.toJSONSchema(TOOLS[name].args, { io: 'input' }) as Record<string, unknown>
+      inputSchema: z.toJSONSchema(TOOLS[name].args, { io: 'input' })
     }));
 }
 

@@ -319,8 +319,8 @@ export function ClaudeConfigSection({ onNavigate }: SettingsSectionProps): React
                 mono
                 value={effectiveKind}
                 options={[
-                  { id: 'settings' as ClaudeFileKind, label: 'settings.json' },
-                  { id: 'memory' as ClaudeFileKind, label: 'CLAUDE.md' }
+                  { id: 'settings', label: 'settings.json' },
+                  { id: 'memory', label: 'CLAUDE.md' }
                 ]}
                 onChange={setKind}
               />

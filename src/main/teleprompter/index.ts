@@ -33,7 +33,7 @@ export function createTeleprompter(settingsStore: SettingsStore): TeleprompterSe
       matching: (rect) => toDisplayArea(screen.getDisplayMatching(rect))
     },
     fs,
-    readClipboard: () => clipboard.readText(),
+    readClipboard: async () => clipboard.readText(),
     pastedNotesPath: join(app.getPath('userData'), 'teleprompter', 'pasted.md'),
     now: () => Date.now()
   });

@@ -80,6 +80,8 @@ export default defineConfig(
       '@typescript-eslint/no-mixed-enums': 'error',
       '@typescript-eslint/no-meaningless-void-operator': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
+      // Destructuring a key out to drop it from `...rest` is how this code omits fields.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
 
       // Code quality — mostly auto-fixable
       '@typescript-eslint/prefer-nullish-coalescing': ['error', { ignorePrimitives: true }],

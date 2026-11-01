@@ -71,7 +71,6 @@ const consoleFormat = winston.format.combine(
     const tag = typeof rawTag === 'string' ? rawTag : '';
     const prefix = tag ? `[${tag}]` : '';
     const { timestamp, level: lvl, message, tag: _unusedTag, ...meta } = info;
-    void _unusedTag;
     const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
     return `${String(timestamp)} ${prefix} ${String(lvl)}: ${String(message)}${metaStr}`;
   })

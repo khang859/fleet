@@ -38,10 +38,7 @@ vi.mock('electron-store', () => {
 
 /** The test-only handles the mock above hangs off the module. */
 async function harness(): Promise<{ __counter: { reads: number }; __fireChange: () => void }> {
-  return (await vi.importMock('electron-store')) as {
-    __counter: { reads: number };
-    __fireChange: () => void;
-  };
+  return vi.importMock('electron-store');
 }
 
 describe('SettingsStore settings merge', () => {
@@ -103,7 +100,7 @@ describe('SettingsStore settings merge', () => {
     // its own. What must hold is that an agent object saved without the key
     // reads back as `{}` and not as undefined, which would throw on iteration.
     store.set({
-      ai: { agent: { systemPrompt: 'be brief' } } as never
+      ai: { agent: { systemPrompt: 'be brief' } }
     });
     expect(store.get().ai.agent.mcpServers).toEqual({});
     expect(store.get().ai.agent.systemPrompt).toBe('be brief');

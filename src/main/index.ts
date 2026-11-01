@@ -243,7 +243,7 @@ const ptyOscBridge = new PtyOscBridge({
       win.webContents.send(IPC_CHANNELS.REMOTE_SSH_TRANSFER_PROGRESS, transfer);
     }
   },
-  writeClipboard: (text) => clipboard.writeText(text),
+  writeClipboard: async (text) => clipboard.writeText(text),
   downloadsDir: () => app.getPath('downloads')
 });
 ensureScratchDir();

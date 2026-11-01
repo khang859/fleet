@@ -29,7 +29,7 @@ vi.mock('winston-daily-rotate-file', () => {
 if (typeof window === 'undefined') {
   Object.assign(globalThis, {
     window: {
-      fleet: {} as Record<string, unknown>
+      fleet: {}
     }
   });
 }
@@ -74,8 +74,7 @@ if (typeof OffscreenCanvas === 'undefined') {
       this.height = height;
     }
 
-    getContext(_type: string): object {
-      void _type;
+    getContext(): object {
       return {
         clearRect: () => {},
         fillRect: () => {},

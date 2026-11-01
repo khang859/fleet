@@ -37,7 +37,7 @@ function composer(
       source: 'cache',
       error: null,
       ...cloud
-    } as AgentCatalog)
+    })
   );
   return {
     subject: new AgentCatalogComposer(

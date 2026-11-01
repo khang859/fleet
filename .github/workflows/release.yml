@@ -238,11 +238,20 @@ jobs:
               },
           ]
 
+          # Stops an installed Fleet from taking an update its macOS cannot run.
+          # electron-updater compares this to os.release(), so it is a Darwin
+          # version, not a macOS version: macOS 13 is Darwin 22. A macOS number
+          # here would block nothing. Raise it with Electron's own minimum, which
+          # is LSMinimumSystemVersion in Electron.app/Contents/Info.plist.
+          # See docs/learnings/2026-10-31-electron-45-upgrade.md.
+          minimum_darwin_version = '22.0.0'
+
           data = {
               'version': version,
               'files': files,
               'path': os.environ['ARM64_ZIP'],
               'sha512': os.environ['ARM64_ZIP_SHA'],
+              'minimumSystemVersion': minimum_darwin_version,
               'releaseNotes': release_notes,
               'releaseDate': release_date,
           }

@@ -382,9 +382,6 @@ export function collectOutput(items: Array<z.infer<typeof outputItemSchema>>): {
     // whole item minus its bookkeeping is kept as the arguments rather than
     // guessing which key mattered.
     const { type, id, status, result, ...args } = item;
-    void type;
-    void id;
-    void status;
     const resultJson = result == null ? '' : JSON.stringify(result);
     serverToolCalls.push({
       callId: item.id ?? null,

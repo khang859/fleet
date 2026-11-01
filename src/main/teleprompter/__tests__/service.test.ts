@@ -90,7 +90,7 @@ function setup(files: Record<string, string> = {}, clipboard = '') {
       },
       mkdir: async () => {}
     } as unknown as TeleprompterDeps['fs'],
-    readClipboard: () => clipboard,
+    readClipboard: async () => Promise.resolve(clipboard),
     pastedNotesPath: PASTED,
     now: () => clock
   });

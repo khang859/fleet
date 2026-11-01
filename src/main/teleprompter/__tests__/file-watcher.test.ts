@@ -20,7 +20,11 @@ function fakeWatch(): {
     watch: (dir, listener) => {
       state.dirs.push(dir);
       state.listener = listener;
-      return { close: () => void state.closed++ };
+      return {
+        close: () => {
+          state.closed++;
+        }
+      };
     },
     emit: (event, filename) => state.listener?.(event, filename),
     get dirs() {

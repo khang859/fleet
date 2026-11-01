@@ -36,7 +36,7 @@ function event(payload: object): string {
  * is checked directly above, so nothing here needs to inspect the request.
  */
 function stub(res: Response): typeof fetch {
-  return (async () => Promise.resolve(res)) as unknown as typeof fetch;
+  return async () => Promise.resolve(res);
 }
 
 const signal = new AbortController().signal;
