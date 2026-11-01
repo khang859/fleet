@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SaveReportResult, WorkflowRun } from '../../../../shared/workflows';
-import { callWorkflows } from '../../store/workflows-store';
+import { callWorkflows, showWorkflowError } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
 import { Button, Field, FIELD_CLASS } from './parts';
@@ -26,9 +26,11 @@ export function SaveReportDialog({
   useEffect(() => {
     if (!open) return;
     setFailure(null);
-    void callWorkflows('reportPath', run.id).then((suggested) => {
-      setPath(suggested ?? `docs/reports/${run.slug || run.workflowId}.md`);
-    });
+    callWorkflows('reportPath', run.id)
+      .then((suggested) => {
+        setPath(suggested ?? `docs/reports/${run.slug || run.workflowId}.md`);
+      })
+      .catch(showWorkflowError);
   }, [open, run.id, run.slug, run.workflowId]);
 
   const settle = (reply: SaveReportResult | null): void => {
@@ -69,7 +71,7 @@ export function SaveReportDialog({
       </Field>
       {failure && <p className="text-[11px] text-red-300">{failure.message}</p>}
       <div className="flex justify-end gap-2">
-        <Button tone="quiet" onClick={() => void choose()}>
+        <Button tone="quiet" onClick={choose}>
           Choose
         </Button>
         <div className="flex-1" />
@@ -84,12 +86,12 @@ export function SaveReportDialog({
             >
               Use a new name
             </Button>
-            <Button tone="danger" onClick={() => void save(true)}>
+            <Button tone="danger" onClick={async () => save(true)}>
               Replace
             </Button>
           </>
         ) : (
-          <Button tone="primary" onClick={() => void save(false)}>
+          <Button tone="primary" onClick={async () => save(false)}>
             {failure?.code === 'failed' ? 'Try again' : 'Save'}
           </Button>
         )}

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { RunTab, WorkflowsApi, WorkflowsState } from '../shared/workflows';
+import type { RunTab, WorkflowEntries, WorkflowsApi, WorkflowsState } from '../shared/workflows';
 import type {
   PtyCreateRequest,
   PtyCreateResponse,
@@ -514,6 +514,8 @@ const fleetApi = {
       ),
     onState: (callback: (state: WorkflowsState) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.WORKFLOWS_STATE, callback),
+    onEntries: (callback: (entries: WorkflowEntries) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.WORKFLOWS_ENTRIES, callback),
     onTab: (callback: (tab: RunTab) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.WORKFLOWS_TAB, callback)
   },

@@ -255,6 +255,8 @@ export type WorkflowNotice = {
   projectPath: string | null;
   /** An agent asks to start this file. Allow or Deny answers it. */
   ask?: { path: string; hash: string };
+  /** The file that an agent made, on an `agent-create` notice. */
+  workflowId?: string;
 };
 
 export type WorkflowsState = {
@@ -263,6 +265,12 @@ export type WorkflowsState = {
   away: AwayEntry[];
   notices: WorkflowNotice[];
   limits: WorkflowLimits;
+};
+
+/** A push from main: the workflow files of the project that the page shows. */
+export type WorkflowEntries = {
+  projectPath: string;
+  entries: WorkflowEntry[];
 };
 
 export type WorkflowProject = {
@@ -381,7 +389,6 @@ export type WorkflowsApi = {
   saveReport: (runId: string, path: string, replace: boolean) => SaveReportResult;
   pickReportPath: (runId: string) => Promise<SaveReportResult | null>;
   post: (runId: string) => Promise<number>;
-  remainingPosts: (runId: string) => number;
   dismissNotice: (id: string) => void;
   answerAsk: (id: string, allow: boolean) => void;
   saveRule: (rule: RuleInput) => WorkflowRule;

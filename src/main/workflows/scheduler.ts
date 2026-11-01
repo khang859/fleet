@@ -274,8 +274,12 @@ export class WorkflowScheduler {
     input: Omit<WorkflowRule, 'id' | 'createdAt' | 'lastStart'> & { id?: string }
   ): WorkflowRule {
     const existing = this.data.rules.find((rule) => rule.id === input.id);
+    if (input.id !== undefined && !existing) throw new Error('This rule was deleted.');
     const rule: WorkflowRule = {
       ...input,
+      // The form does not edit these. They can change while it is open.
+      enabled: existing?.enabled ?? input.enabled,
+      pausedReason: existing ? existing.pausedReason : input.pausedReason,
       id: existing?.id ?? randomUUID(),
       createdAt: existing?.createdAt ?? this.deps.now(),
       lastStart: existing?.lastStart ?? null

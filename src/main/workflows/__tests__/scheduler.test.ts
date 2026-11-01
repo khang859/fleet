@@ -563,6 +563,24 @@ describe('WorkflowScheduler', () => {
     expect(scheduler.rules()).toHaveLength(1);
   });
 
+  it('keeps a pause when a rule is edited', () => {
+    const saved = addRule(scheduler);
+    scheduler.pause(saved.id, 'Bad.');
+
+    const edited = scheduler.saveRule({ ...saved, enabled: false, pausedReason: null });
+
+    expect(edited.enabled).toBe(true);
+    expect(edited.pausedReason).toBe('Bad.');
+  });
+
+  it('refuses to bring back a deleted rule', () => {
+    const saved = addRule(scheduler);
+    scheduler.deleteRule(saved.id);
+
+    expect(() => scheduler.saveRule(saved)).toThrow('This rule was deleted.');
+    expect(scheduler.rules()).toEqual([]);
+  });
+
   it('refuses a repeat under five minutes', () => {
     const trigger = { kind: 'interval' as const, minutes: 4, days: EVERY_DAY, window: null };
 

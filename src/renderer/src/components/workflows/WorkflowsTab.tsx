@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, FolderOpen } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import type { WorkflowProject } from '../../../../shared/workflows';
-import { useWorkflowsStore, type WorkflowsView } from '../../store/workflows-store';
+import {
+  showWorkflowError,
+  useWorkflowsStore,
+  type WorkflowsView
+} from '../../store/workflows-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { popperAnim } from '../../lib/motion';
 import { AutomaticView } from './AutomaticView';
@@ -26,7 +30,7 @@ function ProjectMenu(): React.JSX.Element {
 
   const pick = (project: WorkflowProject): void => {
     setOpen(false);
-    void setProject(project.path);
+    setProject(project.path).catch(showWorkflowError);
   };
 
   return (
@@ -61,7 +65,7 @@ function ProjectMenu(): React.JSX.Element {
           <button
             onClick={() => {
               setOpen(false);
-              void addProject();
+              addProject().catch(showWorkflowError);
             }}
             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-fleet-text-secondary hover:bg-fleet-surface-2"
           >
@@ -96,7 +100,7 @@ export function WorkflowsTab(): React.JSX.Element {
   const folders = useOpenFolders();
 
   useEffect(() => {
-    void loadProjects(folders.split('\n').filter(Boolean));
+    loadProjects(folders.split('\n').filter(Boolean)).catch(showWorkflowError);
   }, [folders, loadProjects]);
 
   return (
@@ -124,16 +128,16 @@ export function WorkflowsTab(): React.JSX.Element {
             <p className="pb-3 text-xs text-fleet-text-subtle">
               Pick a project to see its workflows.
             </p>
-            <Button onClick={() => void addProject()}>
+            <Button onClick={addProject}>
               <FolderOpen size={13} /> Open a folder
             </Button>
           </div>
         ) : view === 'workflows' ? (
-          <WorkflowsListView projectPath={projectPath} />
+          <WorkflowsListView key={projectPath} projectPath={projectPath} />
         ) : view === 'runs' ? (
-          <RunsView projectPath={projectPath} />
+          <RunsView key={projectPath} projectPath={projectPath} />
         ) : (
-          <AutomaticView projectPath={projectPath} />
+          <AutomaticView key={projectPath} projectPath={projectPath} />
         )}
       </div>
     </div>

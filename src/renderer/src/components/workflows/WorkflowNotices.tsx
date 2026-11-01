@@ -4,6 +4,7 @@ import type { WorkflowNotice } from '../../../../shared/workflows';
 import {
   callWorkflows,
   showRun,
+  showWorkflowError,
   showWorkflowsPage,
   useWorkflowsStore
 } from '../../store/workflows-store';
@@ -13,23 +14,23 @@ function showWorkflows(projectPath: string | null): void {
   showWorkflowsPage();
   const store = useWorkflowsStore.getState();
   store.setView('workflows');
-  if (projectPath) void store.setProject(projectPath);
+  if (projectPath) store.setProject(projectPath).catch(showWorkflowError);
 }
 
 function NoticeActions({ notice }: { notice: WorkflowNotice }): React.JSX.Element | null {
-  const raiseLimit = (): void => {
+  const raiseLimit = async (): Promise<void> => {
     const { limits } = useWorkflowsStore.getState().state;
-    void callWorkflows('setLimits', { ...limits, maxAgents: limits.maxAgents + 4 });
-    void callWorkflows('dismissNotice', notice.id);
+    await callWorkflows('setLimits', { ...limits, maxAgents: limits.maxAgents + 4 });
+    await callWorkflows('dismissNotice', notice.id);
   };
 
   if (notice.ask) {
     return (
       <>
-        <Button tone="primary" onClick={() => void callWorkflows('answerAsk', notice.id, true)}>
+        <Button tone="primary" onClick={async () => callWorkflows('answerAsk', notice.id, true)}>
           Allow
         </Button>
-        <Button onClick={() => void callWorkflows('answerAsk', notice.id, false)}>Deny</Button>
+        <Button onClick={async () => callWorkflows('answerAsk', notice.id, false)}>Deny</Button>
       </>
     );
   }
@@ -39,24 +40,24 @@ function NoticeActions({ notice }: { notice: WorkflowNotice }): React.JSX.Elemen
       {notice.kind === 'limit' && <Button onClick={raiseLimit}>Raise limit</Button>}
       {notice.kind === 'agent-create' && (
         <Button
-          onClick={() => {
+          onClick={async () => {
             showWorkflows(notice.projectPath);
-            void callWorkflows('dismissNotice', notice.id);
+            return callWorkflows('dismissNotice', notice.id);
           }}
         >
           Review
         </Button>
       )}
       {notice.kind === 'agent-start' && runId && (
-        <Button tone="danger" onClick={() => void callWorkflows('stop', runId)}>
+        <Button tone="danger" onClick={async () => callWorkflows('stop', runId)}>
           Stop
         </Button>
       )}
       {runId && (
         <Button
-          onClick={() => {
+          onClick={async () => {
             showRun(runId);
-            void callWorkflows('dismissNotice', notice.id);
+            return callWorkflows('dismissNotice', notice.id);
           }}
         >
           Open run
@@ -88,7 +89,9 @@ export function WorkflowNotices(): React.JSX.Element | null {
             <button
               aria-label="Dismiss"
               className="rounded p-0.5 text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text"
-              onClick={() => void callWorkflows('dismissNotice', notice.id)}
+              onClick={() =>
+                void callWorkflows('dismissNotice', notice.id).catch(showWorkflowError)
+              }
             >
               <X size={13} />
             </button>

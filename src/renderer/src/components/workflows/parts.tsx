@@ -1,5 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { AgentState, RunState, WorkflowApproval } from '../../../../shared/workflows';
+import { showWorkflowError } from '../../store/workflows-store';
 
 type Tone = 'plain' | 'primary' | 'danger' | 'quiet';
 
@@ -10,15 +11,34 @@ const TONES: Record<Tone, string> = {
   quiet: 'text-fleet-text-muted hover:bg-fleet-surface-2 hover:text-fleet-text'
 };
 
+type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> & {
+  tone?: Tone;
+  onClick?: () => unknown;
+};
+
+/** When `onClick` returns a promise, the button waits for it and shows a failure. */
 export function Button({
   tone = 'plain',
   className = '',
+  disabled = false,
+  onClick,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone }): React.JSX.Element {
+}: ButtonProps): React.JSX.Element {
+  const [busy, setBusy] = useState(false);
+
+  const press = (): void => {
+    const result = onClick?.();
+    if (!(result instanceof Promise)) return;
+    setBusy(true);
+    void result.catch(showWorkflowError).finally(() => setBusy(false));
+  };
+
   return (
     <button
       type="button"
       className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition active:scale-95 disabled:pointer-events-none disabled:opacity-40 ${TONES[tone]} ${className}`}
+      disabled={disabled || busy}
+      onClick={press}
       {...props}
     />
   );
@@ -26,6 +46,38 @@ export function Button({
 
 export const FIELD_CLASS =
   'w-full rounded border border-fleet-border-strong bg-fleet-surface px-2 py-1.5 text-xs text-fleet-text placeholder:text-fleet-text-subtle focus:border-[var(--fleet-accent)] focus:outline-none';
+
+/** A count of 1 or more. It applies on blur, so a person can clear it and type. */
+export function CountInput({
+  value,
+  onChange,
+  className = ''
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  className?: string;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const apply = (): void => {
+    if (draft !== null) onChange(Math.max(1, Number(draft) || 1));
+    setDraft(null);
+  };
+
+  return (
+    <input
+      type="number"
+      min={1}
+      className={`${FIELD_CLASS} ${className}`}
+      value={draft ?? value}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+    />
+  );
+}
 
 export function Field({
   label,

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   RunTab,
+  WorkflowEntries,
   WorkflowEntry,
   WorkflowProject,
   WorkflowRun,
@@ -8,6 +9,7 @@ import type {
 } from '../../../shared/workflows';
 import { ACTIVE_RUN_STATES } from '../../../shared/workflows';
 import { clearCreatedPty, markPtyCreated } from '../hooks/use-terminal';
+import { useToastStore } from './toast-store';
 import { hasRunTab, useWorkspaceStore } from './workspace-store';
 
 export type WorkflowsView = 'workflows' | 'runs' | 'automatic';
@@ -40,6 +42,17 @@ const EMPTY: WorkflowsState = {
 /** Call main. Each method is typed by `WorkflowsApi`. */
 export const callWorkflows = window.fleet.workflows.call;
 
+/** What a failed call to main says, with Electron's wrapper taken off. */
+export function workflowErrorText(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '');
+}
+
+/** A call failed, and a person must hear of it. */
+export function showWorkflowError(err: unknown): void {
+  useToastStore.getState().show(workflowErrorText(err));
+}
+
 /** Every pane this window has shown. A run that names only these has no new work to show. */
 const seenPanes = new Set<string>();
 
@@ -53,7 +66,7 @@ export function showRun(runId: string): void {
   showWorkflowsPage();
   const store = useWorkflowsStore.getState();
   const run = store.state.runs.find((candidate) => candidate.id === runId);
-  if (run) void store.setProject(run.projectPath);
+  if (run) store.setProject(run.projectPath).catch(showWorkflowError);
   store.openRun(runId);
 }
 
@@ -106,13 +119,25 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
       dropClosedPanes(get().state.runs, state.runs);
       set({ state });
     };
+    const applyEntries = ({ projectPath, entries }: WorkflowEntries): void => {
+      if (projectPath === get().projectPath) set({ entries });
+    };
+    // A folder that cannot be watched, such as one on a network, still updates here.
+    const onFocus = (): void => void get().refresh().catch(showWorkflowError);
+
     const stopState = window.fleet.workflows.onState(applyState);
+    const stopEntries = window.fleet.workflows.onEntries(applyEntries);
     const stopTab = window.fleet.workflows.onTab(applyRunTab);
-    void callWorkflows('state').then(applyState);
-    void callWorkflows('tabs').then((tabs) => tabs.forEach(applyRunTab));
+    window.addEventListener('focus', onFocus);
+    callWorkflows('state').then(applyState).catch(showWorkflowError);
+    callWorkflows('tabs')
+      .then((tabs) => tabs.forEach(applyRunTab))
+      .catch(showWorkflowError);
     return () => {
       stopState();
+      stopEntries();
       stopTab();
+      window.removeEventListener('focus', onFocus);
     };
   },
 
@@ -121,15 +146,16 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
   openRun: (openRunId) => set({ openRunId, view: 'runs' }),
 
   loadProjects: async (paths) => {
-    const projects = await callWorkflows('projects', paths);
-    set({ projects });
+    // The project on show stays listed. A person can add one that has no open pane.
     const current = get().projectPath;
-    const keep = projects.some((project) => project.path === current);
-    if (!keep && projects[0]) await get().setProject(projects[0].path);
+    const projects = await callWorkflows('projects', current ? [...paths, current] : paths);
+    set({ projects });
+    if (!get().projectPath && projects[0]) await get().setProject(projects[0].path);
   },
 
   setProject: async (projectPath) => {
-    set({ projectPath, openRunId: null });
+    const entries = projectPath === get().projectPath ? get().entries : [];
+    set({ projectPath, entries, openRunId: null });
     await get().refresh();
   },
 
@@ -146,6 +172,8 @@ export const useWorkflowsStore = create<WorkflowsStore>((set, get) => ({
   refresh: async () => {
     const { projectPath } = get();
     if (!projectPath) return;
-    set({ entries: await callWorkflows('list', projectPath) });
+    const entries = await callWorkflows('list', projectPath);
+    // A slow reply must not fill the list of a project that a person left.
+    if (projectPath === get().projectPath) set({ entries });
   }
 }));

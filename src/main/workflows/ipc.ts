@@ -58,7 +58,7 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     tabs: () => service.listTabs(),
     projects: async (paths) => service.projects(paths),
     pickProject: async () => dialogs.open({ properties: ['openDirectory'] }),
-    list: (projectPath) => catalog.list(projectPath),
+    list: (projectPath) => service.list(projectPath),
     readText: (path) => catalog.readText(path),
     starters: () => service.starters(),
     save: (req) => catalog.save(req),
@@ -81,7 +81,6 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     saveReport: (runId, path, replace) => service.saveReport(runId, path, replace),
     pickReportPath,
     post: async (runId) => service.post(runId),
-    remainingPosts: (runId) => service.remainingPosts(runId),
     dismissNotice: (id) => service.dismissNotice(id),
     answerAsk: (id, allow) => service.answerAsk(id, allow),
     saveRule: (rule) =>

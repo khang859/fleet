@@ -13,7 +13,7 @@ export function AwayPanel(): React.JSX.Element | null {
     <section className="rounded-md border border-fleet-border p-3">
       <div className="flex items-center justify-between pb-2">
         <h3 className="text-xs font-medium text-fleet-text-secondary">While you were away</h3>
-        <Button tone="quiet" onClick={() => void callWorkflows('clearAway')}>
+        <Button tone="quiet" onClick={async () => callWorkflows('clearAway')}>
           Clear
         </Button>
       </div>
@@ -25,7 +25,7 @@ export function AwayPanel(): React.JSX.Element | null {
               <span className="text-fleet-text-secondary">{entry.ruleName}</span> {entry.text}
             </span>
             {entry.canRun && entry.ruleId && (
-              <Button onClick={() => runNow(entry.ruleId ?? '')}>Run now</Button>
+              <Button onClick={async () => runNow(entry.ruleId ?? '')}>Run now</Button>
             )}
           </li>
         ))}

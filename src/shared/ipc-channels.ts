@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   PTY_GC: 'pty:gc',
   WORKFLOWS_CALL: 'workflows:call',
   WORKFLOWS_STATE: 'workflows:state',
+  WORKFLOWS_ENTRIES: 'workflows:entries',
   WORKFLOWS_TAB: 'workflows:tab',
   PTY_CWD: 'pty:cwd',
   PTY_RESOLVE_CWD: 'pty:resolve-cwd',

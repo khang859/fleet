@@ -71,6 +71,7 @@ export function createWorkflows(host: WorkflowsHost): WorkflowsService {
     hasProgram,
     devExtension: IS_FLEET_DEV ? bundledExtensionPath() : null,
     onState: (state) => send(IPC_CHANNELS.WORKFLOWS_STATE, state),
+    onEntries: (entries) => send(IPC_CHANNELS.WORKFLOWS_ENTRIES, entries),
     onTab: (tab) => send(IPC_CHANNELS.WORKFLOWS_TAB, tab)
   });
 

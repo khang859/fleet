@@ -7,7 +7,12 @@ import {
   type RunAgent,
   type WorkflowRun
 } from '../../../../shared/workflows';
-import { callWorkflows, isRunActive, useWorkflowsStore } from '../../store/workflows-store';
+import {
+  callWorkflows,
+  isRunActive,
+  showWorkflowError,
+  useWorkflowsStore
+} from '../../store/workflows-store';
 import { collectPaneIds, useWorkspaceStore } from '../../store/workspace-store';
 import { useToastStore } from '../../store/toast-store';
 import { AgentMarkdown } from '../agent/AgentMarkdown';
@@ -53,15 +58,15 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
         <>
           <Button
             tone="primary"
-            onClick={() =>
-              void callWorkflows('answerPermission', pendingPermission.toolUseId, 'allow')
+            onClick={async () =>
+              callWorkflows('answerPermission', pendingPermission.toolUseId, 'allow')
             }
           >
             Allow
           </Button>
           <Button
-            onClick={() =>
-              void callWorkflows('answerPermission', pendingPermission.toolUseId, 'deny')
+            onClick={async () =>
+              callWorkflows('answerPermission', pendingPermission.toolUseId, 'deny')
             }
           >
             Deny
@@ -70,20 +75,20 @@ function AgentActions({ run, agent }: { run: WorkflowRun; agent: RunAgent }): Re
       )}
       {paneId && <Button onClick={() => openPane(paneId)}>Open pane</Button>}
       {!paneId && canOpenAgent(run, agent) && (
-        <Button onClick={() => void openAgent(run, agent)}>Open agent</Button>
+        <Button onClick={async () => openAgent(run, agent)}>Open agent</Button>
       )}
       {canAct && silent && (
-        <Button onClick={() => void callWorkflows('keepWaiting', run.id, agent.id)}>
+        <Button onClick={async () => callWorkflows('keepWaiting', run.id, agent.id)}>
           Keep waiting
         </Button>
       )}
       {canAct && stuck && (
-        <Button onClick={() => void callWorkflows('retry', run.id, agent.id)}>
+        <Button onClick={async () => callWorkflows('retry', run.id, agent.id)}>
           {silent ? 'Restart' : agent.isLast ? 'Try again' : 'Retry'}
         </Button>
       )}
       {canAct && stuck && (
-        <Button onClick={() => void callWorkflows('skip', run.id, agent.id)}>
+        <Button onClick={async () => callWorkflows('skip', run.id, agent.id)}>
           {agent.isLast ? 'Use them as they are' : 'Skip'}
         </Button>
       )}
@@ -271,14 +276,14 @@ function RunNotes({ run }: { run: WorkflowRun }): React.JSX.Element {
         <div className="flex items-center justify-between gap-3 rounded border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-200">
           <span>{run.problem}</span>
           {isRunActive(run) && (
-            <Button onClick={() => void callWorkflows('retryPrepare', run.id)}>Try again</Button>
+            <Button onClick={async () => callWorkflows('retryPrepare', run.id)}>Try again</Button>
           )}
         </div>
       )}
       {hitLimit && (
         <div className="flex items-center justify-between gap-3 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
           <span>This run reached its time limit after {formatSpan(run.activeMs)}.</span>
-          <Button onClick={() => void callWorkflows('addTime', run.id)}>Add 30 min</Button>
+          <Button onClick={async () => callWorkflows('addTime', run.id)}>Add 30 min</Button>
         </div>
       )}
       {run.sleptMs > 0 && (
@@ -302,7 +307,7 @@ function RunHeader({
 }: {
   run: WorkflowRun;
   onBack: () => void;
-  onClose: () => void;
+  onClose: () => unknown;
 }): React.JSX.Element {
   const rerun = async (): Promise<void> => {
     const reply = await callWorkflows('start', {
@@ -335,15 +340,15 @@ function RunHeader({
         {formatSpan(run.activeMs)}
       </span>
       {run.state === 'cut-off' && (
-        <Button onClick={() => void callWorkflows('goOn', run.id)}>Go on</Button>
+        <Button onClick={async () => callWorkflows('goOn', run.id)}>Go on</Button>
       )}
       {active ? (
-        <Button tone="danger" onClick={() => void callWorkflows('stop', run.id)}>
+        <Button tone="danger" onClick={async () => callWorkflows('stop', run.id)}>
           Stop
         </Button>
       ) : (
         <>
-          <Button onClick={() => void rerun()}>Run again</Button>
+          <Button onClick={rerun}>Run again</Button>
           {holdsAnything(run) && <Button onClick={onClose}>Close run</Button>}
         </>
       )}
@@ -361,12 +366,12 @@ export function RunDetail({
   const notices = useWorkflowsStore((s) => s.state.notices);
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [posting, setPosting] = useState<number | null>(null);
+  const [posting, setPosting] = useState(false);
 
   useEffect(() => {
     setSaving(false);
     setClosing(false);
-    setPosting(null);
+    setPosting(false);
   }, [run.id]);
 
   // A person looking at the run needs no notice that its report is ready.
@@ -374,27 +379,26 @@ export function RunDetail({
     (notice) => notice.kind === 'report-ready' && notice.runId === run.id
   );
   useEffect(() => {
-    if (reportNotice) void callWorkflows('dismissNotice', reportNotice.id);
+    if (reportNotice) callWorkflows('dismissNotice', reportNotice.id).catch(showWorkflowError);
   }, [reportNotice]);
 
-  const askPost = async (): Promise<void> => {
-    setPosting(await callWorkflows('remainingPosts', run.id));
-  };
-
   const post = async (): Promise<void> => {
-    setPosting(null);
+    // The dialog stays open with its button off, so nobody can post twice.
     await callWorkflows('post', run.id);
+    setPosting(false);
   };
 
-  const close = (removeWorktree: boolean): void => {
+  const close = async (removeWorktree: boolean): Promise<void> => {
     setClosing(false);
-    void callWorkflows('close', run.id, removeWorktree);
+    await callWorkflows('close', run.id, removeWorktree);
   };
 
-  const askClose = (): void => {
+  const askClose = async (): Promise<void> => {
     if (run.worktreePath) setClosing(true);
-    else close(false);
+    else await close(false);
   };
+
+  const postCount = postsLeft(run).length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4">
@@ -408,19 +412,19 @@ export function RunDetail({
           ))}
         </div>
       </section>
-      <ReportSection run={run} onSave={() => setSaving(true)} onPost={() => void askPost()} />
+      <ReportSection run={run} onSave={() => setSaving(true)} onPost={() => setPosting(true)} />
       {run.usesBoard && <SharedBoard run={run} />}
 
       <SaveReportDialog run={run} open={saving} onClose={() => setSaving(false)} />
       <ConfirmDialog
-        open={posting !== null}
-        title={`Post ${posting === 1 ? '1 finding' : `${posting ?? 0} findings`} to PR #${run.pr?.number ?? ''}?`}
+        open={posting}
+        title={`Post ${postCount === 1 ? '1 finding' : `${postCount} findings`} to PR #${run.pr?.number ?? ''}?`}
         detail="An agent pane opens. It can post only these stored findings. Anything already posted stays out."
-        onClose={() => setPosting(null)}
+        onClose={() => setPosting(false)}
         body={<PostPreview run={run} />}
       >
-        <Button onClick={() => setPosting(null)}>Cancel</Button>
-        <Button tone="primary" disabled={posting === 0} onClick={() => void post()}>
+        <Button onClick={() => setPosting(false)}>Cancel</Button>
+        <Button tone="primary" disabled={postCount === 0} onClick={post}>
           Post
         </Button>
       </ConfirmDialog>
@@ -430,8 +434,8 @@ export function RunDetail({
         detail={run.worktreePath ?? ''}
         onClose={() => setClosing(false)}
       >
-        <Button onClick={() => close(false)}>Keep it</Button>
-        <Button tone="danger" onClick={() => close(true)}>
+        <Button onClick={async () => close(false)}>Keep it</Button>
+        <Button tone="danger" onClick={async () => close(true)}>
           Remove
         </Button>
       </ConfirmDialog>

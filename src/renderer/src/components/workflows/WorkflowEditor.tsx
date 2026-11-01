@@ -416,13 +416,13 @@ export function WorkflowEditor({
           <pre className="max-h-64 overflow-auto rounded border border-fleet-border p-2 font-mono text-[11px] text-fleet-text-muted">
             {diskText}
           </pre>
-          <Button onClick={() => void overwrite()}>Use my version</Button>
+          <Button onClick={overwrite}>Use my version</Button>
         </div>
       )}
 
       <div className="flex justify-end gap-2 pb-4">
         <Button onClick={onClose}>Cancel</Button>
-        <Button tone="primary" onClick={() => void save()}>
+        <Button tone="primary" onClick={save}>
           Save
         </Button>
       </div>

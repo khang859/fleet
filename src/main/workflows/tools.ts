@@ -70,10 +70,16 @@ export const TOOLS = {
     description: 'Return the state of a run. A finished run includes its report.',
     args: z.strictObject({ run: z.string().min(1) })
   },
+  fleet_workflow_guide: {
+    panes: ['outside'],
+    description:
+      'How to write a Fleet workflow: the steps, the file format, the rules and full examples. Call this before fleet_workflow_create.',
+    args: noArgs
+  },
   fleet_workflow_create: {
     panes: ['outside'],
     description:
-      'Write a new workflow file. It waits for a person to approve it, and it never replaces a file.',
+      'Write a new workflow file. Call fleet_workflow_guide first for the format. The file waits for a person to approve it, and it never replaces a file.',
     args: z.strictObject({
       id: z.string().min(1).max(60).describe('File name, with no extension.'),
       project: z.string().optional().describe('Project path. The default is this pane.'),

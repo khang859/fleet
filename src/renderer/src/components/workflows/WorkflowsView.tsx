@@ -6,7 +6,7 @@ import type {
   WorkflowScope,
   WorkflowStarter
 } from '../../../../shared/workflows';
-import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
+import { callWorkflows, showWorkflowError, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
 import { ApprovalBadge, Badge, Button, Empty } from './parts';
@@ -106,7 +106,9 @@ function StarterCards({
   const [starters, setStarters] = useState<WorkflowStarter[]>([]);
 
   useEffect(() => {
-    void callWorkflows('starters').then((reply) => setStarters(reply.starters));
+    callWorkflows('starters')
+      .then((reply) => setStarters(reply.starters))
+      .catch(showWorkflowError);
   }, []);
 
   return (
@@ -134,7 +136,7 @@ function DeleteDialog({
 }: {
   entry: WorkflowEntry | null;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: () => unknown;
 }): React.JSX.Element {
   return (
     <Overlay
@@ -159,26 +161,23 @@ function DeleteDialog({
 export function WorkflowsView({ projectPath }: { projectPath: string }): React.JSX.Element {
   const entries = useWorkflowsStore((s) => s.entries);
   const runs = useWorkflowsStore((s) => s.state.runs);
-  const refresh = useWorkflowsStore((s) => s.refresh);
   const projects = useWorkflowsStore((s) => s.projects);
-  const [sheet, setSheet] = useState<WorkflowEntry | null>(null);
+  // Ids, not copies: the entries change live, and a dialog must show the file as it is now.
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditorSource | null>(null);
-  const [deleting, setDeleting] = useState<WorkflowEntry | null>(null);
+  const sheet = entries.find((entry) => entry.id === sheetId) ?? null;
+  const deleting = entries.find((entry) => entry.id === deletingId) ?? null;
   const isRepo = projects.find((project) => project.path === projectPath)?.isRepo ?? true;
   const cutOff = runs.filter((run) => run.state === 'cut-off' && run.projectPath === projectPath);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const startNew = (): void => {
-    void callWorkflows('starters').then(({ blank }) =>
-      setEditing({ text: blank, fileName: 'new-workflow', scope: 'project', baseHash: null })
-    );
+  const startNew = async (): Promise<void> => {
+    const { blank } = await callWorkflows('starters');
+    setEditing({ text: blank, fileName: 'new-workflow', scope: 'project', baseHash: null });
   };
 
-  const importFile = (scope: WorkflowScope): void => {
-    void callWorkflows('importToml', projectPath, scope).then(async () => refresh());
+  const importFile = async (scope: WorkflowScope): Promise<void> => {
+    await callWorkflows('importToml', projectPath, scope);
   };
 
   const useStarter = (starter: WorkflowStarter): void => {
@@ -194,20 +193,12 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
     if (!deleting) return;
     await callWorkflows('remove', projectPath, deleting.id);
     useToastStore.getState().show(`Deleted ${deleting.def?.name ?? deleting.id}.`);
-    setDeleting(null);
-    await refresh();
+    setDeletingId(null);
   };
 
   if (editing) {
     return (
-      <WorkflowEditor
-        projectPath={projectPath}
-        source={editing}
-        onClose={() => {
-          setEditing(null);
-          void refresh();
-        }}
-      />
+      <WorkflowEditor projectPath={projectPath} source={editing} onClose={() => setEditing(null)} />
     );
   }
 
@@ -226,7 +217,7 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
         </p>
       )}
       <div className="flex items-center justify-end gap-2">
-        <Button onClick={() => importFile('project')}>Import TOML</Button>
+        <Button onClick={async () => importFile('project')}>Import TOML</Button>
         <Button tone="primary" onClick={startNew}>
           New workflow
         </Button>
@@ -249,19 +240,15 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
               key={entry.path}
               entry={entry}
               lastRun={lastRunOf(entry, runs)}
-              onRun={() => setSheet(entry)}
-              onEdit={() => void edit(entry)}
-              onDelete={() => setDeleting(entry)}
+              onRun={() => setSheetId(entry.id)}
+              onEdit={() => void edit(entry).catch(showWorkflowError)}
+              onDelete={() => setDeletingId(entry.id)}
             />
           ))}
         </div>
       )}
-      <RunSheet projectPath={projectPath} entry={sheet} onClose={() => setSheet(null)} />
-      <DeleteDialog
-        entry={deleting}
-        onCancel={() => setDeleting(null)}
-        onConfirm={() => void remove()}
-      />
+      <RunSheet projectPath={projectPath} entry={sheet} onClose={() => setSheetId(null)} />
+      <DeleteDialog entry={deleting} onCancel={() => setDeletingId(null)} onConfirm={remove} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import type { ApprovalStore } from './approval';
 import { ToolRefused } from './bridge-routes';
 import type { WorkflowCatalog } from './catalog';
 import { PROJECT_WORKFLOWS_DIR } from './config';
+import { workflowGuide } from './guide';
 import { repoRoot, type Exec } from './pr';
 import type { WorkflowPosting } from './posting';
 import type { PaneIdentity, WorkflowRunManager } from './run-manager';
@@ -52,6 +53,8 @@ export class WorkflowAgentTools {
         return this.run(paneId, TOOLS[tool].args.parse(args));
       case 'fleet_workflow_status':
         return this.status(TOOLS[tool].args.parse(args));
+      case 'fleet_workflow_guide':
+        return { guide: workflowGuide() };
       case 'fleet_workflow_create':
         return this.create(paneId, TOOLS[tool].args.parse(args));
     }
@@ -171,7 +174,8 @@ export class WorkflowAgentTools {
       kind: 'agent-create',
       text: `An agent made the workflow ${id}. It waits for your approval.`,
       runId: null,
-      projectPath
+      projectPath,
+      workflowId: id
     });
     return { id, path: join(PROJECT_WORKFLOWS_DIR, `${id}.toml`) };
   }
