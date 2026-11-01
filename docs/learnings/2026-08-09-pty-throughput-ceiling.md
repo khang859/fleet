@@ -90,6 +90,20 @@ With one shared one-shot timer, a streaming neighbor keeps the timer open, so th
 
 `top -stats pid,cpu,idlew` shows the wakes for one process, per sample.
 
+## A chunk is not a message, and #717 made the split certain
+
+A flush must never be treated as a whole message.
+On macOS a PTY read is exactly 1024 bytes, and a large frame arrives in under 1ms.
+The old tick rarely split such a burst, so scanners that tested one chunk at a time looked correct.
+
+Sending the first read alone puts a split at byte 1024 of every large frame after a quiet period.
+A prompt across that byte was then missed on every redraw, so no permission notification fired.
+Reproduced in the app with one write of `'x'.repeat(1014) + 'Do you want to proceed?' + 'y'.repeat(600)`.
+
+`NotificationDetector` now searches its carry too, through `findMatch`.
+A match that is whole in the carry is not found again, or the permission latch would see an answered prompt as still on screen.
+Any new per-flush scanner must do the same, or use `OscScanner`.
+
 ## `seq` does not reach the backpressure path
 
 At about 6 MB/s, `seq 1 500000` never holds 256KB in one 16ms window, so it never pauses.

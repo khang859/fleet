@@ -271,6 +271,43 @@ describe('PtyManager batching and cleanup', () => {
 
     expect(lastResume).toBeGreaterThan(lastPause);
     expect(manager.get('pane-1')?.paused).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no timer when a consumer closes the pane inside a flush', () => {
+    for (const output of ['first', OVERFLOW]) {
+      manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+      const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+
+      manager.onData('pane-1', () => manager.kill('pane-1'));
+      mockPty.onData.mock.calls[0][0](output);
+
+      expect(manager.has('pane-1')).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    }
+  });
+
+  it('sends nothing twice when a screen attaches in the middle of a window', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh', retain: true });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value;
+    const print = mockPty.onData.mock.calls[0][0];
+    const live: string[] = [];
+
+    // What PaneOpener does with a pane's output.
+    manager.onData('pane-1', (data) => {
+      if (!manager.keepForReplay('pane-1', data)) live.push(data);
+    });
+
+    print('first ');
+    print('second');
+    expect(manager.takeForAttach('pane-1')).toBe('first second');
+
+    vi.advanceTimersByTime(16);
+    expect(live).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    print('third');
+    expect(live).toEqual(['third']);
   });
 
   it('resumes a paused pane after 250ms with no drain, and not before', () => {

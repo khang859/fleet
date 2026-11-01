@@ -27,6 +27,15 @@ const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via 
 // eslint-disable-next-line no-control-regex
 const OSC133D_RE = /\x1b\]133;D(?:;(\d+))?\x1b\\/;
 
+// eslint-disable-next-line no-control-regex
+const OSC133C_RE = /\x1b\]133;C\x1b\\/;
+
+// eslint-disable-next-line no-control-regex
+const OSC9_RE = /\x1b\]9;/;
+
+// eslint-disable-next-line no-control-regex
+const OSC777_RE = /\x1b\]777;/;
+
 const CARRY_BUFFER_SIZE = 200;
 
 // After the user types into a pane, wait this long before deciding the
@@ -42,6 +51,19 @@ type PermissionLatch = {
   matchedSinceInput: boolean;
   resetTimer: ReturnType<typeof setTimeout> | null;
 };
+
+/**
+ * Find a match in `data`, or one that `carry` began and `data` completes.
+ *
+ * A chunk ends at the size of a PTY read, not at the end of a message. The first
+ * read after a quiet period is flushed alone, so a message that crosses it always
+ * splits. A match that is whole in `carry` was already seen, so it is not found again.
+ */
+function findMatch(pattern: RegExp, carry: string, data: string): RegExpExecArray | null {
+  const inChunk = pattern.exec(data);
+  if (inChunk || pattern.test(carry)) return inChunk;
+  return pattern.exec(carry + data);
+}
 
 export class NotificationDetector {
   private eventBus: EventBus;
@@ -68,15 +90,16 @@ export class NotificationDetector {
   }
 
   scan(paneId: string, data: string): void {
-    this.checkOSC7(paneId, data);
-    this.checkOSC9(paneId, data);
-    this.checkOSC777(paneId, data);
-    this.checkOSC133(paneId, data);
-    this.checkPermissionPrompt(paneId, data);
+    const carry = this.carryBuffers.get(paneId) ?? '';
+    this.checkOSC9(paneId, carry, data);
+    this.checkOSC777(paneId, carry, data);
+    this.checkOSC133(paneId, carry, data);
+    this.checkPermissionPrompt(paneId, carry, data);
+    // Last, because it moves the carry on to this chunk.
+    this.checkOSC7(paneId, carry, data);
   }
 
-  private checkOSC7(paneId: string, data: string): void {
-    const carry = this.carryBuffers.get(paneId) ?? '';
+  private checkOSC7(paneId: string, carry: string, data: string): void {
     const chunk = carry + data;
     let lastMatchEnd = -1;
     for (const match of chunk.matchAll(OSC7_RE)) {
@@ -108,23 +131,23 @@ export class NotificationDetector {
     });
   }
 
-  private checkOSC9(paneId: string, data: string): void {
+  private checkOSC9(paneId: string, carry: string, data: string): void {
     // Note: OSC 9 is also used by iTerm2 for Growl notifications.
     // Claude Code uses it for task completion. May need tighter matching
     // if false positives arise from other terminal apps.
-    if (data.includes('\x1b]9;')) {
+    if (findMatch(OSC9_RE, carry, data)) {
       this.emitNotification(paneId, 'info');
     }
   }
 
-  private checkOSC777(paneId: string, data: string): void {
-    if (data.includes('\x1b]777;')) {
+  private checkOSC777(paneId: string, carry: string, data: string): void {
+    if (findMatch(OSC777_RE, carry, data)) {
       this.emitNotification(paneId, 'info');
     }
   }
 
-  private checkOSC133(paneId: string, data: string): void {
-    if (data.includes('\x1b]133;C\x1b\\')) {
+  private checkOSC133(paneId: string, carry: string, data: string): void {
+    if (findMatch(OSC133C_RE, carry, data)) {
       this.eventBus.emit('command-started', {
         type: 'command-started',
         paneId,
@@ -132,16 +155,16 @@ export class NotificationDetector {
       });
     }
 
-    const dMatch = OSC133D_RE.exec(data);
+    const dMatch = findMatch(OSC133D_RE, carry, data);
     if (dMatch) {
       const exitCode = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
       this.emitNotification(paneId, exitCode === 0 ? 'subtle' : 'error');
     }
   }
 
-  private checkPermissionPrompt(paneId: string, data: string): void {
+  private checkPermissionPrompt(paneId: string, carry: string, data: string): void {
     for (const pattern of PERMISSION_PATTERNS) {
-      if (pattern.test(data)) {
+      if (findMatch(pattern, carry, data)) {
         const latch = this.permissionLatches.get(paneId);
         if (latch) {
           // Mark that the prompt is still on screen (used to decide whether a
