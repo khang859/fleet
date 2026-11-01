@@ -66,7 +66,7 @@ describe('buildTerminalContextMenuTemplate', () => {
       onAction
     });
     for (const item of template) {
-      item.click?.(undefined as any, undefined as any, undefined as any);
+      item.click?.(undefined as any, undefined, undefined as any);
     }
     expect(onAction.mock.calls.flat()).toEqual([
       'openInFleet',

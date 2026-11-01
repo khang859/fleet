@@ -7,7 +7,7 @@ describe('renderer logger', () => {
     window.fleet = {
       ...window.fleet,
       log: { batch: vi.fn() }
-    } as unknown as typeof window.fleet;
+    };
   });
 
   afterEach(() => {

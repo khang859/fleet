@@ -2710,7 +2710,7 @@ describe('the tool loop', () => {
           imageCapabilities: () => takes,
           emit,
           stream,
-          image: image as never
+          image: image
         }).send({ ...REQUEST, cwd: dir });
         await ended;
 

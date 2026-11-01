@@ -109,8 +109,8 @@ function fakeFetch(
   body: unknown,
   {
     ok = true,
-    openrouter = OPENROUTER_RESPONSE as unknown,
-    images = IMAGES_RESPONSE as unknown
+    openrouter = OPENROUTER_RESPONSE,
+    images = IMAGES_RESPONSE
   }: { ok?: boolean; openrouter?: unknown; images?: unknown } = {}
 ): typeof fetch {
   return vi.fn(async (url: string) =>

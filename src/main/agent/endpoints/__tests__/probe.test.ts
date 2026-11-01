@@ -70,11 +70,11 @@ function serving(routes: Record<string, Route>): typeof fetch {
 
 /** A fetch that fails the way a closed port and a dead host each do. */
 function throwing(name: string): typeof fetch {
-  return (async () => {
+  return async () => {
     const err = new Error('nope');
     err.name = name;
     return Promise.reject(err);
-  }) as unknown as typeof fetch;
+  };
 }
 
 describe('resolveContextLimit', () => {

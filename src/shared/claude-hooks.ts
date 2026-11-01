@@ -109,7 +109,7 @@ export function readHooks(document: Record<string, unknown>): ClaudeHooks {
     for (const item of value) {
       if (!isRecord(item)) continue;
       const commands = Array.isArray(item.hooks) ? item.hooks.filter(isRecord) : [];
-      entries.push({ ...item, hooks: commands as ClaudeHookCommand[] });
+      entries.push({ ...item, hooks: commands });
     }
     hooks[event] = entries;
   }

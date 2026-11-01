@@ -44,7 +44,7 @@ export type TeleprompterDeps = {
     matching: (rect: Rect) => DisplayArea;
   };
   fs: Pick<typeof fsPromises, 'stat' | 'readFile' | 'writeFile' | 'mkdir'>;
-  readClipboard: () => string;
+  readClipboard: () => Promise<string>;
   /** Where pasted notes are kept, so they are a file like any other. */
   pastedNotesPath: string;
   now: () => number;
@@ -263,7 +263,7 @@ export class TeleprompterService {
   }
 
   private async savePasted(): Promise<string> {
-    const text = this.deps.readClipboard();
+    const text = await this.deps.readClipboard();
     if (!text.trim()) throw new Error('The clipboard has no text to paste.');
     const path = this.deps.pastedNotesPath;
     await this.deps.fs.mkdir(dirname(path), { recursive: true });

@@ -41,7 +41,7 @@ export function buffer(rows: string[]): BufferReader {
         target._chars = chars;
         return cell;
       }
-    } as unknown as IBufferLine;
+    };
   }
 
   return {

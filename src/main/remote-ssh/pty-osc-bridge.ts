@@ -55,7 +55,7 @@ export type PtyOscBridgeDeps = {
   download: (request: RemoteTransferRequest) => Promise<void>;
   /** Reports a transfer that failed before the transfer manager could report it. */
   emitTransfer: (transfer: RemoteTransfer) => void;
-  writeClipboard: (text: string) => void;
+  writeClipboard: (text: string) => Promise<void>;
   downloadsDir: () => string;
 };
 
@@ -111,13 +111,13 @@ export class PtyOscBridge {
     if (!this.allowClipboardWrite(paneId)) return;
     const text = decodeClipboardPayload(payload.slice(sep + 1));
     if (text === null) return;
-    this.deps.writeClipboard(text);
+    void this.deps.writeClipboard(text);
   }
 
   /**
    * A budget rather than a cooldown, because copying twice in a second is normal
    * and must not be dropped. What this stops is a flood: each write decodes up to
-   * 750 KB of base64 and then makes a blocking call into the OS clipboard, all on
+   * 750 KB of base64 and then makes a call into the OS clipboard, all on
    * the thread that also drives every other pane, so a remote host printing
    * thousands of them back to back would otherwise freeze the app.
    */

@@ -10,7 +10,7 @@ import { contrastRatio } from '../contrast';
 
 describe('theme resolvers', () => {
   it('falls back to the default terminal theme for unknown ids', () => {
-    expect(resolveTerminalTheme('unknown' as never).id).toBe('fleet-dark');
+    expect(resolveTerminalTheme('unknown').id).toBe('fleet-dark');
     expect(resolveTerminalTheme(undefined).id).toBe('fleet-dark');
   });
 
@@ -52,7 +52,7 @@ describe('theme resolvers', () => {
   });
 
   it('falls back to the default accent color for unknown ids', () => {
-    expect(resolveAccentColor('unknown' as never).id).toBe('blue');
+    expect(resolveAccentColor('unknown').id).toBe('blue');
     expect(resolveAccentColor(undefined).id).toBe('blue');
   });
 });

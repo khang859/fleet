@@ -805,7 +805,7 @@ export function registerIpcHandlers(
   // everything outside a narrow allowlist - so the renderer call rejects, and
   // every paste path that swallowed the rejection silently did nothing. The
   // main process has no such gate.
-  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_TEXT, () => clipboard.readText());
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ_TEXT, async () => clipboard.readText());
 
   startClipboardMonitor();
 

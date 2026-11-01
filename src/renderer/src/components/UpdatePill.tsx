@@ -24,7 +24,7 @@ export function UpdatePill(): React.JSX.Element | null {
     <button
       onClick={() => setWhatsNewOpen(true)}
       className="flex h-5 items-center gap-1 rounded-full border border-fleet-border bg-fleet-glass-chrome pl-1.5 pr-2 text-[11px] text-fleet-text-secondary transition-colors hover:bg-fleet-surface-2 hover:text-fleet-text active:scale-95"
-      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      style={{ WebkitAppRegion: 'no-drag' }}
       title={`Fleet ${update.version} is ready to install`}
     >
       <ArrowUp size={11} className="shrink-0 fleet-accent-text" />

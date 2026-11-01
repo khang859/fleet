@@ -120,7 +120,7 @@ export function TelescopeSidebar({
       // No left margin: the pane grid's own padding already supplies the 8px
       // gutter, as it does for the sidebar on the left.
       className="relative flex flex-col my-2 mr-2 rounded-lg bg-fleet-glass-chrome border border-fleet-border shadow-md shadow-black/20 shrink-0 min-h-0"
-      style={{ width, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      style={{ width, WebkitAppRegion: 'no-drag' }}
     >
       {/* Header: filter input + close */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-fleet-border">

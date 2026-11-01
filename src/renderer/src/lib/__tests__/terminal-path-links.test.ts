@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ILink, IBufferCell, IBufferLine } from '@xterm/xterm';
+import type { ILink, IBufferCell } from '@xterm/xterm';
 import type { PathContext } from '../../../../shared/shell-profiles';
 import {
   PathLinkProvider,
@@ -34,7 +34,7 @@ function buffer(rows: string[]): BufferReader {
           (cell as unknown as { _chars: string })._chars = row.text[x];
           return cell;
         }
-      } as unknown as IBufferLine;
+      };
     },
     getNullCell: () => {
       const cell = {
@@ -86,10 +86,10 @@ function harness(
     getPathContext: (): PathContext => 'posix',
     getHomes: () => ({ homeDir: '/home/k', wslHomeByDistro: {} }),
     isRemote: () => false,
-    statPath: stat as unknown as PathLinkDeps['statPath'],
+    statPath: stat,
     // Nothing listed unless a test says so, which is the old behaviour: only
     // tokens carrying a separator can become links.
-    listDir: listDir as unknown as PathLinkDeps['listDir'],
+    listDir: listDir,
     onActivate: (d) => activated.push(d),
     ...overrides
   };

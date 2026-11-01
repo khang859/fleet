@@ -280,7 +280,6 @@ export function forCompletionsWire(messages: WireBodyMessage[]): WireBodyMessage
   return messages.map((message) => {
     if (message.role !== 'assistant' || message.response_output === undefined) return message;
     const { response_output, ...rest } = message;
-    void response_output;
     return rest;
   });
 }

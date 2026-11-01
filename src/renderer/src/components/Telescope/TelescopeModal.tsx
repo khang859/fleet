@@ -68,8 +68,8 @@ export function TelescopeModal({
   const pathContext = useMemo(() => getPaneContextById(activePaneId), [activePaneId]);
   const browse = useBrowseDir(isOpen ? cwd : null, pathContext);
 
-  const searchModes = useMemo(() => {
-    if (!isOpen) return {} as Record<string, TelescopeMode>;
+  const searchModes = useMemo((): Record<string, TelescopeMode> => {
+    if (!isOpen) return {};
     return {
       files: createFilesMode(cwd, activePaneId),
       grep: createGrepMode(cwd, activePaneId),

@@ -14,7 +14,7 @@ function makeDirent(name: string, isDir: boolean, isFile = !isDir): Dirent {
     isSocket: () => false,
     path: '',
     parentPath: ''
-  } as Dirent;
+  };
 }
 
 describe('sortAndMapDirEntries', () => {

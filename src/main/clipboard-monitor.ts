@@ -23,8 +23,8 @@ function makeEntry(text: string): ClipboardEntry {
   };
 }
 
-function poll(): void {
-  const text = clipboard.readText();
+async function poll(): Promise<void> {
+  const text = await clipboard.readText();
   if (!text || text === lastText) return;
 
   lastText = text;
@@ -42,15 +42,15 @@ function poll(): void {
   }
 }
 
+function startPolling(): void {
+  pollTimer ??= setInterval(() => void poll(), POLL_INTERVAL_MS);
+}
+
 export function startClipboardMonitor(): void {
   if (pollTimer) return;
   // Seed with current clipboard content
-  const initial = clipboard.readText();
-  if (initial) {
-    lastText = initial;
-    history.unshift(makeEntry(initial));
-  }
-  pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+  void poll();
+  startPolling();
 
   // Pause polling when all windows are hidden, resume when visible
   app.on('browser-window-blur', () => {
@@ -61,9 +61,7 @@ export function startClipboardMonitor(): void {
     }
   });
 
-  app.on('browser-window-focus', () => {
-    pollTimer ??= setInterval(poll, POLL_INTERVAL_MS);
-  });
+  app.on('browser-window-focus', startPolling);
 }
 
 export function stopClipboardMonitor(): void {

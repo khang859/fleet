@@ -203,7 +203,7 @@ describe('settlePhase', () => {
   it.each([
     ['waiting for a prompt', ready],
     ['starting', INITIAL_PHASE],
-    ['compacting', { ...processing, phase: 'compacting' } as PhaseState]
+    ['compacting', { ...processing, phase: 'compacting' as const }]
   ])('a stopped turn leaves a session %s as it is', (_name, state) => {
     expect(settlePhase(state, 'turnStopped')).toBe(state);
   });
