@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.148.0
+
+- **The workflow approval dialog is now easy to read.**
+  It shows settings, shared instructions and one card for each agent, in place of raw TOML.
+  A changed file names what changed and shows a line diff, and a switch shows the raw file.
+  Diff and workflow badge colors are also readable on light themes (#741).
+- **Post now sends the final report.**
+  A PR workflow posts its report as one PR comment, so the PR gets the text a person read.
+  A finding that the report dropped no longer goes out (#743).
+- **Shell panes redraw less.**
+  A shell spinner now redraws about 6 rows per write, down from 40 (#742).
+
 ## v2.147.0
 
 - **Breaking: Fleet now needs macOS 13 or newer.**
