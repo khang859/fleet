@@ -164,6 +164,97 @@ describe('NotificationDetector', () => {
     expect(callback).toHaveBeenCalledWith(expect.objectContaining({ paneId: 'pane-1' }));
   });
 
+  // A PTY read ends at a fixed size, not at the end of a message, so any of these
+  // can fall across two flushes. On macOS a read is 1024 bytes.
+  describe('output split across two chunks', () => {
+    const notifications = (): string[] => {
+      const levels: string[] = [];
+      eventBus.on('notification', (e) => levels.push(e.level));
+      return levels;
+    };
+
+    it('detects a permission prompt', () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', 'Do you want to pro');
+      detector.scan('pane-1', 'ceed?');
+
+      expect(levels).toEqual(['permission']);
+    });
+
+    it('detects a prompt that must end the output', () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', 'Delete it? (y/');
+      detector.scan('pane-1', 'n) ');
+
+      expect(levels).toEqual(['permission']);
+    });
+
+    it('detects OSC 9 and OSC 777', () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', '\x1b]');
+      detector.scan('pane-1', '9;done\x07');
+      detector.scan('pane-1', '\x1b]77');
+      detector.scan('pane-1', '7;notify;a;b\x07');
+
+      expect(levels).toEqual(['info', 'info']);
+    });
+
+    it('detects the start of a command', () => {
+      const callback = vi.fn();
+      eventBus.on('command-started', callback);
+
+      detector.scan('pane-1', '\x1b]133');
+      detector.scan('pane-1', ';C\x1b\\');
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the exit code of a finished command', () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', '\x1b]133;D;1');
+      detector.scan('pane-1', '27\x1b\\');
+
+      expect(levels).toEqual(['error']);
+    });
+
+    it('does not fire again for what the last chunk already matched', () => {
+      const levels = notifications();
+      const started = vi.fn();
+      eventBus.on('command-started', started);
+
+      detector.scan('pane-1', '\x1b]9;done\x07\x1b]777;a\x07\x1b]133;C\x1b\\\x1b]133;D;0\x1b\\');
+      detector.scan('pane-1', 'more output');
+
+      expect(levels).toEqual(['info', 'info', 'subtle']);
+      expect(started).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not join two panes', () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', 'Do you want to pro');
+      detector.scan('pane-2', 'ceed?');
+
+      expect(levels).toEqual([]);
+    });
+
+    it('lets a new prompt notify after the user answers the last one', async () => {
+      const levels = notifications();
+
+      detector.scan('pane-1', 'Do you want to proceed?');
+      detector.onUserInput('pane-1');
+      detector.scan('pane-1', 'done');
+      await new Promise((r) => setTimeout(r, 450));
+      detector.scan('pane-1', 'Do you want to proceed?');
+
+      expect(levels).toEqual(['permission', 'permission']);
+    });
+  });
+
   it('emits permission only once when the prompt redraws across many chunks', () => {
     const callback = vi.fn();
     eventBus.on('notification', callback);
