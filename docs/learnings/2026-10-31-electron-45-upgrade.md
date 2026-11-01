@@ -21,6 +21,26 @@ There is no crash and no timeout. The app waits for a person.
 TypeScript caught the reads, but it did not catch `writeClipboard: (text) => clipboard.writeText(text)`, because a promise is assignable to a `void` return.
 `no-misused-promises` is what flagged it.
 
+The async change also adds a race that the types do not show.
+A 500ms interval can start a second read before the first read finishes, and a slow read can then overwrite a newer value.
+`poll` now runs one read at a time, and it drops a result if a pause or stop replaced `pollTimer` during the read.
+
+## Raising the minimum OS needs an auto-update gate
+
+Electron 45 needs macOS 13.
+The Info.plist stops the new app from launching on macOS 12, but it does not stop an installed Fleet from downloading and installing that update.
+The result is a broken install on a machine that worked before.
+
+`electron-updater` skips an update when `minimumSystemVersion` in `latest-mac.yml` is higher than `os.release()`.
+Two things make this easy to get wrong:
+
+- `os.release()` is the Darwin version, so macOS 13 is `22.0.0`.
+  A value of `13.0` is not valid semver, the compare throws, the updater logs a warning, and the update is offered anyway.
+  A value of `13.0.0` is valid, but Darwin 21 is higher, so it blocks nothing.
+- `electron-builder` does not write this field, and `release.yml` rebuilds `latest-mac.yml` from scratch, so the field must be set in that script.
+
+When Electron raises its minimum again, raise `minimum_darwin_version` in `.github/workflows/release.yml`.
+
 ## `npm run format -- <file>` formats the whole repo
 
 The script is `prettier --write .`, so the path is added to `.`, not used in its place.
