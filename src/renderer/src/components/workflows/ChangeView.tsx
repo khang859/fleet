@@ -1,31 +1,52 @@
 import { useEffect, useState } from 'react';
 import type { WorkflowEntry } from '../../../../shared/workflows';
 import { callWorkflows, showWorkflowError } from '../../store/workflows-store';
+import { ReviewLines, ReviewSections } from './ReviewSections';
+import { fileLines, reviewOf, reviewSummary, type WorkflowReview } from './workflow-review';
 
-type Line = { sign: '+' | '-' | ' '; text: string };
+const NEW_FILE_NOTE =
+  'Fleet has not seen this file. Prompts can tell an agent to do anything, so read it first.';
 
-/** A plain line compare. It shows what a person must read, and keeps the order of the new file. */
-function changedLines(oldText: string, newText: string): Line[] {
-  const oldLines = oldText.split('\n');
-  const newLines = newText.split('\n');
-  const oldSet = new Set(oldLines);
-  const newSet = new Set(newLines);
-  const removed: Line[] = oldLines
-    .filter((line) => !newSet.has(line))
-    .map((text) => ({ sign: '-', text }));
-  const added: Line[] = newLines
-    .filter((line) => !oldSet.has(line))
-    .map((text) => ({ sign: '+', text }));
-  return [...removed, ...added];
+const CHANGED_NOTE = 'This file changed since you approved it.';
+
+function noteFor(entry: WorkflowEntry, review: WorkflowReview | null): string {
+  if (entry.approvedText === null) return NEW_FILE_NOTE;
+  return `${CHANGED_NOTE} ${review ? reviewSummary(review) : 'Read what changed.'}`;
 }
 
-const LINE_CLASS: Record<Line['sign'], string> = {
-  '+': 'bg-emerald-500/10 text-emerald-200',
-  '-': 'bg-red-500/10 text-red-200',
-  ' ': 'text-fleet-text-muted'
-};
+function ViewSwitch({
+  raw,
+  onChange
+}: {
+  raw: boolean;
+  onChange: (raw: boolean) => void;
+}): React.JSX.Element {
+  const views = [
+    { label: 'Readable', value: false },
+    { label: 'Raw file', value: true }
+  ];
+  return (
+    <div className="flex flex-shrink-0 gap-1">
+      {views.map(({ label, value }) => (
+        <button
+          key={label}
+          type="button"
+          aria-pressed={raw === value}
+          onClick={() => onChange(value)}
+          className={`rounded px-2.5 py-1 text-xs ${
+            raw === value
+              ? 'bg-fleet-surface-2 text-fleet-text'
+              : 'text-fleet-text-subtle hover:text-fleet-text'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-/** Approval: the whole file when it is new, and only the change when it is not. */
+/** Approval: what the workflow does, and what changed since a person last approved it. */
 export function ChangeView({
   entry,
   onRead
@@ -35,6 +56,7 @@ export function ChangeView({
   onRead: (hash: string) => void;
 }): React.JSX.Element {
   const [text, setText] = useState<string | null>(null);
+  const [raw, setRaw] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -51,26 +73,24 @@ export function ChangeView({
   }, [entry.path, entry.hash, onRead]);
 
   if (text === null) return <div />;
-  const { approvedText } = entry;
-  const lines: Line[] =
-    approvedText === null
-      ? text.split('\n').map((line) => ({ sign: ' ', text: line }))
-      : changedLines(approvedText, text);
+  const review = reviewOf(entry);
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs leading-relaxed text-fleet-text-secondary">
-        {approvedText === null
-          ? 'Fleet has not seen this file. Prompts can tell an agent to do anything, so read it first.'
-          : 'This file changed since you approved it. Read what changed.'}
-      </p>
-      <pre className="max-h-80 overflow-auto rounded border border-fleet-border font-mono text-[11px] leading-relaxed">
-        {lines.map((line, index) => (
-          <div key={index} className={`px-2 ${LINE_CLASS[line.sign]}`}>
-            {line.sign === ' ' ? line.text : `${line.sign} ${line.text}`}
-          </div>
-        ))}
-      </pre>
+    <div className="space-y-3">
+      <div className="flex items-start gap-3">
+        <p className="min-w-0 flex-1 text-xs leading-relaxed text-fleet-text-secondary">
+          {noteFor(entry, review)}
+        </p>
+        {review && <ViewSwitch raw={raw} onChange={setRaw} />}
+      </div>
+      {review && !raw ? (
+        <ReviewSections review={review} />
+      ) : (
+        <ReviewLines
+          lines={fileLines(entry.approvedText, text)}
+          className="rounded-md border border-fleet-border font-mono text-[11px]"
+        />
+      )}
     </div>
   );
 }

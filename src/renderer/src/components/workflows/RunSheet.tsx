@@ -355,6 +355,11 @@ export function RunSheet({
   }, [entryId, initialInputs]);
 
   const needsApproval = entry !== null && entry.approval !== 'approved';
+
+  // The panel keeps its size while it closes, when the entry is already gone.
+  const [wide, setWide] = useState(false);
+  if (entry && wide !== needsApproval) setWide(needsApproval);
+
   const request: StartRunRequest | null = entry
     ? { projectPath, workflowId: entry.id, inputs: values, ...choices }
     : null;
@@ -384,7 +389,9 @@ export function RunSheet({
     <Overlay
       open={entry !== null}
       onClose={onClose}
-      panelClassName="flex max-h-[80vh] w-[28rem] flex-col rounded-lg border border-fleet-border-strong bg-fleet-surface"
+      panelClassName={`flex flex-col rounded-lg border border-fleet-border-strong bg-fleet-surface ${
+        wide ? 'h-[85vh] w-[52rem] max-w-[calc(100vw-2rem)]' : 'max-h-[80vh] w-[28rem]'
+      }`}
     >
       <div className="border-b border-fleet-border px-4 py-3 text-sm font-medium text-fleet-text">
         {sheetTitle(entry)}

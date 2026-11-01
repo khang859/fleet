@@ -100,10 +100,10 @@ export function Field({
 type BadgeTone = 'green' | 'blue' | 'amber' | 'red' | 'gray';
 
 const BADGES: Record<BadgeTone, string> = {
-  green: 'bg-emerald-500/10 text-emerald-300',
-  blue: 'bg-blue-500/10 text-blue-300',
-  amber: 'bg-amber-500/10 text-amber-300',
-  red: 'bg-red-500/10 text-red-300',
+  green: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  blue: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  red: 'bg-red-500/10 text-red-700 dark:text-red-300',
   gray: 'bg-fleet-surface-2 text-fleet-text-muted'
 };
 
