@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.149.1
+
+- **Many open terminal panes now use much less CPU.**
+  Panes without focus now redraw 4 times per second on a shared timer.
+  The focused pane still updates at once, and a pane catches up when it takes focus.
+  With 8 spinners on a picture background, CPU cost fell by about half (#746).
+
 ## v2.149.0
 
 - **Workflows can now run in stages.**
