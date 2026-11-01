@@ -1,6 +1,9 @@
 import { clipboard, BrowserWindow, app } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { ClipboardEntry } from '../shared/ipc-api';
+import { createLogger } from './logger';
+
+const log = createLogger('clipboard-monitor');
 
 const MAX_HISTORY = 20;
 const POLL_INTERVAL_MS = 500;
@@ -10,6 +13,7 @@ let history: ClipboardEntry[] = [];
 let lastText = '';
 let nextId = 1;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let reading = false;
 
 function makeEntry(text: string): ClipboardEntry {
   const lines = text.split('\n');
@@ -23,8 +27,7 @@ function makeEntry(text: string): ClipboardEntry {
   };
 }
 
-async function poll(): Promise<void> {
-  const text = await clipboard.readText();
+function record(text: string): void {
   if (!text || text === lastText) return;
 
   lastText = text;
@@ -42,33 +45,52 @@ async function poll(): Promise<void> {
   }
 }
 
+/**
+ * Reads are async, so they run one at a time: a slow read must not land after
+ * a newer one. A pause or stop replaces `pollTimer`, which is how a read still
+ * in flight knows that its result is out of date.
+ */
+async function poll(): Promise<void> {
+  if (reading) return;
+  reading = true;
+  const timer = pollTimer;
+
+  try {
+    const text = await clipboard.readText();
+    if (timer === pollTimer) record(text);
+  } catch (err) {
+    log.warn('clipboard read failed', { error: String(err) });
+  } finally {
+    reading = false;
+  }
+}
+
 function startPolling(): void {
   pollTimer ??= setInterval(() => void poll(), POLL_INTERVAL_MS);
 }
 
+function stopPolling(): void {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
 export function startClipboardMonitor(): void {
   if (pollTimer) return;
+  startPolling();
   // Seed with current clipboard content
   void poll();
-  startPolling();
 
   // Pause polling when all windows are hidden, resume when visible
   app.on('browser-window-blur', () => {
     const anyVisible = BrowserWindow.getAllWindows().some((w) => w.isVisible() && w.isFocused());
-    if (!anyVisible && pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    if (!anyVisible) stopPolling();
   });
 
   app.on('browser-window-focus', startPolling);
 }
 
 export function stopClipboardMonitor(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
+  stopPolling();
 }
 
 export function getClipboardHistory(): ClipboardEntry[] {
