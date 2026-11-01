@@ -78,7 +78,7 @@ export type WorkflowsDeps = {
   openFolders: () => string[];
   tokenOf: (paneId: string) => string | undefined;
   lastOutputAt: (paneId: string) => number;
-  sendPrompt: (sessionId: string, text: string) => Promise<void>;
+  sendPrompt: (sessionId: string, text: string) => Promise<boolean>;
   /** Claims permission requests, until the returned function is called. */
   addPermissionAnswerer: () => () => void;
   answerPermission: (

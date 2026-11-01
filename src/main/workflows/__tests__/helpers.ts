@@ -173,7 +173,7 @@ export function makeHarness(dir: string, overrides: Partial<RunDeps> = {}): Harn
       killed.push(paneId);
     },
     lastOutputAt: () => clock.now,
-    sendPrompt: async () => Promise.resolve(undefined),
+    sendPrompt: async () => Promise.resolve(true),
     makeWorktree: async () => Promise.resolve({ path: '/worktrees/run', sha: 'new-sha' }),
     removeWorktree: async () => Promise.resolve(undefined),
     onRun: () => undefined,

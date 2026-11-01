@@ -20,6 +20,10 @@ import {
 } from './config';
 import { unsafeTarget } from './report';
 
+const DRAFT_MOVED =
+  'A person changed this draft or removed it, so this save did nothing. Do not save again. ' +
+  'Tell the person. To go on, they press Edit with the agent. Then read the file and start from it.';
+
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -141,10 +145,14 @@ export class WorkflowCatalog {
     return clean;
   }
 
-  /** A builder's next save. A file with a new hash needs approval again. */
-  replaceDraft(projectPath: string, id: string, text: string): void {
+  /**
+   * A builder's next save, over the file that it saved last. A person's change
+   * is never lost. A file with a new hash needs approval again.
+   */
+  replaceDraft(projectPath: string, id: string, text: string, ownHash: string | null): void {
     const path = join(this.folderOf(projectPath, 'project'), `${id}.toml`);
     this.refuseBadFile(projectPath, 'project', path, text);
+    if (this.find(projectPath, id)?.hash !== ownHash) throw new WorkflowFileError(DRAFT_MOVED);
     this.write(path, text);
     this.onChange();
   }

@@ -96,7 +96,7 @@ export function permissionModeOf(
  */
 export function reportAgent(run: WorkflowRun): RunAgent | undefined {
   const last = run.agents.find((agent) => agent.isLast);
-  if (!run.stageFile || last?.state !== 'skipped') return last;
+  if (!last?.stageSkipped) return last;
   const isOnlyOne = (agent: RunAgent): boolean => agentsIn(run, stageOf(agent)).length === 1;
   return run.agents.findLast((agent) => agent.summary !== null && isOnlyOne(agent));
 }

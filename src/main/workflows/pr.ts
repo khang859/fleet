@@ -268,7 +268,10 @@ export async function makeBranchWorktree(
 
 /** The change in a folder from a commit, with work that nobody committed yet. */
 export async function changesSince(exec: Exec, cwd: string, sha: string): Promise<string> {
-  return exec('git', ['diff', sha], cwd);
+  const diff = await exec('git', ['diff', sha], cwd);
+  const added = await exec('git', ['ls-files', '--others', '--exclude-standard'], cwd);
+  if (!added.trim()) return diff;
+  return `${diff}\n# New files with no commit. Read them in the project folder:\n${added}`;
 }
 
 /** The commit a folder split from the default branch, or null when none is known. */
@@ -279,6 +282,21 @@ export async function forkPoint(exec: Exec, cwd: string): Promise<string | null>
   } catch {
     return null;
   }
+}
+
+/** The remote that takes the push. In a fork it is the person's own, as `origin` is. */
+async function pushRemote(exec: Exec, cwd: string): Promise<string> {
+  const chosen = await exec('git', ['config', '--get', 'remote.pushDefault'], cwd).catch(() => '');
+  if (chosen.trim()) return chosen.trim();
+  const remotes = await exec('git', ['remote'], cwd);
+  return remotes.split('\n').includes('origin') ? 'origin' : prRemote(exec, cwd);
+}
+
+/** The head for `gh`. A branch in a fork needs its owner, as `gh` reads the upstream repo. */
+async function prHead(exec: Exec, cwd: string, remote: string, name: string): Promise<string> {
+  const slug = slugOfUrl((await exec('git', ['remote', 'get-url', remote], cwd)).trim());
+  if (!slug || slug === (await repoSlug(exec, cwd)).toLowerCase()) return name;
+  return `${slug.split('/')[0]}:${name}`;
 }
 
 export type BranchPrSpec = {
@@ -306,9 +324,9 @@ function prOfUrl(url: string): { number: number; url: string } {
 }
 
 /** The PR of a branch, when one is open already: a retry after a lost answer. */
-async function openPrOf(exec: Exec, cwd: string, name: string): Promise<string | null> {
+async function openPrOf(exec: Exec, cwd: string, head: string): Promise<string | null> {
   try {
-    const url = await exec('gh', ['pr', 'view', name, '--json', 'url', '-q', '.url'], cwd);
+    const url = await exec('gh', ['pr', 'view', head, '--json', 'url', '-q', '.url'], cwd);
     return url.trim() || null;
   } catch {
     return null;
@@ -333,13 +351,14 @@ export async function openBranchPr(exec: Exec, spec: BranchPrSpec): Promise<Bran
   const why = await prBlocker(exec, spec);
   if (why) return { ok: false, why };
 
-  const remote = await prRemote(exec, projectPath);
+  const remote = await pushRemote(exec, projectPath);
   await exec('git', ['push', '--set-upstream', remote, branch.name], projectPath);
-  const open = await openPrOf(exec, projectPath, branch.name);
+  const head = await prHead(exec, projectPath, remote, branch.name);
+  const open = await openPrOf(exec, projectPath, head);
   if (open) return { ok: true, ...prOfUrl(open) };
 
   const title = await prTitle(exec, projectPath, branch);
-  const args = ['pr', 'create', '--head', branch.name, '--base', branch.base];
+  const args = ['pr', 'create', '--head', head, '--base', branch.base];
   const out = await exec('gh', [...args, '--title', title, '--body-file', '-'], projectPath, body);
   return { ok: true, ...prOfUrl(out.trim()) };
 }

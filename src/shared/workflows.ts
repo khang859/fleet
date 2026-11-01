@@ -154,6 +154,8 @@ export type RunAgent = {
   /** The pane that stayed open, or opened again, after the run ended. */
   keptPaneId: string | null;
   autoRetried: boolean;
+  /** Its stage skipped itself, so nothing went wrong. */
+  stageSkipped?: boolean;
   sessionId: string | null;
   transcriptPath: string | null;
   /** A permission request Fleet can answer for this agent. */

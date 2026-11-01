@@ -134,6 +134,51 @@ describe('stage runs', () => {
       expect(byRole(run, 'C').state).toBe('pending');
     });
 
+    it('gives an incomplete report when every reviewer failed', async () => {
+      const stages = [
+        { name: 'Build', agents: [agent('Lead', 'pi', { access: 'write' })] },
+        { name: 'Review', agents: [agent('Bugs', 'pi')] },
+        { name: 'Fix', only_with_findings: true, agents: [agent('Fix', 'pi')] }
+      ];
+      const run = await started(stageFile(stages, { board: true }));
+      h.manager.finishAgent(run.id, run.agents[0].id, 'Built.');
+      await flush();
+      sessionsUp(h, run);
+
+      for (let tries = 0; tries < 2; tries += 1) {
+        h.manager.onApiFailure(paneOf(run, 1), 'quota');
+        await h.advance(1_000);
+        sessionsUp(h, run);
+      }
+
+      expect(run.state).toBe('finished');
+      expect(run.report?.incomplete).toBe(true);
+      expect(run.report?.text).toContain('Built.');
+      expect(run.report?.missing).toEqual(['Bugs']);
+    });
+
+    it('holds a later stage until the agent limit has room', async () => {
+      h = makeHarness(dir, { maxAgents: () => 2 });
+      const other = await started(stageFile([{ name: 'One', agents: [agent('Other', 'pi')] }]));
+      const stages = [
+        { name: 'One', agents: [agent('Lead', 'pi', { access: 'write' })] },
+        { name: 'Two', agents: [agent('A', 'pi'), agent('B', 'pi')] }
+      ];
+      const run = await started(stageFile(stages));
+
+      h.manager.finishAgent(run.id, run.agents[0].id, 'Built.');
+      await flush();
+
+      expect(byRole(run, 'A').state).toBe('pending');
+      expect(run.problem).toContain('Waiting for room');
+
+      h.manager.finishAgent(other.id, other.agents[0].id, 'Done.');
+      await h.advance(1_000);
+
+      expect(byRole(run, 'A').state).not.toBe('pending');
+      expect(run.problem).toBeNull();
+    });
+
     it('skips a stage with no findings, and finishes', async () => {
       const run = await started(stageFile(FEATURE));
       await approved(run);
@@ -334,7 +379,7 @@ describe('stage runs', () => {
       const sent: string[] = [];
       h.deps.sendPrompt = async (_, text) => {
         sent.push(text);
-        return Promise.resolve();
+        return Promise.resolve(true);
       };
       const run = await started(def);
       const [lead] = run.agents;
@@ -345,6 +390,23 @@ describe('stage runs', () => {
 
       expect(sent).toEqual(['Smaller.']);
       expect(h.opened).toHaveLength(1);
+    });
+
+    it('keeps the plan when a change request does not arrive', async () => {
+      h.deps.sendPrompt = async () => Promise.resolve(false);
+      const run = await started(def);
+      const [lead] = run.agents;
+      h.manager.submitPlan(run.id, lead.id, 'Plan');
+      h.manager.onTurnEnd(paneOf(run, 0));
+
+      const sent = await h.manager.answerPlan(run.id, lead.id, {
+        kind: 'change',
+        text: 'Smaller.'
+      });
+
+      expect(sent).toBe(false);
+      expect(lead.pendingPlan?.version).toBe(1);
+      expect(lead.state).not.toBe('working');
     });
 
     it('keeps the read limit after a restart with a plan that waits', async () => {

@@ -328,6 +328,33 @@ describe('new branch runs', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('names new files that have no commit', async () => {
+    const { dir, project, exec } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    writeFileSync(join(path, 'added.txt'), 'new');
+
+    expect(await changesSince(exec, path, branch.baseSha)).toContain('added.txt');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('pushes a fork to its own remote, and names the owner in the head', async () => {
+    const { dir, project, exec, calls } = makeProject();
+    const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);
+    commit(path);
+    const fork = join(dir, 'me', 'app.git');
+    execFileSync('git', ['init', '--bare', '-b', 'main', fork]);
+    git(project, 'remote', 'rename', 'origin', 'upstream');
+    git(project, 'remote', 'add', 'origin', fork);
+    const spec = { projectPath: project, worktreePath: path, branch, body: 'Report' };
+
+    await openBranchPr(exec, spec);
+
+    const create = calls.find((call) => call[1] === 'create') ?? [];
+    expect(create).toContain(`me:${branch.name}`);
+    expect(git(fork, 'branch', '--list', branch.name)).toContain(branch.name);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it('opens no PR for a branch with no commits', async () => {
     const { dir, project, exec, calls } = makeProject();
     const { path, branch } = await branchOf(project, join(dir, 'trees'), exec);

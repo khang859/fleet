@@ -68,7 +68,8 @@ export type RunDeps = {
   openPane: (pane: { paneId: string; cwd: string; line: string }) => Promise<void>;
   killPane: (paneId: string) => void;
   lastOutputAt: (paneId: string) => number;
-  sendPrompt: (sessionId: string, text: string) => Promise<void>;
+  /** Answers false when the text did not reach the session. */
+  sendPrompt: (sessionId: string, text: string) => Promise<boolean>;
   makeWorktree: (run: WorkflowRun, pinnedSha?: string) => Promise<{ path: string; sha: string }>;
   removeWorktree: (run: WorkflowRun) => Promise<void>;
   /** Make the worktree of a `new-branch` run, or open it again on the run's branch. */
@@ -125,6 +126,7 @@ const PLAN_WAITS = 'Its plan waits for you.';
 const TALK_WAITS = 'It waits for your answer.';
 
 const OVER_STATES = new Set<RunAgent['state']>(['done', 'skipped']);
+const NO_ROOM = 'Waiting for room';
 const LIVE_STATES = new Set<RunAgent['state']>(['starting', 'working', 'waiting']);
 
 /** A person must act on this run. A run sets its state from this. */
@@ -406,24 +408,31 @@ export class WorkflowRunManager {
   private drainQueue(): void {
     for (const run of this.list()) {
       if (run.state !== 'queued') continue;
-      const needed = agentsIn(run, 0).length;
-      const room = this.activeAgents() + needed <= this.deps.maxAgents();
-      if (room || this.activeAgents() === 0) {
+      if (this.hasRoom(agentsIn(run, 0).length)) {
         void this.launch(run);
         continue;
       }
-      if (run.problem === null) {
-        run.problem = `Waiting for room: Fleet runs ${this.deps.maxAgents()} agents at once.`;
-        this.deps.notify({
-          kind: 'queued',
-          text: `${run.workflowName} waits. ${run.problem}`,
-          runId: run.id,
-          projectPath: run.projectPath
-        });
-        this.commit(run);
-      }
+      this.noteNoRoom(run);
       return;
     }
+  }
+
+  /** A group larger than the limit runs when nothing else does. */
+  private hasRoom(needed: number): boolean {
+    const active = this.activeAgents();
+    return active === 0 || active + needed <= this.deps.maxAgents();
+  }
+
+  private noteNoRoom(run: WorkflowRun): void {
+    if (run.problem !== null) return;
+    run.problem = `${NO_ROOM}: Fleet runs ${this.deps.maxAgents()} agents at once.`;
+    this.deps.notify({
+      kind: 'queued',
+      text: `${run.workflowName} waits. ${run.problem}`,
+      runId: run.id,
+      projectPath: run.projectPath
+    });
+    this.commit(run);
   }
 
   private async launch(run: WorkflowRun): Promise<void> {
@@ -851,18 +860,22 @@ export class WorkflowRunManager {
 
   /** Pi has no write tools in this process, so approval opens a new one on the session. */
   private async answerPiPlan({ run, agent }: Located, answer: PlanAnswer): Promise<boolean> {
-    agent.pendingPlan = null;
+    const plan = agent.pendingPlan;
     if (answer.kind === 'approve') {
+      agent.pendingPlan = null;
       agent.planApproved = true;
       await this.startAgent(run, agent, true, PLAN_APPROVED_MESSAGE);
       this.settle(run);
       return true;
     }
     if (!agent.sessionId) return false;
-    this.backToWork(agent);
+    // Cleared first, so a second click during the send cannot send it twice.
+    agent.pendingPlan = null;
+    const sent = await this.deps.sendPrompt(agent.sessionId, answer.text);
+    if (sent) this.backToWork(agent);
+    else agent.pendingPlan = plan;
     this.settle(run);
-    await this.deps.sendPrompt(agent.sessionId, answer.text);
-    return true;
+    return sent;
   }
 
   /** A person answered on the run page, so the agent has no question left. */
@@ -1399,6 +1412,13 @@ export class WorkflowRunManager {
       this.startNextStage(run, stages);
       return;
     }
+    // Each tick settles active runs before the queue, so a waiting stage goes first.
+    const needed = agentsIn(run, index).filter((agent) => agent.state === 'pending');
+    if (!this.hasRoom(needed.length)) {
+      this.noteNoRoom(run);
+      return;
+    }
+    if (run.problem?.startsWith(NO_ROOM)) run.problem = null;
     void this.openStage(run, index).then(() => {
       this.settle(run);
     });
@@ -1407,6 +1427,7 @@ export class WorkflowRunManager {
   private skipStage(run: WorkflowRun, stage: number): void {
     for (const agent of agentsIn(run, stage)) {
       agent.state = 'skipped';
+      agent.stageSkipped = true;
       agent.note = 'The board has no findings.';
     }
   }

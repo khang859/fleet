@@ -13,7 +13,7 @@ import { writeAtomicSync } from '../fs-atomic';
 import { agentCommandLine } from './agent-command';
 import { ToolRefused } from './bridge-routes';
 import type { WorkflowCatalog } from './catalog';
-import { parseWorkflow, slugify } from './config';
+import { hashText, parseWorkflow, slugify } from './config';
 import { workflowGuide } from './guide';
 import { toolNameFor } from './tools';
 
@@ -25,6 +25,8 @@ const SAVED = z.object({
   project: z.string(),
   program: z.enum(['pi', 'claude']),
   draftId: z.string().nullable(),
+  /** The hash of this builder's last save, to see if a person changed the file. */
+  draftHash: z.string().nullable(),
   sessionId: z.string().nullable(),
   transcriptPath: z.string().nullable()
 });
@@ -64,6 +66,7 @@ export function builderBrief(program: WorkflowProgram): string {
 - Use ${list} to see the workflows this project has.
 - Save the draft with ${save}. Send the whole file each time. The person sees each save beside this pane.
 - A bad file is refused, and the reply says why. Fix it and save again.
+- A save is refused when a person changed the draft. Follow the reply, and do not make a second file.
 - When the draft is ready, tell the person to press Review in the draft panel. A person must approve the file before it can run. You cannot approve it.
 - Use ${save}, and not fleet_workflow_create. This pane has only ${save}.
 
@@ -106,6 +109,7 @@ export class WorkflowBuilder {
       project,
       program,
       draftId: null,
+      draftHash: null,
       sessionId: null,
       transcriptPath: null
     };
@@ -128,6 +132,7 @@ export class WorkflowBuilder {
       (candidate) => candidate.project === project && candidate.draftId === draftId
     );
     if (!session) return { ok: false, message: 'No builder session made this draft.' };
+    this.acceptFile(session);
     const open = this.paneOf(session.id);
     if (open) {
       this.emitTab(session, open, true);
@@ -135,6 +140,13 @@ export class WorkflowBuilder {
     }
     const handle = session.program === 'pi' ? session.transcriptPath : session.sessionId;
     return this.open(session, handle);
+  }
+
+  /** A person gave the draft back to the agent, so its next save can replace this file. */
+  private acceptFile(session: Saved): void {
+    if (!session.draftId) return;
+    session.draftHash = this.deps.catalog.find(session.project, session.draftId)?.hash ?? null;
+    this.persist();
   }
 
   private paneOf(id: string): string | null {
@@ -219,15 +231,21 @@ export class WorkflowBuilder {
   saveDraft(paneId: string, toml: string): { id: string; approval: string } {
     const session = this.sessionOf(paneId);
     if (!session) throw new ToolRefused('refused', 'This pane is not a builder pane.');
-    const { catalog } = this.deps;
     try {
-      if (session.draftId) catalog.replaceDraft(session.project, session.draftId, toml);
-      else this.createDraft(session, paneId, toml);
+      this.writeDraft(session, paneId, toml);
     } catch (err) {
       throw new ToolRefused('invalid', err instanceof Error ? err.message : String(err));
     }
+    session.draftHash = hashText(toml);
+    this.persist();
     this.deps.onDraftSaved(session.project);
     return { id: session.draftId ?? '', approval: 'A person must approve this draft.' };
+  }
+
+  private writeDraft(session: Saved, paneId: string, toml: string): void {
+    const { project, draftId, draftHash } = session;
+    if (draftId) this.deps.catalog.replaceDraft(project, draftId, toml, draftHash);
+    else this.createDraft(session, paneId, toml);
   }
 
   private createDraft(session: Saved, paneId: string, toml: string): void {

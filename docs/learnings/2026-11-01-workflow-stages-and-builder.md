@@ -30,6 +30,25 @@ A row of columns has no room beside a terminal. `ReadOnlyMap` runs top to bottom
 **`term-send --enter` can stay in the box at a Claude Code prompt.**
 Send `term-key enter` after it. This goes beyond the menu case in `workflow-agent-flags-spike.md`.
 
+## What the review of PR 744 found
+
+**A PR opened after every reviewer failed.**
+`finish()` turns each pending agent into `skipped`, so `reportAgent` could not tell a dead end from a Fix stage with no findings.
+It took the Lead's summary, and the report read as complete.
+A state alone did not hold the reason. `stageSkipped` now does, and only `skipStage` sets it.
+
+**A builder save replaced a person's file.**
+`replaceDraft` wrote with no look at the file on disk.
+The builder now keeps the hash of its last save, and a save over a changed file is refused.
+Edit with the agent gives the draft back, and this takes the new hash.
+
+**A second kind of wait needs no new timer.**
+Each tick settles active runs before the queue, so a stage with no room tries again by itself.
+
+**`gh pr view owner:branch` finds a PR only from a fork.**
+On a branch in the same repo, it says that no PR exists.
+So `prHead` adds the owner only when the push remote is not the repo that `gh` reads.
+
 ## What `ripwire . --quality-delta` still reports
 
 It exits 2, with 114 gating rows. I left them, for the reasons below.
@@ -42,5 +61,8 @@ It exits 2, with 114 gating rows. I left them, for the reasons below.
 ## Not checked
 
 - A real GitHub PR. The run used a stand-in `gh` and a local `origin`. The flags in `pr.ts` match `gh pr create --help` in `gh` 2.103.0.
+- A PR from a real fork. A unit test covers the push and the head with local remotes.
+- A stage that waits for room, in the real app. A unit test covers it.
+- A change request that does not reach Pi, in the real app. A unit test covers it.
 - A plan answer from Copilot. It shares the code path, and only unit tests cover it.
 - The Windows UI.

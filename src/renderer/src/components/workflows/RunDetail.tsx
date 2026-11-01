@@ -343,7 +343,9 @@ function RunNotes({ run }: { run: WorkflowRun }): React.JSX.Element {
       {run.prProblem && (
         <div className="flex items-center justify-between gap-3 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
           <span>No pull request yet: {run.prProblem}</span>
-          <Button onClick={async () => callWorkflows('retryPr', run.id)}>Try again</Button>
+          {!run.report?.incomplete && (
+            <Button onClick={async () => callWorkflows('retryPr', run.id)}>Try again</Button>
+          )}
         </div>
       )}
       {run.problem && (

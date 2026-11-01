@@ -281,6 +281,8 @@ It uses `RETRY_MESSAGE`-style fixed words, never TOML text, as `agent-command.ts
 `open-pr` pushes the branch and runs `gh pr create`, with the last agent's summary as the body.
 It needs `new-branch`.
 If the branch has no commits, or the worktree has work with no commit, the run finishes with a clear problem and opens no PR.
+A run that ended early, as when every reviewer failed, has an incomplete report and opens no PR.
+The Lead's summary speaks for the run only when the Fix stage skipped itself.
 Fleet saves the problem as `run.prProblem`, the run page shows it, and a person can try again.
 A PR that opens drops the worktree.
 `gh pr create` goes in `pr.ts`, and arguments never come from TOML.
@@ -497,7 +499,8 @@ Reviewers and `open-pr` read commits, so uncommitted work is invisible to them.
 The brief tells the Lead to commit, and the plan gate does not enforce it.
 Decision: Fleet checks only at `open-pr`, and a stage end stays free of this check.
 A stage-end check would stop a Lead that is right to leave work for the Fix stage.
-So reviewers can still read a change with no commit, through `changes.diff`, which is `git diff <base>` and has work with no commit.
+So reviewers can still read a change with no commit, through `changes.diff`.
+It is `git diff <base>`, with a list of new files that have no commit.
 
 **Windows.**
 Claude Code has no Fleet tools there (`starts.ts:122`), so the builder and `fleet_run_finish` do not work with it.

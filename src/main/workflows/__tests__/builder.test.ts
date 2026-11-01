@@ -139,6 +139,42 @@ describe('WorkflowBuilder', () => {
     expect(readFileSync(draftPath('my-flow'), 'utf8')).toContain('Theirs.');
   });
 
+  it('keeps a change that a person made to the draft', async () => {
+    await builder.start(project, 'pi');
+    const { paneId } = opened[0];
+    builder.saveDraft(paneId, FIRST);
+    const theirs = FIRST.replace('Do it.', 'Theirs.');
+    writeFileSync(draftPath('my-flow'), theirs);
+
+    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person changed this draft');
+
+    expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(theirs);
+  });
+
+  it('makes no new file when a person removed the draft', async () => {
+    await builder.start(project, 'pi');
+    const { paneId } = opened[0];
+    builder.saveDraft(paneId, FIRST);
+    rmSync(draftPath('my-flow'));
+
+    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person changed this draft');
+
+    expect(existsSync(draftPath('my-flow'))).toBe(false);
+  });
+
+  it('saves over a change after a person gives the draft back', async () => {
+    await builder.start(project, 'pi');
+    const { paneId } = opened[0];
+    builder.saveDraft(paneId, FIRST);
+    writeFileSync(draftPath('my-flow'), FIRST.replace('Do it.', 'Theirs.'));
+    const next = FIRST.replace('Do it.', 'Both.');
+
+    await builder.reopen(project, 'my-flow');
+    builder.saveDraft(paneId, next);
+
+    expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(next);
+  });
+
   it('refuses a bad file, and says why', async () => {
     await builder.start(project, 'pi');
 

@@ -191,10 +191,17 @@ describe('reportAgent', () => {
       lead,
       agent(1, 'done', { summary: 'A' }),
       agent(1, 'done', { summary: 'B' }),
-      agent(2, 'skipped', { isLast: true })
+      agent(2, 'skipped', { isLast: true, stageSkipped: true })
     ]);
 
     expect(reportAgent(run)).toBe(lead);
+  });
+
+  it('gives no speaker when the run ended before Fix', () => {
+    const fix = agent(2, 'skipped', { isLast: true });
+    const run = runOf([agent(0, 'done', { summary: 'Built' }), agent(1, 'failed'), fix]);
+
+    expect(reportAgent(run)).toBe(fix);
   });
 });
 
