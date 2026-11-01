@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.149.0
+
+- **Workflows can now run in stages.**
+  A workflow file can run agents in order, and each agent has its own access.
+  An agent can talk with a person, wait for plan approval, or go on from an earlier session.
+  Old workflow files keep their shape and their approval (#744).
+- **A new plan page shows long plans.**
+  The full page has sections and versions.
+  Plan approval works for Claude Code and for Pi (#744).
+- **An agent can build a workflow for you in a terminal pane.**
+  The pane can only save a draft, and a person must approve it (#744).
+- **The workflow editor has a stage map.**
+  The stage map replaces the old setup form, and the File tab stays (#744).
+- **A run can make a new branch and open a PR.**
+  The new "Build a feature" starter does the whole flow (#744).
+
 ## v2.148.0
 
 - **The workflow approval dialog is now easy to read.**
