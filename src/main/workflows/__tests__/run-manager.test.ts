@@ -973,12 +973,6 @@ describe('WorkflowRunManager', () => {
       expect(stored?.board.map((item) => item.mergedInto)).toEqual(['3', '3', undefined]);
       expect(h.manager.listFindings(run.id).map((item) => item.id)).toEqual(['3']);
     });
-
-    it('refuses an add from no agent', async () => {
-      const run = await workingRun();
-
-      expect(() => h.manager.addFinding(run.id, null, { kind: 'bug', text: 'x' })).toThrow();
-    });
   });
 
   describe('sleep', () => {
@@ -1093,17 +1087,6 @@ describe('WorkflowRunManager', () => {
       expect(run.state).toBe('finished');
       expect(run.agents[0].paneId).toBeNull();
       expect(h.killed).toHaveLength(1);
-    });
-
-    it('opens the post pane in the project after the worktree goes', async () => {
-      const run = await workingRun(makeDef({ workspace: 'pr-worktree' }), { pr: SAMPLE_PR });
-      finishAll(run);
-
-      await h.manager.openPostPane(run.id, 'post');
-
-      expect(run.worktreePath).toBeNull();
-      expect(h.opened.at(-1)?.cwd).toBe('/repo');
-      expect(run.postPaneId).not.toBeNull();
     });
 
     it('closes panes but keeps one a person typed in', async () => {
@@ -1301,6 +1284,7 @@ describe('buildReport', () => {
     expect(report).toEqual({
       text: '## Worker\n\nWorker notes.',
       incomplete: false,
+      posted: false,
       missing: [],
       savedTo: null
     });

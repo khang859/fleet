@@ -157,18 +157,12 @@ export class WorkflowsService implements BridgeHandler {
       bridgeProblem: deps.bridgeProblem,
       hasProgram: deps.hasProgram
     });
-    this.posting = new WorkflowPosting({
-      runs: this.runs,
-      store,
-      exec: this.exec,
-      devExtension: deps.devExtension
-    });
+    this.posting = new WorkflowPosting({ runs: this.runs, exec: this.exec });
     this.agentTools = new WorkflowAgentTools({
       catalog: this.catalog,
       approvals: this.approvals,
       runs: this.runs,
       starts: this.starts,
-      posting: this.posting,
       exec: this.exec,
       paneCwd: deps.paneCwd,
       openFolders: deps.openFolders,
@@ -498,12 +492,12 @@ export class WorkflowsService implements BridgeHandler {
 
   private writeRunReport(run: WorkflowRun, path: string, replace: boolean): SaveReportResult {
     const result = writeReport(path, run.report?.text ?? '', replace);
-    if (result.ok && run.report) this.runs.setSavedTo(run.id, result.path);
+    if (result.ok && run.report) this.runs.updateReport(run.id, { savedTo: result.path });
     return result;
   }
 
-  async post(runId: string): Promise<number> {
-    return this.posting.start(runId);
+  async post(runId: string): Promise<void> {
+    return this.posting.post(runId);
   }
 
   answerPermission(toolUseId: string, decision: 'allow' | 'deny'): boolean {

@@ -65,17 +65,10 @@ describe('tool list', () => {
     const { status, body } = await listTools(bridge, TOKEN);
 
     expect(status).toBe(200);
-    expect(body).toMatchObject({ only: false, run: true });
+    expect(body).toMatchObject({ run: true });
     expect((body as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toContain(
       'fleet_run_finish'
     );
-  });
-
-  it('marks a post pane as the only tool', async () => {
-    const identity: PaneIdentity = { kind: 'post', runId: 'run-1', agentId: null };
-    const { bridge } = makeBridge({ identify: () => identity });
-
-    expect((await listTools(bridge, TOKEN)).body).toMatchObject({ only: true, run: true });
   });
 });
 

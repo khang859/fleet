@@ -42,14 +42,14 @@ Top-level keys:
 
 [finish], optional. What happens at the end:
 
-- action: "save-report" or "post-pr". "post-pr" needs workspace = "pr-worktree".
+- action: "save-report" or "post-pr". "post-pr" needs workspace = "pr-worktree". It makes Post the main button, and Post sends the report as one PR comment.
 - path: where "save-report" writes, up to 400 characters. It is inside the project, and it must end in .md.
 
 No other key is allowed. A workflow cannot run a command.
 
 ## Placeholders
 
-Use {{name}} in shared, in a prompt, or in finish.path, with the name of an input. {{slug}} is also there: the PR number, or else the first text input, or else the workflow name, as a safe file name part. A placeholder with no matching input is refused.
+Use {{name}} in shared, in a prompt, or in finish.path, with the name of an input. {{slug}} is also there: pr- and the PR number, or else the first text input, or else the workflow name, as a safe file name part. For the plain PR number, use the name of the pr input, such as {{pr}}. A placeholder with no matching input is refused.
 
 ## Prompts
 

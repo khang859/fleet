@@ -176,15 +176,14 @@ type FleetTool = {
   inputSchema: { properties?: Record<string, unknown> };
 };
 
-/** This pane's tools. `only` means that nothing else may run in it. */
-type ToolList = { tools: FleetTool[]; only: boolean };
+/** This pane's tools. */
+type ToolList = { tools: FleetTool[] };
 
 /** Who this pane is to Fleet, once the session has its tools. */
 type Pane = {
   socketPath: string;
   id: string;
   token: string;
-  only: boolean;
   /** Each tool's argument names: a call's arguments come mixed in with the event's own fields. */
   fields: Map<string, string[]>;
 };
@@ -215,7 +214,7 @@ async function registerTools($: EngineInterface, socketPath: string): Promise<Pa
       await $.tool.register({ ...tool, isDeferred: false });
       fields.set(tool.name, Object.keys(tool.inputSchema.properties ?? {}));
     }
-    return { socketPath, id, token, only: list.only, fields };
+    return { socketPath, id, token, fields };
   } catch {
     return null;
   }
@@ -304,7 +303,6 @@ export const register: Register = (on) => {
     if (fleetPane) {
       return { result: await callFleet($, fleetPane, e.tool, e as Record<string, unknown>) };
     }
-    if (pane?.only) return { deny: 'Only the Fleet tool works in this pane.' };
     try {
       return await next(e);
     } finally {

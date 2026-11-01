@@ -75,13 +75,3 @@ export function agentBrief(
   ];
   return parts.filter((part) => part !== '').join('\n\n');
 }
-
-/** The brief of the pane that posts findings. It holds ids, never finding text. */
-export function postBrief(program: WorkflowProgram, ids: string[]): string {
-  const post = toolNameFor(program, 'fleet_post_item');
-  return [
-    'You post stored findings to a pull request.',
-    `Call ${post} once for each of these ids, in order: ${ids.join(', ')}.`,
-    'Stop after the last one. Do nothing else.'
-  ].join('\n');
-}

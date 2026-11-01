@@ -7,11 +7,11 @@ import {
   fetchPr,
   ghStatus,
   isTeamPr,
-  itemMarker,
   listOpenPrs,
   makePrWorktree,
   parsePrInput,
   repoRoot,
+  reportMarker,
   runProgram,
   type Exec,
   type PrWire
@@ -265,7 +265,7 @@ describe('small helpers', () => {
     expect(await ghStatus(fails, '/repo')).toEqual({ ok: false, detail: 'not signed in' });
   });
 
-  it('makes a hidden mark per item', () => {
-    expect(itemMarker('run-1', '4')).toBe('<!-- fleet:item:run-1:4 -->');
+  it('makes a hidden mark per report', () => {
+    expect(reportMarker('run-1')).toBe('<!-- fleet:report:run-1 -->');
   });
 });

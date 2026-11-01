@@ -78,11 +78,6 @@ export class Board {
     this.items.push(merged);
     return merged;
   }
-
-  mark(id: string, post: BoardItem['post']): void {
-    const item = this.get(id);
-    if (item) item.post = post;
-  }
 }
 
 /** The board as plain text, for a report with no summary to go on. */

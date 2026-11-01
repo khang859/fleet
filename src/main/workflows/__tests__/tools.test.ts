@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isToolName, toolAllowed, toolNameFor, toolsFor, type PaneKind } from '../tools';
 
-const KINDS: PaneKind[] = ['outside', 'run', 'last', 'post'];
+const KINDS: PaneKind[] = ['outside', 'run', 'last'];
 
 function names(kind: PaneKind): string[] {
   return toolsFor(kind).map((tool) => tool.name);
@@ -39,10 +39,6 @@ describe('toolsFor', () => {
     ]);
   });
 
-  it('gives a post pane only the post tool', () => {
-    expect(names('post')).toEqual(['fleet_post_item']);
-  });
-
   it('lists a JSON schema and words for every tool', () => {
     for (const tool of KINDS.flatMap(toolsFor)) {
       expect(tool.description).not.toBe('');
@@ -61,8 +57,6 @@ describe('toolsFor', () => {
 
 describe('toolAllowed', () => {
   it('follows the pane kind', () => {
-    expect(toolAllowed('fleet_post_item', 'post')).toBe(true);
-    expect(toolAllowed('fleet_post_item', 'run')).toBe(false);
     expect(toolAllowed('fleet_findings_merge', 'run')).toBe(false);
     expect(toolAllowed('fleet_findings_merge', 'last')).toBe(true);
     expect(toolAllowed('fleet_workflow_run', 'run')).toBe(false);

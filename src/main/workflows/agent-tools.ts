@@ -6,7 +6,6 @@ import type { WorkflowCatalog } from './catalog';
 import { PROJECT_WORKFLOWS_DIR } from './config';
 import { workflowGuide } from './guide';
 import { repoRoot, type Exec } from './pr';
-import type { WorkflowPosting } from './posting';
 import type { PaneIdentity, WorkflowRunManager } from './run-manager';
 import type { WorkflowStarts } from './starts';
 import { TOOLS, type ToolArgs, type ToolName } from './tools';
@@ -16,7 +15,6 @@ export type AgentToolDeps = {
   approvals: ApprovalStore;
   runs: WorkflowRunManager;
   starts: WorkflowStarts;
-  posting: WorkflowPosting;
   exec: Exec;
   paneCwd: (paneId: string) => string | undefined;
   /** The folder of each open pane. */
@@ -45,8 +43,6 @@ export class WorkflowAgentTools {
         return this.merge(this.inRun(identity), TOOLS[tool].args.parse(args));
       case 'fleet_run_finish':
         return this.finish(this.inRun(identity), TOOLS[tool].args.parse(args));
-      case 'fleet_post_item':
-        return this.post(this.inRun(identity), TOOLS[tool].args.parse(args));
       case 'fleet_workflow_list':
         return this.list(paneId, TOOLS[tool].args.parse(args));
       case 'fleet_workflow_run':
@@ -80,10 +76,6 @@ export class WorkflowAgentTools {
     const refused = this.deps.runs.finishAgent(pane.runId, pane.agentId, args.summary);
     if (refused) throw new ToolRefused('refused', refused);
     return { done: true };
-  }
-
-  private async post(pane: InRun, args: ToolArgs['fleet_post_item']): Promise<unknown> {
-    return this.deps.posting.postItem(pane.runId, args.id);
   }
 
   private async projectOf(paneId: string, named: string | undefined): Promise<string> {
