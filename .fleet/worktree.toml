@@ -1,0 +1,5 @@
+# Typed into each new worktree's terminal once its prompt is up.
+setup = "npm install"
+
+# Git-ignored files and folders, copied from the main checkout.
+copy = [ ".env" ]
