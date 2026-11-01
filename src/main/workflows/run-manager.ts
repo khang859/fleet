@@ -90,9 +90,22 @@ export function needsPerson(run: WorkflowRun): boolean {
 
 /** A notice about a live run goes away when that run no longer fits it. */
 export function noticeIsCurrent(notice: WorkflowNotice, run: WorkflowRun | undefined): boolean {
-  if (notice.kind !== 'needs-you' && notice.kind !== 'agent-start') return true;
-  if (run === undefined || !isActive(run)) return false;
-  return notice.kind === 'agent-start' || needsPerson(run);
+  if (run === undefined) return notice.kind !== 'needs-you' && notice.kind !== 'agent-start';
+  switch (notice.kind) {
+    case 'needs-you':
+      return isActive(run) && needsPerson(run);
+    case 'agent-start':
+      return isActive(run);
+    case 'queued':
+      return run.state === 'queued';
+    case 'limit':
+      return isActive(run) && run.limitReachedAt !== null;
+    case 'report-ready':
+      return run.state !== 'closed';
+    case 'info':
+    case 'agent-create':
+      return true;
+  }
 }
 
 export function isActive(run: WorkflowRun): boolean {
@@ -441,6 +454,8 @@ export class WorkflowRunManager {
       resume: resume ? agentChatHandle(agent) : null,
       devExtension: agent.program === 'pi' ? this.deps.devExtension : null
     });
+    // A pane takes time to open, and the page shows the new state during that wait.
+    this.commit(run);
     try {
       await this.deps.openPane({ paneId, cwd: run.cwd, line });
       // Stopped or replaced while it opened, so the kill came too soon to find it.
@@ -558,6 +573,19 @@ export class WorkflowRunManager {
     agent.note = `It asks to use ${tool}.`;
     agent.pendingPermission = toolUseId ? { toolUseId, tool } : null;
     this.notifyNeedsYou(run, agent);
+    this.settle(run);
+  }
+
+  /** A person answered on the run page, so the agent has no question left. */
+  onPermissionAnswered(toolUseId: string): void {
+    const asks = (agent: RunAgent): boolean => agent.pendingPermission?.toolUseId === toolUseId;
+    const run = this.list().find((candidate) => candidate.agents.some(asks));
+    const agent = run?.agents.find(asks);
+    if (!run || !agent) return;
+    agent.pendingPermission = null;
+    agent.state = 'working';
+    agent.needsPerson = false;
+    agent.note = null;
     this.settle(run);
   }
 
@@ -712,6 +740,7 @@ export class WorkflowRunManager {
     const { run, agent } = located;
     this.retirePane(agent);
     agent.state = 'skipped';
+    agent.pendingPermission = null;
     agent.needsPerson = false;
     agent.note = null;
     this.emitTab(run);
@@ -754,6 +783,7 @@ export class WorkflowRunManager {
       agent.paneId = null;
       this.deps.killPane(paneId);
     }
+    agent.pendingPermission = null;
     if (!OVER_STATES.has(agent.state) && agent.state !== 'pending') agent.state = 'failed';
   }
 
@@ -828,6 +858,7 @@ export class WorkflowRunManager {
     run.endedAt = null;
     run.problem = null;
     this.restoreDef(run);
+    this.commit(run);
     // The cut can come before the worktree exists, or between two agents.
     if (!(await this.prepareWorktree(run))) return;
     for (const agent of run.agents) {
@@ -889,7 +920,14 @@ export class WorkflowRunManager {
     const paneId = randomUUID();
     run.postPaneId = paneId;
     this.panes.set(paneId, { runId, agentId: null });
-    await this.deps.openPane({ paneId, cwd: run.cwd, line });
+    try {
+      await this.deps.openPane({ paneId, cwd: run.cwd, line });
+    } catch (err) {
+      this.panes.delete(paneId);
+      run.postPaneId = null;
+      this.commit(run);
+      throw err;
+    }
     this.emitTab(run);
     this.commit(run);
   }

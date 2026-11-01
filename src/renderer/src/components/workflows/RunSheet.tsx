@@ -7,7 +7,8 @@ import type {
   WorkflowPreview,
   WorkflowProgram
 } from '../../../../shared/workflows';
-import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
+import { callWorkflows, showWorkflowError, useWorkflowsStore } from '../../store/workflows-store';
+import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
 import { Badge, Button, Field, FIELD_CLASS } from './parts';
 import { ChangeView } from './ChangeView';
@@ -63,9 +64,11 @@ function usePreview(request: StartRunRequest | null): WorkflowPreview | null {
     if (!request) return;
     let live = true;
     const timer = setTimeout(() => {
-      void callWorkflows('preview', request).then((reply) => {
-        if (live) setPreview(reply);
-      });
+      callWorkflows('preview', request)
+        .then((reply) => {
+          if (live) setPreview(reply);
+        })
+        .catch(showWorkflowError);
     }, PREVIEW_DELAY_MS);
     return () => {
       live = false;
@@ -233,6 +236,7 @@ function SheetFooter({
   needsApproval,
   starting,
   disabled,
+  approveDisabled,
   onCancel,
   onApprove,
   onStart
@@ -240,15 +244,16 @@ function SheetFooter({
   needsApproval: boolean;
   starting: boolean;
   disabled: boolean;
+  approveDisabled: boolean;
   onCancel: () => void;
-  onApprove: () => void;
-  onStart: () => void;
+  onApprove: () => unknown;
+  onStart: () => unknown;
 }): React.JSX.Element {
   return (
     <div className="flex justify-end gap-2 border-t border-fleet-border px-4 py-3">
       <Button onClick={onCancel}>Cancel</Button>
       {needsApproval ? (
-        <Button tone="primary" onClick={onApprove}>
+        <Button tone="primary" disabled={approveDisabled} onClick={onApprove}>
           Approve
         </Button>
       ) : (
@@ -273,6 +278,56 @@ function fixChoice(fix: string): Partial<Choices> {
   return {};
 }
 
+function sheetTitle(entry: WorkflowEntry | null): string {
+  if (!entry) return '';
+  const verb = entry.approval === 'approved' ? 'Run' : 'Review';
+  return `${verb} ${entry.def?.name ?? entry.id}`;
+}
+
+function SheetProblems({
+  error,
+  problem
+}: {
+  error: string | null | undefined;
+  problem: string | null;
+}): React.JSX.Element {
+  return (
+    <>
+      {error && (
+        <pre className="whitespace-pre-wrap font-mono text-[11px] text-red-300">{error}</pre>
+      )}
+      {problem && <p className="text-xs text-red-300">{problem}</p>}
+    </>
+  );
+}
+
+function useStartRun(
+  request: StartRunRequest | null,
+  onClose: () => void,
+  onProblem: (message: string) => void
+): { starting: boolean; start: () => Promise<void> } {
+  const openRun = useWorkflowsStore((s) => s.openRun);
+  const [starting, setStarting] = useState(false);
+
+  const start = async (): Promise<void> => {
+    if (!request) return;
+    setStarting(true);
+    try {
+      const reply = await callWorkflows('start', request);
+      if (reply.ok) {
+        onClose();
+        openRun(reply.runId);
+        return;
+      }
+      onProblem(reply.message);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  return { starting, start };
+}
+
 export function RunSheet({
   projectPath,
   entry,
@@ -284,18 +339,20 @@ export function RunSheet({
   initialInputs?: Record<string, string>;
   onClose: () => void;
 }): React.JSX.Element {
-  const refresh = useWorkflowsStore((s) => s.refresh);
   const openRun = useWorkflowsStore((s) => s.openRun);
   const [values, setValues] = useState<Record<string, string>>({});
   const [choices, setChoices] = useState<Choices>(NO_CHOICES);
   const [problem, setProblem] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
+  const [readHash, setReadHash] = useState<string | null>(null);
+  const entryId = entry?.id;
 
+  // The entry is live, so a change to the file must not clear what a person typed.
   useEffect(() => {
     setValues(initialInputs ?? {});
     setChoices(NO_CHOICES);
     setProblem(null);
-  }, [entry, initialInputs]);
+    setReadHash(null);
+  }, [entryId, initialInputs]);
 
   const needsApproval = entry !== null && entry.approval !== 'approved';
   const request: StartRunRequest | null = entry
@@ -303,29 +360,21 @@ export function RunSheet({
     : null;
   const preview = usePreview(needsApproval ? null : request);
   const failed = preview?.checks.some((check) => !check.ok) ?? false;
+  const broken = entry?.def === null;
   const missing = missingInput(entry, values);
+  const { starting, start } = useStartRun(request, onClose, setProblem);
 
   const applyFix = (fix: string): void => setChoices({ ...choices, ...fixChoice(fix) });
 
   const approve = async (): Promise<void> => {
-    if (!entry) return;
-    await callWorkflows('approve', projectPath, entry.id, entry.hash);
-    await refresh();
-    const fresh = useWorkflowsStore.getState().entries.find((item) => item.id === entry.id);
-    if (fresh?.approval !== 'approved') setProblem('The file changed again. Check it once more.');
-  };
-
-  const start = async (): Promise<void> => {
-    if (!request) return;
-    setStarting(true);
-    const reply = await callWorkflows('start', request);
-    setStarting(false);
-    if (reply.ok) {
-      onClose();
-      openRun(reply.runId);
+    if (!entry || readHash === null) return;
+    const approved = await callWorkflows('approve', projectPath, entry.id, readHash);
+    if (!approved) {
+      setProblem('The file changed again. Check it once more.');
       return;
     }
-    setProblem(reply.message);
+    useToastStore.getState().show(`Approved ${entry.def?.name ?? entry.id}.`);
+    onClose();
   };
 
   const duplicate = preview?.duplicateRunId ?? null;
@@ -338,10 +387,10 @@ export function RunSheet({
       panelClassName="flex max-h-[80vh] w-[28rem] flex-col rounded-lg border border-fleet-border-strong bg-fleet-surface"
     >
       <div className="border-b border-fleet-border px-4 py-3 text-sm font-medium text-fleet-text">
-        Run {entry?.def?.name}
+        {sheetTitle(entry)}
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {entry && needsApproval && <ChangeView entry={entry} />}
+        {entry && needsApproval && <ChangeView entry={entry} onRead={setReadHash} />}
         {entry && !needsApproval && (
           <RunForm
             entry={entry}
@@ -362,15 +411,16 @@ export function RunSheet({
             onForce={() => setChoices({ ...choices, force: true })}
           />
         )}
-        {problem && <p className="text-xs text-red-300">{problem}</p>}
+        <SheetProblems error={entry?.error} problem={problem} />
       </div>
       <SheetFooter
         needsApproval={needsApproval}
         starting={starting}
-        disabled={starting || missing || failed || blocked}
+        disabled={starting || missing || failed || blocked || broken}
+        approveDisabled={broken || readHash !== entry?.hash}
         onCancel={onClose}
-        onApprove={() => void approve()}
-        onStart={() => void start()}
+        onApprove={approve}
+        onStart={start}
       />
     </Overlay>
   );

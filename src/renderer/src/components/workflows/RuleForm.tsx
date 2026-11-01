@@ -9,7 +9,7 @@ import type {
 import { runsPerDay } from '../../../../shared/workflows';
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
-import { Button, Field, FIELD_CLASS } from './parts';
+import { Button, CountInput, Field, FIELD_CLASS } from './parts';
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const WEEK_DAYS = [1, 2, 3, 4, 5];
@@ -207,7 +207,8 @@ export function RuleForm({
 }): React.JSX.Element {
   const entries = useWorkflowsStore((s) => s.entries);
   const usable = entries.filter((entry) => entry.def !== null && entry.approval === 'approved');
-  const [workflowId, setWorkflowId] = useState(rule?.workflowId ?? usable.at(0)?.id ?? '');
+  const [pickedId, setPickedId] = useState(rule?.workflowId ?? null);
+  const workflowId = pickedId ?? usable.at(0)?.id ?? '';
   const [name, setName] = useState(rule?.name ?? '');
   const [trigger, setTrigger] = useState<RuleTrigger>(rule?.trigger ?? defaultTrigger('interval'));
   const [inputs, setInputs] = useState<Record<string, string>>(rule?.inputs ?? {});
@@ -222,7 +223,7 @@ export function RuleForm({
     (input) => input.required && (inputs[input.name] ?? '').trim() === ''
   );
 
-  const save = (): void => {
+  const save = async (): Promise<void> => {
     const input: RuleInput = {
       id: rule?.id,
       name: name.trim() || entry?.def?.name || workflowId,
@@ -235,10 +236,9 @@ export function RuleForm({
       pausedReason: rule?.pausedReason ?? null,
       dailyLimit
     };
-    void callWorkflows('saveRule', input).then(() => {
-      useToastStore.getState().show('Automatic run saved.');
-      onClose();
-    });
+    await callWorkflows('saveRule', input);
+    useToastStore.getState().show('Automatic run saved.');
+    onClose();
   };
 
   return (
@@ -247,7 +247,7 @@ export function RuleForm({
         <select
           className={FIELD_CLASS}
           value={workflowId}
-          onChange={(e) => setWorkflowId(e.target.value)}
+          onChange={(e) => setPickedId(e.target.value)}
         >
           {usable.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
@@ -308,13 +308,7 @@ export function RuleForm({
         </select>
       </Field>
       <Field label="Runs a day, at most">
-        <input
-          type="number"
-          min={1}
-          className={`${FIELD_CLASS} w-24`}
-          value={dailyLimit}
-          onChange={(e) => setDailyLimit(Math.max(1, Number(e.target.value)))}
-        />
+        <CountInput className="w-24" value={dailyLimit} onChange={setDailyLimit} />
       </Field>
 
       <p className="text-xs text-fleet-text-secondary">{previewText(trigger, agentsIn(entry))}</p>

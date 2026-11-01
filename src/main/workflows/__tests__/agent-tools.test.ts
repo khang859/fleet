@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkflowEntry, WorkflowNotice } from '../../../shared/workflows';
+import type { WorkflowEntries, WorkflowEntry, WorkflowNotice } from '../../../shared/workflows';
 import { WorkflowsBridge } from '../bridge-routes';
 import { PROJECT_WORKFLOWS_DIR } from '../config';
+import { workflowGuide } from '../guide';
 import { WorkflowsService } from '../index';
 import type { Exec, PrWire } from '../pr';
 import type { ToolName } from '../tools';
@@ -64,6 +65,7 @@ type World = {
   /** The folders of open panes. */
   folders: string[];
   opened: string[];
+  pushes: WorkflowEntries[];
   catalogPath: (id: string) => string;
 };
 
@@ -76,6 +78,7 @@ function makeWorld(): World {
   mkdirSync(project);
   const opened: string[] = [];
   const bridge = new WorkflowsBridge();
+  const pushes: WorkflowEntries[] = [];
 
   const exec: Exec = async (command, args) => {
     if (command === 'git') return Promise.resolve(`${project}\n`);
@@ -96,6 +99,7 @@ function makeWorld(): World {
       monitor: { on: () => undefined, isOnBatteryPower: () => false }
     },
     bridge,
+    onEntries: (reply) => pushes.push(reply),
     openPane: async (pane) => {
       opened.push(pane.paneId);
       return Promise.resolve();
@@ -119,7 +123,7 @@ function makeWorld(): World {
   bridge.connect(service);
 
   const catalogPath = (id: string): string => join(project, PROJECT_WORKFLOWS_DIR, `${id}.toml`);
-  return { service, bridge, project, opened, catalogPath, folders };
+  return { service, bridge, project, opened, catalogPath, folders, pushes };
 }
 
 /** Calls a tool over the bridge, as an agent does. */
@@ -444,6 +448,53 @@ describe('the ask flow', () => {
     world.service.answerAsk('gone', true);
 
     expect(await runTask()).toMatchObject({ ok: false, code: 'asked' });
+  });
+});
+
+describe('fleet_workflow_guide', () => {
+  it('tells an agent how to write a workflow', async () => {
+    const reply = await call('fleet_workflow_guide', {});
+
+    expect(reply).toEqual({ ok: true, data: { guide: workflowGuide() } });
+  });
+});
+
+describe('the live list', () => {
+  const lastPush = (): string[] | undefined =>
+    world.pushes.at(-1)?.entries.map((entry) => `${entry.id}:${entry.approval}`);
+
+  it('sends the list when a person approves a file', () => {
+    dropFile();
+    world.service.list(world.project);
+
+    approveByHand();
+
+    expect(world.pushes.at(-1)?.projectPath).toBe(world.project);
+    expect(lastPush()).toEqual(['task:approved']);
+  });
+
+  it('sends the list when a file changes on disk', async () => {
+    dropFile();
+    world.service.list(world.project);
+
+    // A new watcher needs a moment to start, so write until it hears. Each write
+    // restarts the wait of 100 ms, so the writes must be further apart than that.
+    await vi.waitFor(
+      () => {
+        dropFile(CHANGED, 'other');
+        expect(lastPush()).toContain('other:needs-approval');
+      },
+      { timeout: 3000, interval: 300 }
+    );
+  });
+
+  it('removes the create notice when a person approves the file', async () => {
+    await call('fleet_workflow_create', { id: 'task', toml: TASK });
+    expect(notices()).toHaveLength(1);
+
+    world.service.approve(world.project, 'task', entryOf().hash);
+
+    expect(notices()).toEqual([]);
   });
 });
 

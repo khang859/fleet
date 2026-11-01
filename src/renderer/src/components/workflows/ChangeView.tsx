@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WorkflowEntry } from '../../../../shared/workflows';
-import { callWorkflows } from '../../store/workflows-store';
+import { callWorkflows, showWorkflowError } from '../../store/workflows-store';
 
 type Line = { sign: '+' | '-' | ' '; text: string };
 
@@ -26,12 +26,29 @@ const LINE_CLASS: Record<Line['sign'], string> = {
 };
 
 /** Approval: the whole file when it is new, and only the change when it is not. */
-export function ChangeView({ entry }: { entry: WorkflowEntry }): React.JSX.Element {
+export function ChangeView({
+  entry,
+  onRead
+}: {
+  entry: WorkflowEntry;
+  /** The version a person can now see, so approval covers only what they read. */
+  onRead: (hash: string) => void;
+}): React.JSX.Element {
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
-    void callWorkflows('readText', entry.path).then(setText);
-  }, [entry.path, entry.hash]);
+    let live = true;
+    callWorkflows('readText', entry.path)
+      .then((read) => {
+        if (!live) return;
+        setText(read);
+        onRead(entry.hash);
+      })
+      .catch(showWorkflowError);
+    return () => {
+      live = false;
+    };
+  }, [entry.path, entry.hash, onRead]);
 
   if (text === null) return <div />;
   const { approvedText } = entry;

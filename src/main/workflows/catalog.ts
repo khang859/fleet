@@ -28,7 +28,9 @@ function messageOf(err: unknown): string {
 export class WorkflowCatalog {
   constructor(
     private readonly approvals: ApprovalStore,
-    private readonly personalDir: string
+    private readonly personalDir: string,
+    /** Called after Fleet itself changes what `list` answers. */
+    private readonly onChange: () => void = () => undefined
   ) {}
 
   list(projectPath: string): WorkflowEntry[] {
@@ -94,6 +96,7 @@ export class WorkflowCatalog {
 
     this.write(path, req.text);
     this.approvals.approve(path, hashText(req.text), req.text, 'editor');
+    this.onChange();
     return { ok: true, id, path };
   }
 
@@ -137,6 +140,7 @@ export class WorkflowCatalog {
     if (unsafe) throw new WorkflowFileError(unsafe);
     if (existsSync(path)) throw new WorkflowFileError(`${clean}.toml exists.`);
     this.write(path, text);
+    this.onChange();
     return clean;
   }
 
@@ -144,6 +148,7 @@ export class WorkflowCatalog {
     const entry = this.find(projectPath, id);
     if (entry?.hash !== hash) return false;
     this.approvals.approve(entry.path, hash, this.readText(entry.path), 'person');
+    this.onChange();
     return true;
   }
 
@@ -152,5 +157,6 @@ export class WorkflowCatalog {
     if (!entry) return;
     rmSync(entry.path, { force: true });
     this.approvals.forget(entry.path);
+    this.onChange();
   }
 }

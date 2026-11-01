@@ -13,6 +13,7 @@ describe('toolsFor', () => {
       'fleet_workflow_list',
       'fleet_workflow_run',
       'fleet_workflow_status',
+      'fleet_workflow_guide',
       'fleet_workflow_create'
     ]);
   });

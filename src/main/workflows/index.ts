@@ -1,27 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { ClaudeSessionChange } from '../../shared/claude-sessions';
-import {
-  postsLeft,
-  type RunTab,
-  type SaveReportResult,
-  type StartRunRequest,
-  type StartRunResult,
-  type WorkflowDef,
-  type WorkflowNotice,
-  type WorkflowProgram,
-  type WorkflowProject,
-  type WorkflowRule,
-  type WorkflowRun,
-  type WorkflowsState
+import type {
+  RunTab,
+  SaveReportResult,
+  StartRunRequest,
+  StartRunResult,
+  WorkflowDef,
+  WorkflowEntries,
+  WorkflowEntry,
+  WorkflowNotice,
+  WorkflowProgram,
+  WorkflowProject,
+  WorkflowRule,
+  WorkflowRun,
+  WorkflowsState
 } from '../../shared/workflows';
 import { createLogger } from '../logger';
 import { ApprovalStore, loadSigningKey, SignedFile, type KeyVault } from './approval';
 import { WorkflowAgentTools } from './agent-tools';
 import type { BridgeHandler, PiEvent, WorkflowsBridge } from './bridge-routes';
 import { WorkflowCatalog } from './catalog';
-import { parseWorkflow, readWorkflowFile } from './config';
+import { parseWorkflow, PROJECT_WORKFLOWS_DIR, readWorkflowFile } from './config';
+import { FolderWatcher, type WatchTarget } from './folder-watcher';
 import { WorkflowPosting } from './posting';
 import { WorkflowPower, type PowerApi } from './power';
 import {
@@ -51,6 +53,8 @@ import type { ToolName } from './tools';
 const log = createLogger('workflows');
 
 const CLOCK_MS = 5_000;
+/** Holds a person's own workflows, inside the Fleet home folder. */
+const PERSONAL_DIR_NAME = 'workflows';
 const WORKING = new Set(['starting', 'working']);
 
 export type WorkflowsDeps = {
@@ -77,6 +81,7 @@ export type WorkflowsDeps = {
   devExtension: string | null;
   /** Pushes to the page, when one is open. */
   onState: (state: WorkflowsState) => void;
+  onEntries: (entries: WorkflowEntries) => void;
   onTab: (tab: RunTab) => void;
   exec?: Exec;
 };
@@ -96,16 +101,19 @@ export class WorkflowsService implements BridgeHandler {
   private clock: ReturnType<typeof setInterval> | null = null;
   private releaseAnswerer: (() => void) | null = null;
   private readonly tabs = new Map<string, RunTab>();
+  private readonly folders = new FolderWatcher(() => this.pushEntries());
+  /** The project the page shows. Its workflow files are the ones to watch. */
+  private shownProject: string | null = null;
 
   constructor(private readonly deps: WorkflowsDeps) {
     mkdirSync(deps.home, { recursive: true });
     this.exec = deps.exec ?? runProgram;
     const key = loadSigningKey(deps.home, deps.vault);
-    const personalDir = join(deps.home, 'workflows');
+    const personalDir = join(deps.home, PERSONAL_DIR_NAME);
     const store = new RunStore(join(deps.home, 'workflow-runs'));
 
     this.approvals = new ApprovalStore(join(deps.home, 'workflow-approvals.json'), key);
-    this.catalog = new WorkflowCatalog(this.approvals, personalDir);
+    this.catalog = new WorkflowCatalog(this.approvals, personalDir, () => this.pushEntries());
     this.scheduler = new WorkflowScheduler({
       file: new SignedFile(join(deps.home, 'workflow-rules.json'), key, RULES_SCHEMA, EMPTY_RULES),
       now: deps.now,
@@ -186,6 +194,7 @@ export class WorkflowsService implements BridgeHandler {
   stop(): void {
     if (this.clock) clearInterval(this.clock);
     this.scheduler.stop();
+    this.folders.dispose();
     this.runs.markCutOff();
     this.power.update(false);
     this.releaseAnswerer?.();
@@ -215,6 +224,33 @@ export class WorkflowsService implements BridgeHandler {
   private pushState(): void {
     this.dropOldNotices();
     this.deps.onState(this.state());
+  }
+
+  /** The page's list of workflow files, and the files to watch from now on. */
+  list(projectPath: string): WorkflowEntry[] {
+    if (projectPath !== this.shownProject) {
+      this.shownProject = projectPath;
+      this.folders.watch(this.workflowFolders(projectPath));
+    }
+    return this.catalog.list(projectPath);
+  }
+
+  /** The workflow folders, and the parents that show when one is made or deleted. */
+  private workflowFolders(projectPath: string): WatchTarget[] {
+    const project = join(projectPath, PROJECT_WORKFLOWS_DIR);
+    const fleetDir = dirname(project);
+    return [
+      { dir: projectPath, only: basename(fleetDir) },
+      { dir: fleetDir, only: basename(project) },
+      { dir: project },
+      { dir: this.deps.home, only: PERSONAL_DIR_NAME },
+      { dir: join(this.deps.home, PERSONAL_DIR_NAME) }
+    ];
+  }
+
+  private pushEntries(): void {
+    const projectPath = this.shownProject;
+    if (projectPath) this.deps.onEntries({ projectPath, entries: this.catalog.list(projectPath) });
   }
 
   private onRunChange(): void {
@@ -399,8 +435,20 @@ export class WorkflowsService implements BridgeHandler {
       this.scheduler.resumePaused(
         (rule) => rule.projectPath === projectPath && rule.workflowId === id
       );
+      this.dropCreateNotice(projectPath, id);
     }
     return approved;
+  }
+
+  /** The file an agent made was approved or deleted, so nothing waits for review. */
+  private dropCreateNotice(projectPath: string, id: string): void {
+    this.notices = this.notices.filter(
+      (notice) =>
+        notice.kind !== 'agent-create' ||
+        notice.projectPath !== projectPath ||
+        notice.workflowId !== id
+    );
+    this.pushState();
   }
 
   /** A deleted file pauses each rule that uses it, with the reason. */
@@ -411,6 +459,7 @@ export class WorkflowsService implements BridgeHandler {
         this.scheduler.pause(rule.id, 'Its workflow file was deleted.');
       }
     }
+    this.dropCreateNotice(projectPath, id);
   }
 
   /** A file from outside: it arrives needing approval, as any file a person did not write here. */
@@ -457,13 +506,11 @@ export class WorkflowsService implements BridgeHandler {
     return this.posting.start(runId);
   }
 
-  remainingPosts(runId: string): number {
-    const run = this.runs.get(runId);
-    return run ? postsLeft(run).length : 0;
-  }
-
   answerPermission(toolUseId: string, decision: 'allow' | 'deny'): boolean {
-    return this.deps.answerPermission(toolUseId, decision);
+    const answered = this.deps.answerPermission(toolUseId, decision);
+    // False means that the request is gone. Either way, nothing waits for a person.
+    this.runs.onPermissionAnswered(toolUseId);
+    return answered;
   }
 
   private onRunEnded(run: WorkflowRun): void {

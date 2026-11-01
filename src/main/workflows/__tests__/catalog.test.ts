@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalStore } from '../approval';
 import { WorkflowCatalog } from '../catalog';
 import { hashText, PROJECT_WORKFLOWS_DIR, WorkflowFileError } from '../config';
@@ -55,6 +55,18 @@ describe('WorkflowCatalog', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('says when a person changes the list', () => {
+    const changed = vi.fn();
+    const watched = new WorkflowCatalog(approvals, personal, changed);
+
+    watched.save(saveRequest(null, TEXT));
+    writeProjectFile('task', OTHER_TEXT);
+    watched.approve(project, 'task', hashText(OTHER_TEXT));
+    watched.remove(project, 'task');
+
+    expect(changed).toHaveBeenCalledTimes(3);
   });
 
   describe('symlinks in a project', () => {

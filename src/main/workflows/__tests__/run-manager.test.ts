@@ -50,6 +50,16 @@ describe('WorkflowRunManager', () => {
     return run;
   }
 
+  /** Holds each new pane open until the test says so. */
+  function deferredOpen(): { resolve: () => void } {
+    let resolve: () => void = () => undefined;
+    const gate = new Promise<void>((done) => {
+      resolve = done;
+    });
+    h.deps.openPane = async () => gate;
+    return { resolve: () => resolve() };
+  }
+
   function finishAll(run: WorkflowRun): void {
     for (const agent of run.agents) {
       if (agent.paneId !== null) h.manager.finishAgent(run.id, agent.id, `${agent.role} is done.`);
@@ -602,6 +612,114 @@ describe('WorkflowRunManager', () => {
 
     it('keeps other notices after a run ends', () => {
       expect(noticeIsCurrent(notice('report-ready'), undefined)).toBe(true);
+    });
+
+    it('keeps a notice that has no run', () => {
+      expect(noticeIsCurrent({ ...notice('report-ready'), runId: null }, undefined)).toBe(true);
+    });
+
+    it('drops a queued notice when the run leaves the queue', async () => {
+      const run = await workingRun(ONE_AGENT);
+
+      expect(noticeIsCurrent(notice('queued'), { ...run, state: 'queued' })).toBe(true);
+      expect(noticeIsCurrent(notice('queued'), run)).toBe(false);
+    });
+
+    it('drops a limit notice when the limit no longer holds', async () => {
+      const run = await workingRun(ONE_AGENT);
+
+      expect(noticeIsCurrent(notice('limit'), run)).toBe(false);
+
+      run.limitReachedAt = 1;
+
+      expect(noticeIsCurrent(notice('limit'), run)).toBe(true);
+    });
+
+    it('drops a report notice when the run is closed', async () => {
+      const run = await workingRun(ONE_AGENT);
+
+      expect(noticeIsCurrent(notice('report-ready'), run)).toBe(true);
+
+      h.manager.close(run.id, false);
+
+      expect(noticeIsCurrent(notice('report-ready'), run)).toBe(false);
+    });
+  });
+
+  describe('a person answers a permission', () => {
+    it('clears the question before the hook reports back', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.onPermission(paneOf(run, 0), 'tool-1', 'Bash');
+      expect(run.agents[0].pendingPermission?.toolUseId).toBe('tool-1');
+
+      h.manager.onPermissionAnswered('tool-1');
+
+      expect(run.agents[0].pendingPermission).toBeNull();
+      expect(run.agents[0].needsPerson).toBe(false);
+      expect(run.agents[0].state).toBe('working');
+    });
+
+    it('leaves a stopped agent stopped', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.onPermission(paneOf(run, 0), 'tool-1', 'Bash');
+      h.manager.stop(run.id);
+
+      h.manager.onPermissionAnswered('tool-1');
+
+      expect(run.agents[0].pendingPermission).toBeNull();
+      expect(run.agents[0].state).toBe('failed');
+    });
+
+    it('leaves a skipped agent skipped', async () => {
+      const run = await workingRun();
+      h.manager.onPermission(paneOf(run, 0), 'tool-1', 'Bash');
+      h.manager.skip(run.id, run.agents[0].id);
+
+      h.manager.onPermissionAnswered('tool-1');
+
+      expect(run.agents[0].state).toBe('skipped');
+    });
+
+    it('leaves an agent that waits on another tool', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.onPermission(paneOf(run, 0), 'tool-1', 'Bash');
+
+      h.manager.onPermissionAnswered('tool-2');
+
+      expect(run.agents[0].pendingPermission?.toolUseId).toBe('tool-1');
+    });
+  });
+
+  describe('live status', () => {
+    it('shows a retry before the new pane opens', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.onPaneClosed(paneOf(run, 0), true);
+      const slow = deferredOpen();
+      const states: string[] = [];
+      h.deps.onRun = (changed) => states.push(changed.agents[0].state);
+
+      const retrying = h.manager.retry(run.id, run.agents[0].id);
+      await flush();
+
+      expect(states).toContain('starting');
+      slow.resolve();
+      await retrying;
+    });
+
+    it('shows Go on before the panes open', async () => {
+      const run = await workingRun(ONE_AGENT);
+      h.manager.stop(run.id);
+      run.state = 'cut-off';
+      const slow = deferredOpen();
+      const states: string[] = [];
+      h.deps.onRun = (changed) => states.push(changed.state);
+
+      const going = h.manager.goOn(run.id);
+      await flush();
+
+      expect(states).toContain('running');
+      slow.resolve();
+      await going;
     });
   });
 

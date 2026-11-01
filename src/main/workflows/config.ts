@@ -38,7 +38,7 @@ const Finish = z.strictObject({
   path: z.string().max(400).optional()
 });
 
-const WorkflowFile = z.strictObject({
+export const WorkflowFile = z.strictObject({
   name: z.string().min(1).max(80),
   shared: z.string().max(20_000).default(''),
   board: z.boolean().default(true),
