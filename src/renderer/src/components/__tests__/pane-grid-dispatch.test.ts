@@ -9,6 +9,7 @@ import type { PaneGridTab } from '../../lib/pane-layout';
 // exactly which leaves would have spawned a shell.
 const { terminalPane } = vi.hoisted(() => ({ terminalPane: vi.fn(() => null) }));
 vi.mock('../TerminalPane', () => ({ TerminalPane: terminalPane }));
+vi.mock('../workflows/DraftPane', () => ({ DraftPane: () => null }));
 
 const { PaneGrid } = await import('../PaneGrid');
 

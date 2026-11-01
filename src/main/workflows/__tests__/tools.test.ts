@@ -24,7 +24,8 @@ describe('toolsFor', () => {
       'fleet_findings_list',
       'fleet_run_finish',
       'fleet_workflow_list',
-      'fleet_workflow_status'
+      'fleet_workflow_status',
+      'fleet_plan_submit'
     ]);
   });
 
@@ -35,7 +36,16 @@ describe('toolsFor', () => {
       'fleet_findings_merge',
       'fleet_run_finish',
       'fleet_workflow_list',
-      'fleet_workflow_status'
+      'fleet_workflow_status',
+      'fleet_plan_submit'
+    ]);
+  });
+
+  it('gives a builder pane the draft tool, and no way to run or finish', () => {
+    expect(names('builder')).toEqual([
+      'fleet_workflow_list',
+      'fleet_workflow_guide',
+      'fleet_draft_save'
     ]);
   });
 

@@ -63,8 +63,8 @@ export function createWorkflows(host: WorkflowsHost): WorkflowsService {
       await claudeSessions.sendPrompt(sessionId, text);
     },
     addPermissionAnswerer: () => claudeSessions.addPermissionAnswerer(),
-    answerPermission: (toolUseId, decision) =>
-      claudeSessions.respondToPermission(toolUseId, decision),
+    answerPermission: (toolUseId, decision, reason, mode) =>
+      claudeSessions.respondToPermission(toolUseId, decision, reason, undefined, mode),
     subscribeSessions: (listener) => claudeSessions.registry.subscribe(listener),
     bridgeProblem: () =>
       claudeSessions.bridgeReady ? null : 'Session tracking is off, so agents cannot reach Fleet.',

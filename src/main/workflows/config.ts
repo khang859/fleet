@@ -3,7 +3,14 @@ import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { parse, TomlError } from 'smol-toml';
 import { z } from 'zod';
-import type { WorkflowDef, WorkflowScope } from '../../shared/workflows';
+import {
+  agentsOf,
+  latestWithRole,
+  type WorkflowAgentDef,
+  type WorkflowDef,
+  type WorkflowScope,
+  type WorkflowStageDef
+} from '../../shared/workflows';
 
 /** Where a project keeps its workflows, from its root. */
 export const PROJECT_WORKFLOWS_DIR = join('.fleet', 'workflows');
@@ -33,8 +40,27 @@ const Agent = z.strictObject({
   prompt: z.string().min(1).max(20_000)
 });
 
+// `program` can come from the `resume` target, and the access default depends on it too.
+const StageAgent = z.strictObject({
+  role: z.string().min(1).max(60),
+  program: z.enum(['pi', 'claude']).optional(),
+  prompt: z.string().min(1).max(20_000),
+  access: z.enum(['read', 'write']).optional(),
+  talks: z.boolean().optional(),
+  plan: z.boolean().optional(),
+  resume: z.string().min(1).max(60).optional()
+});
+
+const Stage = z.strictObject({
+  name: z.string().min(1).max(60),
+  only_with_findings: z.boolean().optional(),
+  agents: z.array(StageAgent).min(1).max(12)
+});
+
+type RawStage = z.infer<typeof Stage>;
+
 const Finish = z.strictObject({
-  action: z.enum(['save-report', 'post-pr']),
+  action: z.enum(['save-report', 'post-pr', 'open-pr']),
   path: z.string().max(400).optional()
 });
 
@@ -42,12 +68,15 @@ export const WorkflowFile = z.strictObject({
   name: z.string().min(1).max(80),
   shared: z.string().max(20_000).default(''),
   board: z.boolean().default(true),
-  workspace: z.enum(['current', 'pr-worktree']).default('current'),
+  workspace: z.enum(['current', 'pr-worktree', 'new-branch']).default('current'),
   inputs: z.array(Input).max(10).default([]),
-  agents: z.array(Agent).min(1).max(12),
+  agents: z.array(Agent).min(1).max(12).optional(),
   judge: Agent.optional(),
+  stages: z.array(Stage).min(1).max(12).optional(),
   finish: Finish.optional()
 });
+
+type RawFile = z.infer<typeof WorkflowFile>;
 
 export class WorkflowFileError extends Error {}
 
@@ -94,7 +123,7 @@ function checkRules(def: WorkflowDef): string[] {
   if (names.size !== def.inputs.length) problems.push('Two inputs have the same name.');
 
   const known = new Set([...names, 'slug']);
-  const prompts = [...def.agents, ...(def.judge ? [def.judge] : [])].map((agent) => agent.prompt);
+  const prompts = agentsOf(def).map((agent) => agent.prompt);
   const texts = [def.shared, ...prompts, def.finish?.path ?? ''];
   for (const name of new Set(texts.flatMap(placeholders))) {
     if (!known.has(name)) problems.push(`The placeholder {{${name}}} has no matching input.`);
@@ -107,12 +136,89 @@ function checkRules(def: WorkflowDef): string[] {
   if (def.finish?.action === 'post-pr' && def.workspace !== 'pr-worktree') {
     problems.push('action = "post-pr" needs workspace = "pr-worktree".');
   }
+  if (def.finish?.action === 'open-pr' && def.workspace !== 'new-branch') {
+    problems.push('action = "open-pr" needs workspace = "new-branch".');
+  }
   if (def.finish?.path !== undefined && !def.finish.path.endsWith('.md')) {
     problems.push('finish.path must end in .md.');
   }
-  const roles = [...def.agents, ...(def.judge ? [def.judge] : [])].map((agent) => agent.role);
-  if (new Set(roles).size !== roles.length) problems.push('Two agents have the same role.');
+  if (hasRepeatedRole(def)) problems.push('Two agents have the same role.');
+  return [...problems, ...(def.stages ? stageProblems(def, def.stages) : [])];
+}
+
+/** A role can come back only as an agent that goes on with that role's session. */
+function hasRepeatedRole(def: WorkflowDef): boolean {
+  const fresh = agentsOf(def).filter((agent) => agent.resume !== agent.role);
+  return new Set(fresh.map((agent) => agent.role)).size !== fresh.length;
+}
+
+function stageProblems(def: WorkflowDef, stages: WorkflowStageDef[]): string[] {
+  const problems = stages.flatMap(agentProblems);
+  if (stages[0].only_with_findings) {
+    problems.push('The first stage cannot have only_with_findings, as the board is empty then.');
+  }
+  if (!def.board && stages.some((stage) => stage.only_with_findings)) {
+    problems.push('only_with_findings needs board = true.');
+  }
+  if (def.finish && stages[stages.length - 1].agents.length !== 1) {
+    problems.push('With a finish, the last stage must have one agent, who writes the report.');
+  }
   return problems;
+}
+
+function agentProblems(stage: WorkflowStageDef): string[] {
+  const roles = stage.agents.map((agent) => agent.role);
+  const problems = stage.agents
+    .filter((agent) => agent.plan && agent.access !== 'write')
+    .map((agent) => `${agent.role} has plan = true, so it needs access = "write".`);
+  if (new Set(roles).size !== roles.length) {
+    problems.push(`Stage "${stage.name}" has two agents with the same role.`);
+  }
+  return problems;
+}
+
+/** One agent as it runs: `resume` gives it the program and access of the named agent. */
+function resolveAgent(
+  agent: RawStage['agents'][number],
+  earlier: WorkflowStageDef[],
+  problems: string[]
+): WorkflowAgentDef {
+  const target = agent.resume === undefined ? undefined : latestWithRole(earlier, agent.resume);
+  if (agent.resume !== undefined && !target) {
+    problems.push(`${agent.role} has resume = "${agent.resume}", but no earlier stage has it.`);
+  }
+  if (target && agent.program && agent.program !== target.program) {
+    problems.push(`${agent.role} must use the program of ${target.role}: a session has one.`);
+  }
+  const program = target?.program ?? agent.program;
+  if (!program) problems.push(`${agent.role} needs a program.`);
+  const { access, ...rest } = agent;
+  return { ...rest, program: program ?? 'pi', access: access ?? target?.access ?? 'read' };
+}
+
+function resolveStages(raw: RawStage[], problems: string[]): WorkflowStageDef[] {
+  const stages: WorkflowStageDef[] = [];
+  for (const stage of raw) {
+    const agents = stage.agents.map((agent) => resolveAgent(agent, stages, problems));
+    stages.push({ ...stage, agents });
+  }
+  return stages;
+}
+
+function shapeProblem(file: RawFile): string | null {
+  if (file.stages && (file.agents || file.judge)) {
+    return 'A file has stages or agents, not both.';
+  }
+  return file.stages || file.agents ? null : 'A workflow needs stages or agents.';
+}
+
+/** The file as Fleet runs it, with what is wrong in its stages. */
+function toDef(file: RawFile): { def: WorkflowDef; problems: string[] } {
+  const { stages, agents, ...rest } = file;
+  const problems: string[] = [];
+  const def: WorkflowDef = { ...rest, agents: agents ?? [] };
+  if (stages) def.stages = resolveStages(stages, problems);
+  return { def, problems };
 }
 
 /** The workflow a file describes. Throws `WorkflowFileError` with what is wrong in it. */
@@ -126,9 +232,12 @@ export function parseWorkflow(text: string): WorkflowDef {
   }
   const parsed = WorkflowFile.safeParse(data);
   if (!parsed.success) throw new WorkflowFileError(describe(parsed.error, text));
-  const problems = checkRules(parsed.data);
-  if (problems.length > 0) throw new WorkflowFileError(problems.join('\n'));
-  return parsed.data;
+  const shape = shapeProblem(parsed.data);
+  if (shape) throw new WorkflowFileError(shape);
+  const { def, problems } = toDef(parsed.data);
+  const all = [...problems, ...checkRules(def)];
+  if (all.length > 0) throw new WorkflowFileError(all.join('\n'));
+  return def;
 }
 
 export function hashText(bytes: Buffer | string): string {

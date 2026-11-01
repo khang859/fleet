@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** The kind of pane that asks. Main decides what each kind may do. */
-export type PaneKind = 'outside' | 'run' | 'last';
+export type PaneKind = 'outside' | 'run' | 'last' | 'builder';
 
 const NewItem = {
   kind: z.string().min(1).max(60).describe('Short type, such as bug, style or note.'),
@@ -46,7 +46,7 @@ export const TOOLS = {
     })
   },
   fleet_workflow_list: {
-    panes: ['outside', 'run', 'last'],
+    panes: ['outside', 'run', 'last', 'builder'],
     description: 'List the workflows of this project, with their approval state.',
     args: z.strictObject({ project: z.string().optional() })
   },
@@ -66,10 +66,26 @@ export const TOOLS = {
     args: z.strictObject({ run: z.string().min(1) })
   },
   fleet_workflow_guide: {
-    panes: ['outside'],
+    panes: ['outside', 'builder'],
     description:
       'How to write a Fleet workflow: the steps, the file format, the rules and full examples. Call this before fleet_workflow_create.',
     args: noArgs
+  },
+  fleet_plan_submit: {
+    panes: ['run', 'last'],
+    description:
+      'Send your whole plan to a person, as Markdown. Then end your turn. Send all of it again to replace it. Only a Pi agent that must plan first can use this.',
+    args: z.strictObject({
+      plan: z.string().min(1).max(400_000).describe('The whole plan, as Markdown.')
+    })
+  },
+  fleet_draft_save: {
+    panes: ['builder'],
+    description:
+      'Save the workflow draft of this pane. Send the whole file each time. A bad file is refused, and the reply says why. The first save names the file from its name. A person must approve the draft before it can run.',
+    args: z.strictObject({
+      toml: z.string().min(1).max(100_000).describe('The whole TOML file.')
+    })
   },
   fleet_workflow_create: {
     panes: ['outside'],

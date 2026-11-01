@@ -1,9 +1,11 @@
 import { diffLines, type DiffOp } from '../../../../shared/agent-diff';
-import type {
-  WorkflowAgentDef,
-  WorkflowDef,
-  WorkflowEntry,
-  WorkflowProgram
+import {
+  agentsOf,
+  stagesOf,
+  type WorkflowAgentDef,
+  type WorkflowDef,
+  type WorkflowEntry,
+  type WorkflowProgram
 } from '../../../../shared/workflows';
 import { parseToForm } from './workflow-toml';
 
@@ -24,7 +26,15 @@ export type ReviewSetting = {
 };
 
 export type ReviewAgent = {
+  /** The same role can come back in a later stage, so the role is not a key. */
+  id: string;
   role: string;
+  /** Set in a stage file. */
+  stage?: string;
+  access?: WorkflowAgentDef['access'];
+  talks?: boolean;
+  plan?: boolean;
+  resume?: string;
   program: WorkflowProgram;
   /** The approved program, when it is not the same. */
   wasProgram?: WorkflowProgram;
@@ -39,7 +49,9 @@ export type WorkflowReview = {
   agents: ReviewAgent[];
 };
 
-type RosterAgent = WorkflowAgentDef & { last: boolean };
+type RuleKeys = 'id' | 'role' | 'stage' | 'access' | 'talks' | 'plan' | 'resume';
+
+type RosterAgent = WorkflowAgentDef & { id: string; last: boolean; stage?: string };
 
 const SIGNS: Record<DiffOp['kind'], ReviewLine['sign']> = {
   add: '+',
@@ -55,7 +67,8 @@ export function hasChange(lines: ReviewLine[]): boolean {
   return lines.some((line) => line.sign !== ' ');
 }
 
-function whereText(def: WorkflowDef): string {
+export function whereText(def: WorkflowDef): string {
+  if (def.workspace === 'new-branch') return 'A new branch, in a new worktree';
   return def.workspace === 'pr-worktree' ? 'A new worktree for the PR' : 'The project folder';
 }
 
@@ -73,12 +86,13 @@ function inputsText(def: WorkflowDef): string {
 function finishText(def: WorkflowDef): string {
   if (!def.finish) return 'Show the report in Fleet';
   if (def.finish.action === 'post-pr') return 'Offer to post the findings on the PR';
+  if (def.finish.action === 'open-pr') return 'Push the branch and open a pull request';
   return def.finish.path ? `Save the report to ${def.finish.path}` : 'Save the report';
 }
 
 /** Fleet posts with the first agent's program, so a new agent order can change who posts. */
 function postingText(def: WorkflowDef): string {
-  return `${PROGRAM_LABELS[def.agents[0].program]} posts the findings`;
+  return `${PROGRAM_LABELS[agentsOf(def)[0].program]} posts the findings`;
 }
 
 function settingRows(def: WorkflowDef): Array<[string, string]> {
@@ -104,17 +118,46 @@ function reviewSettings(def: WorkflowDef, before: WorkflowDef): ReviewSetting[] 
     .filter((row) => row.label !== 'Name' || row.was !== undefined);
 }
 
+function stageRoster(def: WorkflowDef): RosterAgent[] {
+  const stages = stagesOf(def);
+  const roster = stages.flatMap((stage) =>
+    stage.agents.map((agent) => ({ ...agent, stage: stage.name, last: false, id: '' }))
+  );
+  const lastStage = stages[stages.length - 1];
+  const count = new Map<string, number>();
+  return roster.map((agent) => {
+    const turn = (count.get(agent.role) ?? 0) + 1;
+    count.set(agent.role, turn);
+    const last = lastStage.agents.length === 1 && agent === roster[roster.length - 1];
+    return { ...agent, id: turn === 1 ? agent.role : `${agent.role}#${turn}`, last };
+  });
+}
+
 function roster(def: WorkflowDef): RosterAgent[] {
-  const agents = def.agents.map((agent) => ({ ...agent, last: false }));
-  return def.judge ? [...agents, { ...def.judge, last: true }] : agents;
+  if (def.stages) return stageRoster(def);
+  const agents = def.agents.map((agent) => ({ ...agent, id: agent.role, last: false }));
+  return def.judge ? [...agents, { ...def.judge, id: def.judge.role, last: true }] : agents;
+}
+
+/** A new access, chat or plan rule can change what an agent may do, so it counts as a change. */
+function movedRules(agent: RosterAgent, old: RosterAgent): boolean {
+  const rules = (each: RosterAgent): string =>
+    JSON.stringify([each.access ?? 'write', !!each.talks, !!each.plan, each.resume ?? null]);
+  return rules(agent) !== rules(old) || agent.stage !== old.stage;
+}
+
+function ruleFields(agent: RosterAgent): Pick<ReviewAgent, RuleKeys> {
+  const { id, role, stage, access, talks, plan, resume } = agent;
+  return { id, role, stage, access, talks, plan, resume };
 }
 
 function reviewAgent(agent: RosterAgent, old: RosterAgent | undefined): ReviewAgent {
   const lines = lineDiff(old?.prompt ?? '', agent.prompt);
   const movedProgram = old !== undefined && old.program !== agent.program;
-  const changed = hasChange(lines) || movedProgram || old?.last !== agent.last;
+  const movedRule = old !== undefined && movedRules(agent, old);
+  const changed = hasChange(lines) || movedProgram || movedRule || old?.last !== agent.last;
   return {
-    role: agent.role,
+    ...ruleFields(agent),
     program: agent.program,
     wasProgram: movedProgram ? old.program : undefined,
     last: agent.last,
@@ -125,7 +168,7 @@ function reviewAgent(agent: RosterAgent, old: RosterAgent | undefined): ReviewAg
 
 function removedAgent(agent: RosterAgent): ReviewAgent {
   return {
-    role: agent.role,
+    ...ruleFields(agent),
     program: agent.program,
     last: agent.last,
     status: 'removed',
@@ -136,15 +179,15 @@ function removedAgent(agent: RosterAgent): ReviewAgent {
 /** A new file has nothing to compare, so it is compared with itself and shows no change. */
 export function buildReview(def: WorkflowDef, approved: WorkflowDef | null): WorkflowReview {
   const before = approved ?? def;
-  const oldAgents = new Map(roster(before).map((agent) => [agent.role, agent]));
-  const roles = new Set(roster(def).map((agent) => agent.role));
+  const oldAgents = new Map(roster(before).map((agent) => [agent.id, agent]));
+  const ids = new Set(roster(def).map((agent) => agent.id));
   return {
     settings: reviewSettings(def, before),
     shared: lineDiff(before.shared, def.shared),
     agents: [
-      ...roster(def).map((agent) => reviewAgent(agent, oldAgents.get(agent.role))),
+      ...roster(def).map((agent) => reviewAgent(agent, oldAgents.get(agent.id))),
       ...roster(before)
-        .filter((agent) => !roles.has(agent.role))
+        .filter((agent) => !ids.has(agent.id))
         .map(removedAgent)
     ]
   };

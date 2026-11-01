@@ -68,6 +68,32 @@ export class RunStore {
     return path;
   }
 
+  /** Save one version of a plan, and answer its absolute path. */
+  writePlan(runId: string, version: number, text: string): string {
+    const dir = join(this.folder(runId), 'plans');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const path = join(dir, `${version}.md`);
+    writeFileSync(path, text, { mode: 0o600 });
+    return path;
+  }
+
+  readPlan(runId: string, version: number): string | null {
+    try {
+      return readFileSync(join(this.folder(runId), 'plans', `${version}.md`), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /** The change so far, for agents with no shell to run `git diff`. */
+  writeDiff(runId: string, text: string): void {
+    writeFileSync(this.diffPath(runId), text, { mode: 0o600 });
+  }
+
+  diffPath(runId: string): string {
+    return join(this.folder(runId), 'changes.diff');
+  }
+
   workflowBytes(runId: string): string {
     return readFileSync(join(this.folder(runId), 'workflow.toml'), 'utf8');
   }

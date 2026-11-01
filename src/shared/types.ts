@@ -107,7 +107,9 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | OpenablePaneType | 'agent' | 'ssh-browser';
+  paneType?: 'terminal' | OpenablePaneType | 'agent' | 'ssh-browser' | 'workflow-draft';
+  /** The builder session that a `workflow-draft` pane shows. */
+  builderId?: string;
   filePath?: string;
   /**
    * Where to put the cursor when a `file` pane opens. Set when the path that

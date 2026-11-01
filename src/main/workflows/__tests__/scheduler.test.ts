@@ -290,6 +290,7 @@ describe('WorkflowScheduler', () => {
       start,
       busy: () => false,
       onBattery: () => false,
+      ruleProblem: () => null,
       listPrs: async () => Promise.resolve([]),
       onChange: () => undefined,
       ...fields
@@ -299,6 +300,12 @@ describe('WorkflowScheduler', () => {
   function addRule(target: WorkflowScheduler, fields: Partial<WorkflowRule> = {}): WorkflowRule {
     return target.saveRule({ ...rule(fields), id: undefined });
   }
+
+  it('refuses a rule for a file that needs a person', () => {
+    const target = makeScheduler({ ruleProblem: () => 'This workflow needs a person.' });
+
+    expect(() => addRule(target)).toThrow('needs a person');
+  });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'fleet-wf-scheduler-'));

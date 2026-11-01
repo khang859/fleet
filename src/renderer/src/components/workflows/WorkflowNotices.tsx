@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { WorkflowNotice } from '../../../../shared/workflows';
 import {
   callWorkflows,
+  showPlan,
   showRun,
   showWorkflowError,
   showWorkflowsPage,
@@ -53,7 +54,18 @@ function NoticeActions({ notice }: { notice: WorkflowNotice }): React.JSX.Elemen
           Stop
         </Button>
       )}
-      {runId && (
+      {runId && notice.planAgentId && (
+        <Button
+          tone="primary"
+          onClick={async () => {
+            showPlan(runId, notice.planAgentId ?? '');
+            return callWorkflows('dismissNotice', notice.id);
+          }}
+        >
+          Read the plan
+        </Button>
+      )}
+      {runId && !notice.planAgentId && (
         <Button
           onClick={async () => {
             showRun(runId);

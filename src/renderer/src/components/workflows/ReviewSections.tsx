@@ -92,8 +92,13 @@ function AgentCard({ agent }: { agent: ReviewAgent }): React.JSX.Element {
       lines={agent.lines}
       badges={
         <>
+          {agent.stage && <Badge tone="gray">{agent.stage}</Badge>}
           {agent.last && <Badge tone="blue">Goes last</Badge>}
           <ProgramBadge agent={agent} />
+          {agent.stage && agent.access === 'write' && <Badge tone="amber">Changes code</Badge>}
+          {agent.talks && <Badge tone="blue">Talks with you</Badge>}
+          {agent.plan && <Badge tone="blue">Plan approval</Badge>}
+          {agent.resume && <Badge tone="gray">Goes on from {agent.resume}</Badge>}
           {status && <Badge tone={status.tone}>{status.label}</Badge>}
         </>
       }
@@ -148,7 +153,7 @@ export function ReviewSections({ review }: { review: WorkflowReview }): React.JS
         <SectionTitle>Agents ({staying})</SectionTitle>
         <div className="space-y-3">
           {review.agents.map((agent) => (
-            <AgentCard key={agent.role} agent={agent} />
+            <AgentCard key={agent.id} agent={agent} />
           ))}
         </div>
       </div>

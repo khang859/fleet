@@ -16,6 +16,8 @@ fleet_workflow_create never replaces a file. To change a file, ask the person to
 
 const FORMAT = `## Format
 
+A file has stages, or it has agents and a judge. It cannot have both. Use stages for new work.
+
 Top-level keys:
 
 - name: required, up to 80 characters.
@@ -24,6 +26,7 @@ Top-level keys:
 - workspace: where agents work.
   - "current" is the default: the project folder. All agents share this folder, so do not let two agents edit the same files.
   - "pr-worktree" makes a new worktree for one pull request. It needs exactly one required input with type = "pr".
+  - "new-branch" makes a new worktree on a new branch, so an agent can change code away from the project folder.
 
 [[inputs]], up to 10. Fleet asks the person for these when the run starts:
 
@@ -32,7 +35,24 @@ Top-level keys:
 - type: "text" is the default, or "pr".
 - required: true is the default.
 
-[[agents]], from 1 to 12. These agents work at the same time:
+[[stages]], from 1 to 12. Stages run in order. A stage starts when each agent of the stage before it is done or skipped:
+
+- name: required, up to 60 characters.
+- only_with_findings: true skips the stage when the board is empty. It needs board = true, and the first stage cannot use it.
+
+[[stages.agents]], from 1 to 12 in a stage. These agents work at the same time:
+
+- role: required, up to 60 characters. Each role must be different, but an agent with resume = its own role can use it again.
+- program: "claude" or "pi". If the person does not say which, ask them. An agent with resume takes the program of the named agent.
+- prompt: required, up to 20000 characters.
+- access: "read" is the default, and the agent cannot change files. "write" lets it change code. Do not let two agents with "write" work at the same time in one folder.
+- talks: true means that the agent talks with a person, and Fleet waits for that person. Such a file cannot run from an automatic rule.
+- plan: true means that the agent must get its plan approved before it changes code. It needs access = "write", and the file cannot run from an automatic rule.
+- resume: the role of an agent in an earlier stage. This agent goes on with that agent's session, and it remembers that talk. It keeps the access of that agent, unless you set access.
+
+With a finish, the last stage must have one agent. Its summary is the report.
+
+[[agents]], from 1 to 12, in a file with no stages. These agents work at the same time:
 
 - role: required, up to 60 characters. Each role must be different.
 - program: required. Use "claude" for Claude Code, or "pi" for Pi. If the person does not say which, ask them.
@@ -42,7 +62,7 @@ Top-level keys:
 
 [finish], optional. What happens at the end:
 
-- action: "save-report" or "post-pr". "post-pr" needs workspace = "pr-worktree". It makes Post the main button, and Post sends the report as one PR comment.
+- action: "save-report", "post-pr" or "open-pr". "post-pr" needs workspace = "pr-worktree". It makes Post the main button, and Post sends the report as one PR comment. "open-pr" needs workspace = "new-branch". It pushes the branch and opens a pull request, with the report as the body.
 - path: where "save-report" writes, up to 400 characters. It is inside the project, and it must end in .md.
 
 No other key is allowed. A workflow cannot run a command.

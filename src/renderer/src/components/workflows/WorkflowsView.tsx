@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Play, Trash2 } from 'lucide-react';
-import type {
-  WorkflowEntry,
-  WorkflowRun,
-  WorkflowScope,
-  WorkflowStarter
+import { MessageSquare, Pencil, Play, Sparkles, Trash2 } from 'lucide-react';
+import {
+  agentsOf,
+  type WorkflowEntry,
+  type WorkflowRun,
+  type WorkflowScope,
+  type WorkflowStarter
 } from '../../../../shared/workflows';
 import { callWorkflows, showWorkflowError, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
 import { ApprovalBadge, Badge, Button, Empty } from './parts';
 import { formatAgo } from './workflow-format';
+import { BuilderStart } from './BuilderStart';
 import { RunSheet } from './RunSheet';
 import { WorkflowEditor, type EditorSource } from './WorkflowEditor';
 import { AwayPanel } from './AwayPanel';
@@ -25,16 +27,19 @@ function WorkflowRow({
   lastRun,
   onRun,
   onEdit,
-  onDelete
+  onDelete,
+  onTalk
 }: {
   entry: WorkflowEntry;
   lastRun: number | null;
   onRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Go back to the agent that made this file, when there is one. */
+  onTalk?: () => void;
 }): React.JSX.Element {
   const { def } = entry;
-  const agents = def ? def.agents.length + (def.judge ? 1 : 0) : 0;
+  const agents = def ? agentsOf(def).length : 0;
   return (
     <div className="group flex items-center gap-3 border-b border-fleet-border px-4 py-2.5 last:border-b-0">
       <div className="min-w-0 flex-1">
@@ -68,6 +73,15 @@ function WorkflowRow({
         )}
       </div>
       <div className="flex w-36 items-center justify-end gap-1">
+        {onTalk && (
+          <button
+            aria-label="Edit with the agent"
+            onClick={onTalk}
+            className="rounded p-1 text-fleet-text-subtle opacity-0 hover:bg-fleet-surface-2 hover:text-fleet-text focus:opacity-100 group-hover:opacity-100"
+          >
+            <MessageSquare size={13} />
+          </button>
+        )}
         <button
           aria-label="Edit"
           onClick={onEdit}
@@ -112,7 +126,7 @@ function StarterCards({
   }, []);
 
   return (
-    <div className="mx-auto grid max-w-2xl grid-cols-3 gap-2 text-left">
+    <div className="mx-auto grid max-w-2xl grid-cols-2 gap-2 text-left">
       {starters.map((starter) => (
         <button
           key={starter.id}
@@ -166,10 +180,21 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditorSource | null>(null);
+  const [making, setMaking] = useState(false);
+  const [drafts, setDrafts] = useState<string[]>([]);
   const sheet = entries.find((entry) => entry.id === sheetId) ?? null;
   const deleting = entries.find((entry) => entry.id === deletingId) ?? null;
   const isRepo = projects.find((project) => project.path === projectPath)?.isRepo ?? true;
   const cutOff = runs.filter((run) => run.state === 'cut-off' && run.projectPath === projectPath);
+
+  useEffect(() => {
+    callWorkflows('draftsWithBuilder', projectPath).then(setDrafts).catch(showWorkflowError);
+  }, [projectPath, entries]);
+
+  const talk = async (entry: WorkflowEntry): Promise<void> => {
+    const reply = await callWorkflows('reopenBuilder', projectPath, entry.id);
+    if (!reply.ok) useToastStore.getState().show(reply.message);
+  };
 
   const startNew = async (): Promise<void> => {
     const { blank } = await callWorkflows('starters');
@@ -218,8 +243,9 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
       )}
       <div className="flex items-center justify-end gap-2">
         <Button onClick={async () => importFile('project')}>Import TOML</Button>
-        <Button tone="primary" onClick={startNew}>
-          New workflow
+        <Button onClick={startNew}>New workflow</Button>
+        <Button tone="primary" onClick={() => setMaking(true)}>
+          <Sparkles size={12} /> Make with an agent
         </Button>
       </div>
       {entries.length === 0 ? (
@@ -243,11 +269,13 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
               onRun={() => setSheetId(entry.id)}
               onEdit={() => void edit(entry).catch(showWorkflowError)}
               onDelete={() => setDeletingId(entry.id)}
+              onTalk={drafts.includes(entry.id) ? () => void talk(entry) : undefined}
             />
           ))}
         </div>
       )}
       <RunSheet projectPath={projectPath} entry={sheet} onClose={() => setSheetId(null)} />
+      <BuilderStart open={making} projectPath={projectPath} onClose={() => setMaking(false)} />
       <DeleteDialog entry={deleting} onCancel={() => setDeletingId(null)} onConfirm={remove} />
     </div>
   );

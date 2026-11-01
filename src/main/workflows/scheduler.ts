@@ -198,6 +198,8 @@ export function startOutcome(started: StartRunResult, pr: number | null): StartO
 export type SchedulerDeps = {
   file: SignedFile<RulesFile>;
   now: () => number;
+  /** Why a rule cannot use its workflow, or null. */
+  ruleProblem: (rule: WorkflowRule) => string | null;
   /** Start a run for a rule. `pr` is set for a new-PR rule. */
   start: (rule: WorkflowRule, pr: number | null) => Promise<StartOutcome>;
   busy: (rule: WorkflowRule) => boolean;
@@ -284,6 +286,8 @@ export class WorkflowScheduler {
       createdAt: existing?.createdAt ?? this.deps.now(),
       lastStart: existing?.lastStart ?? null
     };
+    const problem = this.deps.ruleProblem(rule);
+    if (problem) throw new Error(problem);
     const parsed = Rule.parse(rule);
     this.data.rules = existing
       ? this.data.rules.map((other) => (other.id === rule.id ? parsed : other))

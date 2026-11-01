@@ -1,6 +1,13 @@
 import type { BrowserWindow, IpcMain, OpenDialogOptions, SaveDialogOptions } from 'electron';
 import { IPC_CHANNELS } from '../../shared/constants';
-import type { WorkflowsApi, WorkflowScope } from '../../shared/workflows';
+import type { SubagentDefinition } from '../../shared/agent-subagents';
+import type {
+  SavedAgent,
+  WorkflowAccess,
+  WorkflowsApi,
+  WorkflowScope
+} from '../../shared/workflows';
+import { loadSubagents } from '../agent/subagents/definitions';
 import { DEFAULT_DAILY_LIMIT } from './scheduler';
 import type { WorkflowsService } from './index';
 
@@ -30,6 +37,22 @@ export function electronDialogs(
       return picked.filePath || null;
     }
   };
+}
+
+/** A definition with no tool list has them all, so it can change code. */
+function accessOf(tools: SubagentDefinition['tools']): WorkflowAccess {
+  const writes = tools === null || tools.some((tool) => /^(Edit|Write|Bash)$/.test(tool));
+  return writes ? 'write' : 'read';
+}
+
+async function savedAgents(projectPath: string): Promise<SavedAgent[]> {
+  const definitions = await loadSubagents(projectPath);
+  return definitions.map(({ name, description, systemPrompt, tools }) => ({
+    name,
+    description,
+    prompt: systemPrompt,
+    access: accessOf(tools)
+  }));
 }
 
 /** Each thing the page can ask for. Nothing outside this list is reachable. */
@@ -77,6 +100,16 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     openAgent: async (runId, agentId) => runs.openAgent(runId, agentId),
     retryPrepare: (runId) => runs.retryPrepare(runId),
     answerPermission: (toolUseId, decision) => service.answerPermission(toolUseId, decision),
+    check: (text) => catalog.problemIn(text),
+    savedAgents: async (projectPath) => savedAgents(projectPath),
+    startBuilder: async (projectPath, program) => service.builder.start(projectPath, program),
+    reopenBuilder: async (projectPath, draftId) => service.builder.reopen(projectPath, draftId),
+    builderInfo: (id) => service.builder.info(id),
+    draftsWithBuilder: (projectPath) => service.builder.draftsWithSession(projectPath),
+    programs: async () => service.programs(),
+    answerPlan: async (runId, agentId, answer) => runs.answerPlan(runId, agentId, answer),
+    readPlan: (runId, version) => runs.readPlan(runId, version),
+    retryPr: async (runId) => service.retryPr(runId),
     reportPath: (runId) => service.reportPath(runId),
     saveReport: (runId, path, replace) => service.saveReport(runId, path, replace),
     pickReportPath,

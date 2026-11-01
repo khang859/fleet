@@ -1,15 +1,10 @@
-import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
-import type {
-  WorkflowAgentDef,
-  WorkflowDef,
-  WorkflowInput,
-  WorkflowScope
-} from '../../../../shared/workflows';
+import { useEffect, useState } from 'react';
+import type { WorkflowDef, WorkflowScope } from '../../../../shared/workflows';
 import { workspaceSlug } from '../../../../shared/claude-config';
 import { callWorkflows } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
-import { Button, Field, FIELD_CLASS, SectionTitle } from './parts';
+import { Button, FIELD_CLASS } from './parts';
+import { StageEditor } from './StageEditor';
 import { formToToml, parseToForm } from './workflow-toml';
 
 export type EditorSource = {
@@ -21,276 +16,22 @@ export type EditorSource = {
 
 type Tab = 'setup' | 'file';
 
-function AgentFields({
-  agent,
-  onChange,
-  onRemove
-}: {
-  agent: WorkflowAgentDef;
-  onChange: (agent: WorkflowAgentDef) => void;
-  onRemove?: () => void;
-}): React.JSX.Element {
-  return (
-    <div className="space-y-2 rounded-md border border-fleet-border p-3">
-      <div className="flex items-center gap-2">
-        <input
-          aria-label="Role"
-          className={FIELD_CLASS}
-          placeholder="Role"
-          value={agent.role}
-          onChange={(e) => onChange({ ...agent, role: e.target.value })}
-        />
-        <select
-          aria-label="Program"
-          className={`${FIELD_CLASS} w-36`}
-          value={agent.program}
-          onChange={(e) =>
-            onChange({ ...agent, program: e.target.value === 'claude' ? 'claude' : 'pi' })
-          }
-        >
-          <option value="pi">Pi</option>
-          <option value="claude">Claude Code</option>
-        </select>
-        {onRemove && (
-          <button
-            aria-label="Remove"
-            onClick={onRemove}
-            className="rounded p-1 text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text"
-          >
-            <X size={13} />
-          </button>
-        )}
-      </div>
-      <textarea
-        aria-label="Instructions"
-        rows={3}
-        className={`${FIELD_CLASS} resize-y`}
-        placeholder="What this agent does"
-        value={agent.prompt}
-        onChange={(e) => onChange({ ...agent, prompt: e.target.value })}
-      />
-    </div>
-  );
-}
+const CHECK_WAIT_MS = 250;
 
-function InputRow({
-  input,
-  onChange,
-  onRemove
-}: {
-  input: WorkflowInput;
-  onChange: (input: WorkflowInput) => void;
-  onRemove: () => void;
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-2">
-      <input
-        aria-label="Label"
-        className={FIELD_CLASS}
-        placeholder="Label, such as Question"
-        value={input.label}
-        onChange={(e) => onChange({ ...input, label: e.target.value })}
-      />
-      <input
-        aria-label="Name"
-        className={`${FIELD_CLASS} w-40 font-mono`}
-        placeholder="name"
-        value={input.name}
-        onChange={(e) => onChange({ ...input, name: e.target.value })}
-      />
-      <select
-        aria-label="Type"
-        className={`${FIELD_CLASS} w-32`}
-        value={input.type}
-        onChange={(e) => onChange({ ...input, type: e.target.value === 'pr' ? 'pr' : 'text' })}
-      >
-        <option value="text">Text</option>
-        <option value="pr">Pull request</option>
-      </select>
-      <button
-        aria-label="Remove input"
-        onClick={onRemove}
-        className="rounded p-1 text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text"
-      >
-        <X size={13} />
-      </button>
-    </div>
-  );
-}
+/** What Save would refuse, while a person edits. */
+function useFileCheck(text: string): string | null {
+  const [problem, setProblem] = useState<string | null>(null);
 
-const NEW_AGENT: WorkflowAgentDef = { role: '', program: 'pi', prompt: '' };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      callWorkflows('check', text)
+        .then(setProblem)
+        .catch(() => setProblem(null));
+    }, CHECK_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
 
-function replaceAt<T>(list: T[], index: number, item: T): T[] {
-  return list.map((current, position) => (position === index ? item : current));
-}
-
-function FinishFields({
-  def,
-  onChange
-}: {
-  def: WorkflowDef;
-  onChange: (def: WorkflowDef) => void;
-}): React.JSX.Element {
-  const action = def.finish?.action ?? 'none';
-  const setAction = (value: string): void => {
-    if (value === 'post-pr') onChange({ ...def, finish: { action: 'post-pr' } });
-    else if (value === 'save-report') onChange({ ...def, finish: { action: 'save-report' } });
-    else onChange({ ...def, finish: undefined });
-  };
-  return (
-    <section className="space-y-2">
-      <Field label="At the end">
-        <select className={FIELD_CLASS} value={action} onChange={(e) => setAction(e.target.value)}>
-          <option value="post-pr">Post the report on the PR</option>
-          <option value="save-report">Save a report file</option>
-          <option value="none">Do nothing</option>
-        </select>
-      </Field>
-      {action === 'save-report' && (
-        <Field label="Save to" hint="Inside the project. It must end in .md.">
-          <input
-            className={`${FIELD_CLASS} font-mono`}
-            placeholder="docs/research/{{slug}}.md"
-            value={def.finish?.path ?? ''}
-            onChange={(e) =>
-              onChange({
-                ...def,
-                finish: { action: 'save-report', path: e.target.value || undefined }
-              })
-            }
-          />
-        </Field>
-      )}
-    </section>
-  );
-}
-
-function SetupForm({
-  def,
-  onChange
-}: {
-  def: WorkflowDef;
-  onChange: (def: WorkflowDef) => void;
-}): React.JSX.Element {
-  return (
-    <div className="space-y-5">
-      <Field label="Name">
-        <input
-          className={FIELD_CLASS}
-          value={def.name}
-          onChange={(e) => onChange({ ...def, name: e.target.value })}
-        />
-      </Field>
-      <Field label="Instructions for all agents">
-        <textarea
-          rows={3}
-          className={`${FIELD_CLASS} resize-y`}
-          value={def.shared}
-          onChange={(e) => onChange({ ...def, shared: e.target.value })}
-        />
-      </Field>
-      <Field label="Where agents work">
-        <select
-          className={FIELD_CLASS}
-          value={def.workspace}
-          onChange={(e) =>
-            onChange({
-              ...def,
-              workspace: e.target.value === 'pr-worktree' ? 'pr-worktree' : 'current'
-            })
-          }
-        >
-          <option value="pr-worktree">New worktree for each PR</option>
-          <option value="current">Current folder</option>
-        </select>
-      </Field>
-      <label className="flex items-center gap-2 text-xs text-fleet-text-secondary">
-        <input
-          type="checkbox"
-          checked={def.board}
-          onChange={(e) => onChange({ ...def, board: e.target.checked })}
-        />
-        Use a shared board, so agents skip repeats
-      </label>
-
-      <section>
-        <SectionTitle
-          right={
-            <Button
-              tone="quiet"
-              onClick={() =>
-                onChange({
-                  ...def,
-                  inputs: [...def.inputs, { name: '', label: '', type: 'text', required: true }]
-                })
-              }
-            >
-              <Plus size={12} /> Add input
-            </Button>
-          }
-        >
-          Fleet asks for
-        </SectionTitle>
-        <div className="space-y-2">
-          {def.inputs.map((input, index) => (
-            <InputRow
-              key={index}
-              input={input}
-              onChange={(next) => onChange({ ...def, inputs: replaceAt(def.inputs, index, next) })}
-              onRemove={() =>
-                onChange({ ...def, inputs: def.inputs.filter((_, at) => at !== index) })
-              }
-            />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <SectionTitle
-          right={
-            <Button
-              tone="quiet"
-              onClick={() => onChange({ ...def, agents: [...def.agents, NEW_AGENT] })}
-            >
-              <Plus size={12} /> Add agent
-            </Button>
-          }
-        >
-          Agents
-        </SectionTitle>
-        <div className="space-y-2">
-          {def.agents.map((agent, index) => (
-            <AgentFields
-              key={index}
-              agent={agent}
-              onChange={(next) => onChange({ ...def, agents: replaceAt(def.agents, index, next) })}
-              onRemove={
-                def.agents.length > 1
-                  ? () => onChange({ ...def, agents: def.agents.filter((_, at) => at !== index) })
-                  : undefined
-              }
-            />
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <label className="flex items-center gap-2 text-xs text-fleet-text-secondary">
-          <input
-            type="checkbox"
-            checked={def.judge !== undefined}
-            onChange={(e) => onChange({ ...def, judge: e.target.checked ? NEW_AGENT : undefined })}
-          />
-          Run one last agent after the others finish
-        </label>
-        {def.judge && (
-          <AgentFields agent={def.judge} onChange={(judge) => onChange({ ...def, judge })} />
-        )}
-      </section>
-
-      <FinishFields def={def} onChange={onChange} />
-    </div>
-  );
+  return problem;
 }
 
 function hasComments(text: string): boolean {
@@ -312,6 +53,7 @@ export function WorkflowEditor({
   const [baseHash, setBaseHash] = useState(source.baseHash);
   const [problem, setProblem] = useState<string | null>(null);
   const [diskText, setDiskText] = useState<string | null>(null);
+  const checkProblem = useFileCheck(text);
   const isNew = source.baseHash === null;
 
   const form = ((): WorkflowDef | null => {
@@ -343,7 +85,7 @@ export function WorkflowEditor({
   };
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4">
+    <div className="mx-auto max-w-6xl space-y-4 p-4">
       <div className="flex items-center gap-1">
         <Button tone="quiet" onClick={onClose}>
           Back to Workflows
@@ -387,7 +129,11 @@ export function WorkflowEditor({
               This file has comments. A change here removes them. Use the File tab to keep them.
             </p>
           )}
-          <SetupForm def={form} onChange={(next) => setText(formToToml(next))} />
+          <StageEditor
+            def={form}
+            projectPath={projectPath}
+            onChange={(next) => setText(formToToml(next))}
+          />
         </div>
       ) : (
         <div className="space-y-1">
@@ -405,6 +151,11 @@ export function WorkflowEditor({
         </div>
       )}
 
+      {checkProblem && !problem && (
+        <pre className="whitespace-pre-wrap rounded border border-amber-500/30 px-3 py-2 font-mono text-[11px] text-amber-200">
+          {checkProblem}
+        </pre>
+      )}
       {problem && (
         <pre className="whitespace-pre-wrap rounded border border-red-500/30 bg-red-500/5 px-3 py-2 font-mono text-[11px] text-red-200">
           {problem}
@@ -422,7 +173,7 @@ export function WorkflowEditor({
 
       <div className="flex justify-end gap-2 pb-4">
         <Button onClick={onClose}>Cancel</Button>
-        <Button tone="primary" onClick={save}>
+        <Button tone="primary" disabled={checkProblem !== null} onClick={save}>
           Save
         </Button>
       </div>

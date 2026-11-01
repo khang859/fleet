@@ -1,24 +1,54 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import {
   agentChatHandle,
   type OpenAgentResult,
   ACTIVE_RUN_STATES,
+  stagesOf,
   type BoardItem,
+  type PlanAnswer,
+  type PlanBuildMode,
   type RunAgent,
+  type RunBranch,
   type RunOrigin,
   type RunReport,
   type RunTab,
+  type WorkflowAgentDef,
   type WorkflowDef,
   type WorkflowNotice,
   type WorkflowProgram,
-  type WorkflowRun
+  type WorkflowRun,
+  type WorkflowStageDef
 } from '../../shared/workflows';
 import { createLogger } from '../logger';
-import { agentCommandLine, type AgentMode } from './agent-command';
+import { agentCommandLine } from './agent-command';
 import { Board, boardText, type NewItem } from './board';
 import { isPersonInput } from './person-input';
-import { agentBrief, reminderText, RETRY_MESSAGE, RUN_OVER_NOTE, START_MESSAGE } from './prompts';
+import {
+  agentBrief,
+  PLAN_APPROVED_MESSAGE,
+  reminderText,
+  RETRY_MESSAGE,
+  RETURN_MESSAGE,
+  RUN_OVER_NOTE,
+  START_MESSAGE,
+  type BriefHandoff
+} from './prompts';
 import type { RunStore } from './run-store';
+import {
+  agentMode,
+  agentsIn,
+  currentStage,
+  latestPlan,
+  noWayOn,
+  onlyWaitsForPerson,
+  permissionModeOf,
+  reportAgent,
+  runsLast,
+  skipsItself,
+  stageOf,
+  stageToStart
+} from './stages';
 import type { PaneKind } from './tools';
 
 const log = createLogger('workflows:runs');
@@ -41,6 +71,17 @@ export type RunDeps = {
   sendPrompt: (sessionId: string, text: string) => Promise<void>;
   makeWorktree: (run: WorkflowRun, pinnedSha?: string) => Promise<{ path: string; sha: string }>;
   removeWorktree: (run: WorkflowRun) => Promise<void>;
+  /** Make the worktree of a `new-branch` run, or open it again on the run's branch. */
+  makeBranch: (run: WorkflowRun) => Promise<{ path: string; branch: RunBranch }>;
+  /** The change so far, for read-only agents. */
+  diffOf: (run: WorkflowRun) => Promise<string>;
+  /** Answer a held Claude Code request with a mode or a reason. */
+  answerRequest: (
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string,
+    mode?: PlanBuildMode
+  ) => boolean;
   onRun: (run: WorkflowRun) => void;
   onTab: (tab: RunTab) => void;
   notify: (notice: Omit<WorkflowNotice, 'id'>) => void;
@@ -74,10 +115,14 @@ export type RunPlan = {
 
 export type PaneIdentity =
   | { kind: Extract<PaneKind, 'outside'> }
-  | { kind: Exclude<PaneKind, 'outside'>; runId: string; agentId: string }
+  | { kind: Extract<PaneKind, 'run' | 'last'>; runId: string; agentId: string }
+  | { kind: Extract<PaneKind, 'builder'>; project: string; draftId: string | null }
   | { kind: 'old-attempt' };
 
 type Located = { run: WorkflowRun; agent: RunAgent };
+
+const PLAN_WAITS = 'Its plan waits for you.';
+const TALK_WAITS = 'It waits for your answer.';
 
 const OVER_STATES = new Set<RunAgent['state']>(['done', 'skipped']);
 const LIVE_STATES = new Set<RunAgent['state']>(['starting', 'working', 'waiting']);
@@ -135,11 +180,26 @@ function newAgent(role: string, program: WorkflowProgram, isLast: boolean): RunA
   };
 }
 
+function stageAgent(def: WorkflowAgentDef, stage: number, isLast: boolean): RunAgent {
+  const agent: RunAgent = { ...newAgent(def.role, def.program, isLast), stage, access: def.access };
+  if (def.talks) agent.talks = true;
+  if (def.plan) agent.plan = true;
+  if (def.resume) agent.resumes = def.resume;
+  return agent;
+}
+
+function runAgents(def: WorkflowDef): RunAgent[] {
+  return stagesOf(def).flatMap((stage, index) =>
+    stage.agents.map((agent) => stageAgent(agent, index, runsLast(def, index)))
+  );
+}
+
 /** The report of a run as it stands. It always gives something to read. */
 export function buildReport(run: WorkflowRun, why?: string): RunReport {
   const last = run.agents.find((agent) => agent.isLast);
-  if (last?.summary) {
-    return { text: last.summary, incomplete: false, missing: [], savedTo: null, posted: false };
+  const speaker = reportAgent(run);
+  if (speaker?.summary) {
+    return { text: speaker.summary, incomplete: false, missing: [], savedTo: null, posted: false };
   }
   const missing = run.agents
     .filter((agent) => !agent.summary && agent.state !== 'skipped')
@@ -196,6 +256,8 @@ export class WorkflowRunManager {
   private readonly oldPanes = new Set<string>();
   /** Runs that are opening an agent again. Two at once would fight over the worktree. */
   private readonly opening = new Set<string>();
+  /** Runs that are opening a stage. Its agents are not yet all started. */
+  private readonly openingStage = new Set<string>();
   private readonly startedAt = new Map<string, number>();
   /** Agents whose current turn a person started, by agent id. */
   private readonly personTurns = new Set<string>();
@@ -219,7 +281,7 @@ export class WorkflowRunManager {
     }
     if (run.keptPanes.length > 0) {
       this.forgetKeptPanes(run);
-      this.dropWorktree(run);
+      this.dropIdleWorktree(run);
       this.deps.store.save(run);
     }
     this.runs.set(run.id, run);
@@ -229,6 +291,8 @@ export class WorkflowRunManager {
   private releaseAgent(agent: RunAgent): void {
     agent.paneId = null;
     agent.pendingPermission = null;
+    // A Pi plan waits in a file, so it still waits after a restart. A Claude Code request dies.
+    if (agent.program === 'claude') agent.pendingPlan = null;
     if (LIVE_STATES.has(agent.state)) {
       agent.state = 'failed';
       agent.note = 'Fleet closed during this run.';
@@ -279,7 +343,7 @@ export class WorkflowRunManager {
     const count = (run: WorkflowRun): number => {
       const opening = run.state === 'preparing' || run.state === 'running';
       const toOpen = (agent: RunAgent): boolean =>
-        opening && agent.state === 'pending' && !agent.isLast;
+        opening && agent.state === 'pending' && stageOf(agent) === 0;
       return run.agents.filter((agent) => LIVE_STATES.has(agent.state) || toOpen(agent)).length;
     };
     return this.list()
@@ -302,8 +366,6 @@ export class WorkflowRunManager {
 
   private newRun(plan: RunPlan): WorkflowRun {
     const { def } = plan;
-    const agents = def.agents.map((agent) => newAgent(agent.role, agent.program, false));
-    if (def.judge) agents.push(newAgent(def.judge.role, def.judge.program, true));
     return {
       id: randomUUID(),
       workflowId: plan.workflowId,
@@ -326,7 +388,7 @@ export class WorkflowRunManager {
       problem: null,
       usesBoard: def.board,
       finish: def.finish ?? null,
-      agents,
+      agents: runAgents(def),
       board: [],
       report: null,
       activeMs: 0,
@@ -334,7 +396,9 @@ export class WorkflowRunManager {
       limitReachedAt: null,
       sleptMs: 0,
       keptPanes: [],
-      teamPr: plan.teamPr
+      teamPr: plan.teamPr,
+      stages: stagesOf(def).map((stage) => stage.name),
+      ...(def.stages ? { stageFile: true } : {})
     };
   }
 
@@ -342,7 +406,7 @@ export class WorkflowRunManager {
   private drainQueue(): void {
     for (const run of this.list()) {
       if (run.state !== 'queued') continue;
-      const needed = run.agents.filter((agent) => !agent.isLast).length;
+      const needed = agentsIn(run, 0).length;
       const room = this.activeAgents() + needed <= this.deps.maxAgents();
       if (room || this.activeAgents() === 0) {
         void this.launch(run);
@@ -370,20 +434,39 @@ export class WorkflowRunManager {
     // A person can stop the run during either wait.
     if (!ready || !isActive(run)) return;
     run.state = 'running';
-    for (const agent of run.agents) {
-      if (!agent.isLast && isActive(run)) await this.startAgent(run, agent, false);
-    }
+    await this.openStage(run, 0);
     this.settle(run);
+  }
+
+  /** Start each agent of a stage. A settle during this wait must not start them too. */
+  private async openStage(run: WorkflowRun, stage: number): Promise<void> {
+    this.openingStage.add(run.id);
+    try {
+      await this.writeHandoff(run, stage);
+      for (const agent of agentsIn(run, stage)) {
+        if (agent.state === 'pending' && isActive(run)) await this.startAgent(run, agent, false);
+      }
+    } finally {
+      this.openingStage.delete(run.id);
+    }
+  }
+
+  /** Read-only agents have no shell, so Fleet writes the change where they can read it. */
+  private async writeHandoff(run: WorkflowRun, stage: number): Promise<void> {
+    const readers = agentsIn(run, stage).some((agent) => agent.access === 'read');
+    if (stage === 0 || !readers) return;
+    try {
+      this.deps.store.writeDiff(run.id, await this.deps.diffOf(run));
+    } catch (err) {
+      log.warn('the change diff was not written', { runId: run.id, error: String(err) });
+    }
   }
 
   /** Make the worktree a PR run asks for. Answers false when it failed. */
   private async prepareWorktree(run: WorkflowRun): Promise<boolean> {
-    if (!run.pr || run.worktreePath || this.defOf(run).workspace !== 'pr-worktree') return true;
+    if (run.worktreePath || !this.usesWorktree(run)) return true;
     try {
-      const worktree = await this.deps.makeWorktree(run);
-      run.worktreePath = worktree.path;
-      run.cwd = worktree.path;
-      run.pr = { ...run.pr, headSha: worktree.sha };
+      await this.openWorktree(run);
       // A person can stop or close the run during the wait. No agent used it, so it goes.
       if (!isActive(run)) this.dropWorktree(run);
       this.commit(run);
@@ -398,16 +481,33 @@ export class WorkflowRunManager {
     }
   }
 
+  private usesWorktree(run: WorkflowRun): boolean {
+    const { workspace } = this.defOf(run);
+    return workspace === 'new-branch' || (workspace === 'pr-worktree' && run.pr !== null);
+  }
+
+  private async openWorktree(run: WorkflowRun): Promise<void> {
+    if (this.defOf(run).workspace === 'new-branch') {
+      const { path, branch } = await this.deps.makeBranch(run);
+      run.branch = branch;
+      this.useWorktree(run, path);
+    } else if (run.pr) {
+      const worktree = await this.deps.makeWorktree(run);
+      run.pr = { ...run.pr, headSha: worktree.sha };
+      this.useWorktree(run, worktree.path);
+    }
+  }
+
+  private useWorktree(run: WorkflowRun, path: string): void {
+    run.worktreePath = path;
+    run.cwd = path;
+  }
+
   /** Try the worktree again, after a failed start. */
   retryPrepare(runId: string): void {
     const run = this.runs.get(runId);
     if (run?.state !== 'needs-you' || !run.problem || run.worktreePath) return;
     void this.launch(run);
-  }
-
-  private modeOf(run: WorkflowRun): AgentMode {
-    if (run.locked) return 'locked';
-    return run.teamPr ? 'team-pr' : 'normal';
   }
 
   private briefPath(run: WorkflowRun, agent: RunAgent): string {
@@ -416,15 +516,33 @@ export class WorkflowRunManager {
 
   private briefOf(run: WorkflowRun, agent: RunAgent): string {
     const def = this.defOf(run);
-    const source = agent.isLast
-      ? def.judge
-      : def.agents.find((candidate) => candidate.role === agent.role);
-    return agentBrief(run, def, {
-      role: agent.role,
-      program: agent.program,
-      prompt: source?.prompt ?? '',
-      isLast: agent.isLast
-    });
+    const source = stagesOf(def)[stageOf(agent)]?.agents.find(
+      (candidate) => candidate.role === agent.role
+    );
+    return agentBrief(
+      run,
+      def,
+      {
+        role: agent.role,
+        program: agent.program,
+        prompt: source?.prompt ?? '',
+        isLast: agent.isLast,
+        access: agent.access,
+        talks: agent.talks,
+        plan: agent.plan && !agent.planApproved
+      },
+      this.handoffOf(run, agent)
+    );
+  }
+
+  /** What earlier stages left for this agent. */
+  private handoffOf(run: WorkflowRun, agent: RunAgent): BriefHandoff {
+    if (!run.stageFile || stageOf(agent) === 0) return {};
+    const diffPath = this.deps.store.diffPath(run.id);
+    return {
+      planPath: latestPlan(run)?.path,
+      diffPath: agent.access === 'read' && existsSync(diffPath) ? diffPath : undefined
+    };
   }
 
   /** The workflow as approved. It comes from the run's own copy, never from the repo. */
@@ -434,8 +552,61 @@ export class WorkflowRunManager {
     return def;
   }
 
-  private async startAgent(run: WorkflowRun, agent: RunAgent, resume: boolean): Promise<void> {
+  /** The session a start goes on with: its own, or that of the agent it comes back as. */
+  private handleFor(run: WorkflowRun, agent: RunAgent, resume: boolean): string | null {
+    const own = resume ? agentChatHandle(agent) : null;
+    return own ?? this.namedHandle(run, agent);
+  }
+
+  private namedHandle(run: WorkflowRun, agent: RunAgent): string | null {
+    const named = run.agents.filter(
+      (other) => other.role === agent.resumes && stageOf(other) < stageOf(agent)
+    );
+    return named.map(agentChatHandle).findLast((handle) => handle !== null) ?? null;
+  }
+
+  /** One session has one program running it, so the agent it comes back from must stop. */
+  private retireNamedPanes(run: WorkflowRun, agent: RunAgent): void {
+    if (!agent.resumes) return;
+    for (const other of run.agents) {
+      if (other.role === agent.resumes && other !== agent) this.retirePane(other);
+    }
+  }
+
+  /** Fixed words from Fleet. They never hold TOML or input text. */
+  private messageOf(agent: RunAgent, resume: boolean, handle: string | null): string {
+    if (resume) return RETRY_MESSAGE;
+    return agent.resumes && handle ? RETURN_MESSAGE : START_MESSAGE;
+  }
+
+  /** The line that starts or resumes an agent. */
+  private commandOf(
+    run: WorkflowRun,
+    agent: RunAgent,
+    start: { briefPath: string; message: string | null; resume: string | null }
+  ): string {
+    const def = this.defOf(run);
+    const inStageFile = def.stages !== undefined;
+    return agentCommandLine({
+      ...start,
+      program: agent.program,
+      mode: agentMode(run, def, agent),
+      devExtension: agent.program === 'pi' ? this.deps.devExtension : null,
+      addDir:
+        inStageFile && agent.program === 'claude' ? this.deps.store.folder(run.id) : undefined,
+      talks: agent.talks,
+      permissionMode: inStageFile ? permissionModeOf(run, agent) : undefined
+    });
+  }
+
+  private async startAgent(
+    run: WorkflowRun,
+    agent: RunAgent,
+    resume: boolean,
+    message?: string
+  ): Promise<void> {
     this.retirePane(agent);
+    this.retireNamedPanes(run, agent);
     const paneId = randomUUID();
     agent.paneId = paneId;
     agent.attempt += 1;
@@ -449,13 +620,11 @@ export class WorkflowRunManager {
     this.startedAt.set(agent.id, this.deps.now());
     this.silenceFrom.set(agent.id, this.deps.now());
 
-    const line = agentCommandLine({
-      program: agent.program,
-      mode: this.modeOf(run),
+    const handle = this.handleFor(run, agent, resume);
+    const line = this.commandOf(run, agent, {
       briefPath: this.briefPath(run, agent),
-      message: resume ? RETRY_MESSAGE : START_MESSAGE,
-      resume: resume ? agentChatHandle(agent) : null,
-      devExtension: agent.program === 'pi' ? this.deps.devExtension : null
+      message: message ?? this.messageOf(agent, resume, handle),
+      resume: handle
     });
     // A pane takes time to open, and the page shows the new state during that wait.
     this.commit(run);
@@ -522,6 +691,8 @@ export class WorkflowRunManager {
     if (agent.state === 'waiting' || agent.state === 'starting') agent.state = 'working';
     agent.needsPerson = false;
     agent.pendingPermission = null;
+    // A new Claude Code turn means that the plan request is over. A Pi plan waits in Fleet.
+    if (agent.program === 'claude') agent.pendingPlan = null;
     this.settle(run);
   }
 
@@ -532,6 +703,11 @@ export class WorkflowRunManager {
     const { agent, run } = located;
     if (agent.state !== 'working') return null;
 
+    if (agent.talks || agent.pendingPlan) {
+      this.personTurns.delete(agent.id);
+      this.waitForPerson(run, agent, agent.pendingPlan ? PLAN_WAITS : TALK_WAITS);
+      return null;
+    }
     if (this.personTurns.delete(agent.id)) {
       agent.state = 'waiting';
       this.settle(run);
@@ -550,12 +726,28 @@ export class WorkflowRunManager {
     return reminderText(agent.program);
   }
 
+  private waitForPerson(run: WorkflowRun, agent: RunAgent, note: string): void {
+    agent.state = 'waiting';
+    agent.needsPerson = true;
+    agent.note = note;
+    this.notifyNeedsYou(run, agent);
+    this.settle(run);
+  }
+
+  /** A Claude Code agent waits on its question dialog. No Stop event comes for this. */
+  onQuestion(paneId: string): void {
+    const located = this.locate(paneId);
+    if (located?.agent.state !== 'working') return;
+    this.waitForPerson(located.run, located.agent, 'It asks you a question.');
+  }
+
   private notifyNeedsYou(run: WorkflowRun, agent: RunAgent): void {
     this.deps.notify({
       kind: 'needs-you',
       text: `${run.workflowName}: ${agent.role} needs you.`,
       runId: run.id,
-      projectPath: run.projectPath
+      projectPath: run.projectPath,
+      planAgentId: agent.pendingPlan ? agent.id : undefined
     });
   }
 
@@ -567,16 +759,110 @@ export class WorkflowRunManager {
     this.settle(located.run);
   }
 
-  onPermission(paneId: string, toolUseId: string | null, tool: string): void {
+  onPermission(paneId: string, toolUseId: string | null, tool: string, plan?: string): void {
     const located = this.locate(paneId);
     if (located?.agent.state !== 'working') return;
     const { agent, run } = located;
+    if (agent.plan && plan !== undefined) {
+      this.savePlan(run, agent, plan, toolUseId);
+      this.waitForPerson(run, agent, PLAN_WAITS);
+      return;
+    }
     agent.state = 'waiting';
     agent.needsPerson = true;
     agent.note = `It asks to use ${tool}.`;
     agent.pendingPermission = toolUseId ? { toolUseId, tool } : null;
     this.notifyNeedsYou(run, agent);
     this.settle(run);
+  }
+
+  /** Save the plan first, so an answer given anywhere still leaves it readable. */
+  private savePlan(
+    run: WorkflowRun,
+    agent: RunAgent,
+    text: string,
+    toolUseId: string | null
+  ): void {
+    const version = run.agents.flatMap((other) => other.plans ?? []).length + 1;
+    const path = this.deps.store.writePlan(run.id, version, text);
+    agent.plans = [...(agent.plans ?? []), { version, path, at: this.deps.now() }];
+    agent.pendingPlan = { version, toolUseId };
+  }
+
+  readPlan(runId: string, version: number): string | null {
+    return this.deps.store.readPlan(runId, version);
+  }
+
+  /** The tool call of a Pi plan. Answers why it is refused, or null. */
+  submitPlan(runId: string, agentId: string, text: string): string | null {
+    const located = this.located(runId, agentId);
+    if (!located) return 'This pane is not in a run.';
+    const { run, agent } = located;
+    if (!agent.plan || agent.program !== 'pi') return 'This agent sends no plan to Fleet.';
+    if (agent.planApproved) return 'A person already approved your plan.';
+    this.savePlan(run, agent, text, null);
+    this.commit(run);
+    return null;
+  }
+
+  /** The tool of a plan ran, so a person approved it in the pane or in Copilot. */
+  onToolDone(paneId: string, tool: string | undefined): void {
+    const located = this.locate(paneId);
+    if (tool !== 'ExitPlanMode' || !located?.agent.plan) return;
+    located.agent.planApproved = true;
+    located.agent.pendingPlan = null;
+    this.settle(located.run);
+  }
+
+  /** A person answered on the plan page. Answers whether it reached the agent. */
+  async answerPlan(runId: string, agentId: string, answer: PlanAnswer): Promise<boolean> {
+    const located = this.actionable(runId, agentId);
+    const plan = located?.agent.pendingPlan;
+    if (!located || !plan) return false;
+    if (located.agent.program === 'claude') return this.answerClaudePlan(located, plan, answer);
+    return this.answerPiPlan(located, answer);
+  }
+
+  private answerClaudePlan(
+    { run, agent }: Located,
+    plan: { toolUseId: string | null },
+    answer: PlanAnswer
+  ): boolean {
+    const approved = answer.kind === 'approve';
+    const answered = approved
+      ? this.deps.answerRequest(plan.toolUseId ?? '', 'allow', undefined, answer.mode)
+      : this.deps.answerRequest(plan.toolUseId ?? '', 'deny', answer.text);
+    agent.pendingPlan = null;
+    agent.pendingPermission = null;
+    if (answered) {
+      agent.planApproved = approved;
+      if (approved) agent.buildMode = answer.mode;
+      this.backToWork(agent);
+    }
+    this.settle(run);
+    return answered;
+  }
+
+  private backToWork(agent: RunAgent): void {
+    agent.state = 'working';
+    agent.needsPerson = false;
+    agent.note = null;
+  }
+
+  /** Pi has no write tools in this process, so approval opens a new one on the session. */
+  private async answerPiPlan({ run, agent }: Located, answer: PlanAnswer): Promise<boolean> {
+    agent.pendingPlan = null;
+    if (answer.kind === 'approve') {
+      agent.planApproved = true;
+      await this.startAgent(run, agent, true, PLAN_APPROVED_MESSAGE);
+      this.settle(run);
+      return true;
+    }
+    if (!agent.sessionId) return false;
+    this.backToWork(agent);
+    this.settle(run);
+    await this.deps.sendPrompt(agent.sessionId, answer.text);
+    return true;
   }
 
   /** A person answered on the run page, so the agent has no question left. */
@@ -642,7 +928,7 @@ export class WorkflowRunManager {
     run.keptPanes = run.keptPanes.filter((kept) => kept !== paneId);
     const agent = run.agents.find((candidate) => candidate.keptPaneId === paneId);
     if (agent) agent.keptPaneId = null;
-    if (run.keptPanes.length === 0) this.dropWorktree(run);
+    this.dropIdleWorktree(run);
     this.emitTab(run);
     this.commit(run);
   }
@@ -706,6 +992,7 @@ export class WorkflowRunManager {
     if (agent.state === 'done')
       return 'You already finished. Follow-up turns do not change the report.';
     if (!isActive(run)) return 'This run has ended.';
+    if (agent.plan && !agent.planApproved) return 'A person must approve your plan first.';
     agent.summary = summary;
     agent.state = 'done';
     agent.note = null;
@@ -815,22 +1102,21 @@ export class WorkflowRunManager {
 
   /** The chat needs its old folder, on the commit that the agent saw. */
   private async restoreWorktree(run: WorkflowRun): Promise<void> {
-    if (!run.pr || run.worktreePath || this.defOf(run).workspace !== 'pr-worktree') return;
-    const worktree = await this.deps.makeWorktree(run, run.pr.headSha);
-    run.worktreePath = worktree.path;
-    run.cwd = worktree.path;
+    if (run.worktreePath) return;
+    if (run.branch) {
+      this.useWorktree(run, (await this.deps.makeBranch(run)).path);
+    } else if (run.pr && this.defOf(run).workspace === 'pr-worktree') {
+      this.useWorktree(run, (await this.deps.makeWorktree(run, run.pr.headSha)).path);
+    }
   }
 
   private async openKeptPane(run: WorkflowRun, agent: RunAgent, resume: string): Promise<string> {
     const paneId = randomUUID();
     const brief = `${this.briefOf(run, agent)}\n\n${RUN_OVER_NOTE}`;
-    const line = agentCommandLine({
-      program: agent.program,
-      mode: this.modeOf(run),
+    const line = this.commandOf(run, agent, {
       briefPath: this.deps.store.writePrompt(run.id, `${agent.id}-open.md`, brief),
       message: null,
-      resume,
-      devExtension: agent.program === 'pi' ? this.deps.devExtension : null
+      resume
     });
     this.keepPane(run, agent, paneId);
     this.focus.set(run.id, true);
@@ -856,13 +1142,26 @@ export class WorkflowRunManager {
     this.commit(run);
     // The cut can come before the worktree exists, or between two agents.
     if (!(await this.prepareWorktree(run))) return;
-    for (const agent of run.agents) {
-      // A person can stop the run while a pane opens.
-      if (!isActive(run)) break;
-      if (agent.state === 'failed') await this.startAgent(run, agent, true);
-      if (agent.state === 'pending' && !agent.isLast) await this.startAgent(run, agent, false);
-    }
+    await this.restartAgents(run);
     this.settle(run);
+  }
+
+  /** Each failed agent goes on from its transcript, and its stage's waiting agents start. */
+  private async restartAgents(run: WorkflowRun): Promise<void> {
+    const current = currentStage(run, stagesOf(this.defOf(run)));
+    this.openingStage.add(run.id);
+    try {
+      if (current !== null) await this.writeHandoff(run, current);
+      for (const agent of run.agents) {
+        // A person can stop the run while a pane opens.
+        if (!isActive(run)) break;
+        if (agent.state === 'failed') await this.startAgent(run, agent, true);
+        const waits = agent.state === 'pending' && stageOf(agent) === current;
+        if (waits) await this.startAgent(run, agent, false);
+      }
+    } finally {
+      this.openingStage.delete(run.id);
+    }
   }
 
   private restoreDef(run: WorkflowRun): void {
@@ -890,6 +1189,11 @@ export class WorkflowRunManager {
     for (const agent of run.agents) agent.keptPaneId = null;
   }
 
+  /** A branch run keeps its worktree: it can hold work that nobody committed yet. */
+  private dropIdleWorktree(run: WorkflowRun): void {
+    if (run.keptPanes.length === 0 && !run.branch) this.dropWorktree(run);
+  }
+
   private dropWorktree(run: WorkflowRun): void {
     if (!run.worktreePath) return;
     void this.deps.removeWorktree(run).catch((err: unknown) => {
@@ -897,6 +1201,29 @@ export class WorkflowRunManager {
     });
     run.worktreePath = null;
     run.cwd = run.projectPath;
+  }
+
+  /** An `open-pr` run opened its PR, so its committed work is safe and the worktree can go. */
+  notePrOpened(runId: string, pr: { number: number; url: string }): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    run.openedPr = pr;
+    delete run.prProblem;
+    if (run.keptPanes.length === 0) this.dropWorktree(run);
+    this.commit(run);
+  }
+
+  notePrProblem(runId: string, problem: string): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    run.prProblem = problem;
+    this.commit(run);
+    this.deps.notify({
+      kind: 'info',
+      text: `${run.workflowName}: no pull request. ${problem}`,
+      runId: run.id,
+      projectPath: run.projectPath
+    });
   }
 
   /** Note where a report went: a file, or the PR. */
@@ -965,13 +1292,23 @@ export class WorkflowRunManager {
     const delta = now - this.lastTick;
     this.lastTick = now;
     for (const run of this.list().filter(isActive)) {
-      if (delta >= SLEEP_GAP_MS) this.skipSleep(run, delta);
-      else if (run.state !== 'queued') run.activeMs += delta;
+      this.countTime(run, delta);
       for (const agent of run.agents) this.watchAgent(run, agent, now);
       this.watchLimit(run, now);
       if (isActive(run)) this.settle(run);
     }
     this.drainQueue();
+  }
+
+  private countTime(run: WorkflowRun, delta: number): void {
+    if (delta >= SLEEP_GAP_MS) this.skipSleep(run, delta);
+    else if (onlyWaitsForPerson(run)) this.pauseLimit(run, delta);
+    else if (run.state !== 'queued') run.activeMs += delta;
+  }
+
+  /** The grace time after a limit waits too, so a slow answer never stops a run. */
+  private pauseLimit(run: WorkflowRun, delta: number): void {
+    if (run.limitReachedAt !== null) run.limitReachedAt += delta;
   }
 
   private watchAgent(run: WorkflowRun, agent: RunAgent, now: number): void {
@@ -1037,12 +1374,13 @@ export class WorkflowRunManager {
       this.commit(run);
       return;
     }
-    this.startLastAgent(run);
+    const stages = stagesOf(this.defOf(run));
+    this.startNextStage(run, stages);
     if (run.agents.every((agent) => OVER_STATES.has(agent.state))) {
       this.finish(run);
       return;
     }
-    if (this.noWayOn(run)) {
+    if (noWayOn(run, stages)) {
       this.finish(run);
       return;
     }
@@ -1050,21 +1388,27 @@ export class WorkflowRunManager {
     this.commit(run);
   }
 
-  private startLastAgent(run: WorkflowRun): void {
-    const last = run.agents.find((agent) => agent.isLast);
-    if (last?.state !== 'pending') return;
-    const others = run.agents.filter((agent) => !agent.isLast);
-    if (!others.every((agent) => OVER_STATES.has(agent.state))) return;
-    if (others.some((agent) => agent.state === 'done')) void this.startAgent(run, last, false);
-    else last.state = 'skipped';
+  private startNextStage(run: WorkflowRun, stages: WorkflowStageDef[]): void {
+    if (this.openingStage.has(run.id) || noWayOn(run, stages)) return;
+    // A failed worktree waits for a person to try it again.
+    if (this.usesWorktree(run) && !run.worktreePath) return;
+    const index = stageToStart(run, stages);
+    if (index === null) return;
+    if (skipsItself(run, stages[index])) {
+      this.skipStage(run, index);
+      this.startNextStage(run, stages);
+      return;
+    }
+    void this.openStage(run, index).then(() => {
+      this.settle(run);
+    });
   }
 
-  /** Every agent failed or was skipped: nothing can go on, so the run ends as it stands. */
-  private noWayOn(run: WorkflowRun): boolean {
-    const others = run.agents.filter((agent) => !agent.isLast);
-    return others.every(
-      (agent) => agent.state === 'skipped' || (agent.state === 'failed' && agent.autoRetried)
-    );
+  private skipStage(run: WorkflowRun, stage: number): void {
+    for (const agent of agentsIn(run, stage)) {
+      agent.state = 'skipped';
+      agent.note = 'The board has no findings.';
+    }
   }
 
   private finish(run: WorkflowRun): void {
@@ -1097,7 +1441,7 @@ export class WorkflowRunManager {
         this.stopAgent(agent);
       }
     }
-    if (run.keptPanes.length === 0) this.dropWorktree(run);
+    this.dropIdleWorktree(run);
     this.emitTab(run);
   }
 

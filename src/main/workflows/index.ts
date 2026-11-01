@@ -1,35 +1,42 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import type { ClaudeSessionChange } from '../../shared/claude-sessions';
-import type {
-  RunTab,
-  SaveReportResult,
-  StartRunRequest,
-  StartRunResult,
-  WorkflowDef,
-  WorkflowEntries,
-  WorkflowEntry,
-  WorkflowNotice,
-  WorkflowProgram,
-  WorkflowProject,
-  WorkflowRule,
-  WorkflowRun,
-  WorkflowsState
+import type { ClaudePendingPermission, ClaudeSessionChange } from '../../shared/claude-sessions';
+import {
+  needsPersonAtRun,
+  type PlanBuildMode,
+  type RunTab,
+  type SaveReportResult,
+  type StartRunRequest,
+  type StartRunResult,
+  type WorkflowDef,
+  type WorkflowEntries,
+  type WorkflowEntry,
+  type WorkflowNotice,
+  type WorkflowProgram,
+  type WorkflowProject,
+  type WorkflowRule,
+  type WorkflowRun,
+  type WorkflowsState
 } from '../../shared/workflows';
 import { createLogger } from '../logger';
 import { ApprovalStore, loadSigningKey, SignedFile, type KeyVault } from './approval';
 import { WorkflowAgentTools } from './agent-tools';
 import type { BridgeHandler, PiEvent, WorkflowsBridge } from './bridge-routes';
+import { WorkflowBuilder } from './builder';
 import { WorkflowCatalog } from './catalog';
 import { parseWorkflow, PROJECT_WORKFLOWS_DIR, readWorkflowFile } from './config';
 import { FolderWatcher, type WatchTarget } from './folder-watcher';
 import { WorkflowPosting } from './posting';
 import { WorkflowPower, type PowerApi } from './power';
 import {
+  changesSince,
   fetchPr,
+  forkPoint,
   listOpenPrs,
+  makeBranchWorktree,
   makePrWorktree,
+  openBranchPr,
   removeWorktree,
   repoRoot,
   runProgram,
@@ -74,7 +81,12 @@ export type WorkflowsDeps = {
   sendPrompt: (sessionId: string, text: string) => Promise<void>;
   /** Claims permission requests, until the returned function is called. */
   addPermissionAnswerer: () => () => void;
-  answerPermission: (toolUseId: string, decision: 'allow' | 'deny') => boolean;
+  answerPermission: (
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string,
+    mode?: PlanBuildMode
+  ) => boolean;
   subscribeSessions: (listener: (change: ClaudeSessionChange) => void) => void;
   bridgeProblem: () => string | null;
   hasProgram: (program: WorkflowProgram) => Promise<boolean>;
@@ -91,6 +103,7 @@ export class WorkflowsService implements BridgeHandler {
   readonly catalog: WorkflowCatalog;
   readonly runs: WorkflowRunManager;
   readonly scheduler: WorkflowScheduler;
+  readonly builder: WorkflowBuilder;
   private readonly approvals: ApprovalStore;
   private readonly starts: WorkflowStarts;
   private readonly posting: WorkflowPosting;
@@ -118,6 +131,7 @@ export class WorkflowsService implements BridgeHandler {
       file: new SignedFile(join(deps.home, 'workflow-rules.json'), key, RULES_SCHEMA, EMPTY_RULES),
       now: deps.now,
       start: async (rule, pr) => this.startFromRule(rule, pr),
+      ruleProblem: (rule) => this.ruleProblem(rule),
       busy: (rule) => this.ruleBusy(rule),
       onBattery: () => this.power.onBattery(),
       listPrs: async (rule) => listOpenPrs(this.exec, rule.projectPath),
@@ -140,6 +154,16 @@ export class WorkflowsService implements BridgeHandler {
         }),
       removeWorktree: async (run) =>
         removeWorktree(this.exec, run.projectPath, run.worktreePath ?? ''),
+      makeBranch: async (run) =>
+        makeBranchWorktree(this.exec, {
+          projectPath: run.projectPath,
+          runId: run.id,
+          slug: run.slug,
+          base: join(deps.home, 'worktrees'),
+          existing: run.branch
+        }),
+      diffOf: async (run) => this.changesOf(run),
+      answerRequest: deps.answerPermission,
       onRun: () => this.onRunChange(),
       onTab: (tab) => this.onTab(tab),
       notify: (notice) => this.notify(notice),
@@ -158,6 +182,19 @@ export class WorkflowsService implements BridgeHandler {
       hasProgram: deps.hasProgram
     });
     this.posting = new WorkflowPosting({ runs: this.runs, exec: this.exec });
+    this.builder = new WorkflowBuilder({
+      dir: join(deps.home, 'workflow-builders'),
+      catalog: this.catalog,
+      platform: deps.platform,
+      devExtension: deps.devExtension,
+      hasProgram: deps.hasProgram,
+      openPane: deps.openPane,
+      onTab: (tab) => this.onTab(tab),
+      notify: (notice) => this.notify(notice),
+      onDraftSaved: (projectPath) => {
+        deps.onEntries({ projectPath, entries: this.catalog.list(projectPath) });
+      }
+    });
     this.agentTools = new WorkflowAgentTools({
       catalog: this.catalog,
       approvals: this.approvals,
@@ -166,7 +203,8 @@ export class WorkflowsService implements BridgeHandler {
       exec: this.exec,
       paneCwd: deps.paneCwd,
       openFolders: deps.openFolders,
-      notify: (notice) => this.notify(notice)
+      notify: (notice) => this.notify(notice),
+      saveDraft: (paneId, toml) => this.builder.saveDraft(paneId, toml)
     });
     this.power = new WorkflowPower(deps.power, {
       onSuspend: () => this.runs.suspend(),
@@ -281,7 +319,8 @@ export class WorkflowsService implements BridgeHandler {
 
   /** Every run tab, for a page that opened after the runs started. */
   listTabs(): RunTab[] {
-    return [...this.tabs.values()].filter((tab) => tab.paneIds.length > 0);
+    const runTabs = [...this.tabs.values()].filter((tab) => !tab.builderId);
+    return [...runTabs, ...this.builder.tabs()].filter((tab) => tab.paneIds.length > 0);
   }
 
   // --- Notices ---
@@ -310,16 +349,20 @@ export class WorkflowsService implements BridgeHandler {
   private onSessionChange({ session, event }: ClaudeSessionChange): void {
     if (session?.runtime !== 'claude' || !event) return;
     const { paneId, sessionId } = session;
+    if (session.phase === 'waitingForInput' && session.waitingKind === 'question') {
+      this.runs.onQuestion(paneId);
+      return;
+    }
     switch (event.event) {
       case 'SessionStart':
-        this.runs.onSessionStart(paneId, {
-          id: sessionId,
-          transcriptPath: session.transcriptPath ?? null
-        });
+        this.onChatStart(paneId, sessionId, session.transcriptPath ?? null);
+        break;
+      case 'PostToolUse':
+        this.runs.onToolDone(paneId, event.tool);
+        this.runs.onTurnStart(paneId);
         break;
       case 'UserPromptSubmit':
       case 'PreToolUse':
-      case 'PostToolUse':
         this.runs.onTurnStart(paneId);
         break;
       case 'Stop':
@@ -329,16 +372,21 @@ export class WorkflowsService implements BridgeHandler {
         this.runs.onApiFailure(paneId, event.message ?? 'The API call failed.');
         break;
       case 'PermissionRequest':
-        this.onPermission(session.paneId, session.pendingPermissions.at(-1));
+        this.onPermission(paneId, session.pendingPermissions.at(-1));
         break;
     }
   }
 
-  private onPermission(
-    paneId: string,
-    pending: { toolUseId: string; tool: { toolName: string } } | undefined
-  ): void {
-    this.runs.onPermission(paneId, pending?.toolUseId ?? null, pending?.tool.toolName ?? 'a tool');
+  private onPermission(paneId: string, pending: ClaudePendingPermission | undefined): void {
+    const toolName = pending?.tool.toolName ?? 'a tool';
+    const plan = toolName === 'ExitPlanMode' ? pending?.tool.toolInput.plan : undefined;
+    const text = typeof plan === 'string' ? plan : undefined;
+    this.runs.onPermission(paneId, pending?.toolUseId ?? null, toolName, text);
+  }
+
+  private onChatStart(paneId: string, id: string, transcriptPath: string | null): void {
+    this.builder.onSession(paneId, { id, transcriptPath });
+    this.runs.onSessionStart(paneId, { id, transcriptPath });
   }
 
   private remindClaude(paneId: string, sessionId: string): void {
@@ -352,7 +400,7 @@ export class WorkflowsService implements BridgeHandler {
   onPiEvent(paneId: string, event: PiEvent): { reminder?: string } {
     const { runs } = this;
     if (event.event === 'session_start') {
-      runs.onSessionStart(paneId, { id: event.sessionId, transcriptPath: event.transcriptPath });
+      this.onChatStart(paneId, event.sessionId, event.transcriptPath);
     } else if (event.event === 'turn_start') {
       runs.onTurnStart(paneId);
     } else if (event.event === 'api_error') {
@@ -369,6 +417,7 @@ export class WorkflowsService implements BridgeHandler {
   }
 
   onPaneClosed(paneId: string, killed: boolean): void {
+    this.builder.onPaneClosed(paneId);
     this.runs.onPaneClosed(paneId, killed);
   }
 
@@ -379,7 +428,7 @@ export class WorkflowsService implements BridgeHandler {
   }
 
   identify(paneId: string): PaneIdentity {
-    return this.runs.identify(paneId);
+    return this.builder.identify(paneId) ?? this.runs.identify(paneId);
   }
 
   async call(
@@ -417,6 +466,12 @@ export class WorkflowsService implements BridgeHandler {
       isRepo = false;
     }
     return { path: root, name: basename(root), isRepo };
+  }
+
+  async programs(): Promise<Record<WorkflowProgram, boolean>> {
+    const { hasProgram } = this.deps;
+    const [pi, claude] = await Promise.all([hasProgram('pi'), hasProgram('claude')]);
+    return { pi, claude };
   }
 
   starters(): { blank: string; starters: typeof STARTERS } {
@@ -509,6 +564,41 @@ export class WorkflowsService implements BridgeHandler {
 
   private onRunEnded(run: WorkflowRun): void {
     this.checkMovedOn(run);
+    if (run.finish?.action === 'open-pr' && run.state === 'finished') void this.openPr(run);
+  }
+
+  async retryPr(runId: string): Promise<void> {
+    const run = this.runs.get(runId);
+    if (run && !run.openedPr) await this.openPr(run);
+  }
+
+  /** The run's last step. It never stops the run from ending: it reports what went wrong. */
+  private async openPr(run: WorkflowRun): Promise<void> {
+    const { branch, report, projectPath, worktreePath } = run;
+    if (!branch || !report || report.incomplete) {
+      this.runs.notePrProblem(run.id, 'The run did not finish its work.');
+      return;
+    }
+    try {
+      const spec = { projectPath, worktreePath, branch, body: report.text };
+      const result = await openBranchPr(this.exec, spec);
+      if (result.ok) this.runs.notePrOpened(run.id, { number: result.number, url: result.url });
+      else this.runs.notePrProblem(run.id, result.why);
+    } catch (err) {
+      this.runs.notePrProblem(run.id, err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** The change a read-only agent reads, from where the run's work split off. */
+  private async changesOf(run: WorkflowRun): Promise<string> {
+    const base = run.branch?.baseSha ?? (await forkPoint(this.exec, run.cwd));
+    return base ? changesSince(this.exec, run.cwd, base) : '';
+  }
+
+  private ruleProblem(rule: WorkflowRule): string | null {
+    const def = this.catalog.find(rule.projectPath, rule.workflowId)?.def;
+    if (!def || !needsPersonAtRun(def)) return null;
+    return 'This workflow talks with a person, so a rule cannot start it.';
   }
 
   /** A PR that got a new commit makes the findings old. The run's end says so. */

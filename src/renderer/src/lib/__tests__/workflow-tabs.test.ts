@@ -185,4 +185,31 @@ describe('runTabRoot', () => {
 
     expect(runTabRoot(split(0.5, typed, leaf('b')), tab('a'))).toEqual(typed);
   });
+
+  describe('with a builder', () => {
+    const builder = (...paneIds: string[]): RunTab => ({ ...tab(...paneIds), builderId: 'b1' });
+    const draft: PaneLeaf = {
+      ...leaf('draft-b1'),
+      paneType: 'workflow-draft',
+      builderId: 'b1'
+    };
+
+    it('puts the draft beside the terminal', () => {
+      expect(runTabRoot(null, builder('a'))).toEqual(split(0.5, leaf('a'), draft));
+    });
+
+    it('keeps the draft and its size when the tree comes back', () => {
+      const resized = split(0.7, leaf('a'), draft);
+
+      expect(runTabRoot(resized, builder('a'))).toEqual(resized);
+    });
+
+    it('has no draft before the terminal is there', () => {
+      expect(runTabRoot(null, builder())).toBeNull();
+    });
+
+    it('takes the draft away with the terminal', () => {
+      expect(runTabRoot(split(0.5, leaf('a'), draft), builder())).toBeNull();
+    });
+  });
 });

@@ -1,14 +1,18 @@
 import { existsSync } from 'node:fs';
-import type {
-  PrRef,
-  RunOrigin,
-  StartRunRequest,
-  StartRunResult,
-  WorkflowCheck,
-  WorkflowDef,
-  WorkflowEntry,
-  WorkflowPreview,
-  WorkflowProgram
+import {
+  agentsOf,
+  needsPersonAtRun,
+  stagesOf,
+  type PrRef,
+  type RunOrigin,
+  type StartRunRequest,
+  type StartRunResult,
+  type WorkflowAgentDef,
+  type WorkflowCheck,
+  type WorkflowDef,
+  type WorkflowEntry,
+  type WorkflowPreview,
+  type WorkflowProgram
 } from '../../shared/workflows';
 import type { ApprovalStore } from './approval';
 import type { WorkflowCatalog } from './catalog';
@@ -47,16 +51,24 @@ function isRefusal<T extends object>(value: T | Refusal): value is Refusal {
 type ResolvedPr = { pr: PrRef; team: boolean; open: boolean; number: number };
 
 function programsIn(def: WorkflowDef): WorkflowProgram[] {
-  const agents = [...def.agents, ...(def.judge ? [def.judge] : [])];
-  return [...new Set(agents.map((agent) => agent.program))];
+  return [...new Set(agentsOf(def).map((agent) => agent.program))];
 }
+
+function hasPlanAgent(def: WorkflowDef): boolean {
+  return agentsOf(def).some((agent) => agent.plan === true);
+}
+
+const NO_PERSON_AT_RULE = 'This workflow talks with a person, so a rule cannot start it.';
 
 function withProgram(def: WorkflowDef, program: WorkflowProgram | undefined): WorkflowDef {
   if (!program) return def;
+  const swap = (agent: WorkflowAgentDef): WorkflowAgentDef => ({ ...agent, program });
   return {
     ...def,
-    agents: def.agents.map((agent) => ({ ...agent, program })),
-    judge: def.judge ? { ...def.judge, program } : undefined
+    agents: def.agents.map(swap),
+    judge: def.judge ? swap(def.judge) : undefined,
+    stages:
+      def.stages && stagesOf(def).map((stage) => ({ ...stage, agents: stage.agents.map(swap) }))
   };
 }
 
@@ -176,10 +188,10 @@ export class WorkflowStarts {
 
     const text = this.prInput(def, req.inputs);
     let pr: WorkflowPreview['pr'] = null;
-    if (text !== null) {
+    if (text !== null || def.finish?.action === 'open-pr') {
       checks.push(await this.githubCheck(req.projectPath));
-      pr = text.trim() === '' ? null : await this.previewPr(req, text, checks);
     }
+    if (text !== null) pr = text.trim() === '' ? null : await this.previewPr(req, text, checks);
     const target = targetOf(def, this.withNumber(def, req.inputs, pr?.number));
     const duplicate = this.deps.runs.findActive(entry.path, target);
     return { checks, pr, programNotes: notes, duplicateRunId: duplicate?.id ?? null };
@@ -249,6 +261,7 @@ export class WorkflowStarts {
     if (!existsSync(req.projectPath)) return refuse('no-project', 'The project folder is gone.');
     const { checks } = await this.programChecks(def, req.programOverride);
     checks.push(this.bridgeCheck());
+    if (def.finish?.action === 'open-pr') checks.push(await this.githubCheck(req.projectPath));
     const failed = checks.find((check) => !check.ok);
     return failed ? refuse('check-failed', failed.detail ?? failed.label) : null;
   }
@@ -275,10 +288,16 @@ export class WorkflowStarts {
     const { entry, text } = approved;
     const def = withProgram(parseWorkflow(text), req.programOverride);
 
+    if (options.origin === 'automatic' && needsPersonAtRun(def)) {
+      return refuse('needs-person', NO_PERSON_AT_RULE);
+    }
     const failed = await this.failedCheck(req, def);
     if (failed) return failed;
     const pr = await this.prForRun(req, def);
     if (isRefusal(pr)) return pr;
+    if (pr.locked && hasPlanAgent(def)) {
+      return refuse('locked-plan', 'A locked run cannot change code, so it cannot build a plan.');
+    }
 
     const inputs = this.withNumber(def, req.inputs, pr.resolved?.number);
     const target = targetOf(def, inputs);

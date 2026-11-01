@@ -184,6 +184,13 @@ export function makeHarness(dir: string, overrides: Partial<RunDeps> = {}): Harn
     onEnded: (run) => {
       ended.push(run);
     },
+    makeBranch: async () =>
+      Promise.resolve({
+        path: '/worktrees/branch',
+        branch: { name: 'fleet/review', base: 'main', baseSha: 'base-sha' }
+      }),
+    diffOf: async () => Promise.resolve('diff --git a b'),
+    answerRequest: () => true,
     maxAgents: () => 12,
     devExtension: null,
     parse: () => makeDef(),

@@ -6,7 +6,7 @@ import type {
   WorkflowEntry,
   WorkflowRule
 } from '../../../../shared/workflows';
-import { runsPerDay } from '../../../../shared/workflows';
+import { agentsOf, runsPerDay } from '../../../../shared/workflows';
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Button, CountInput, Field, FIELD_CLASS } from './parts';
@@ -185,7 +185,7 @@ function TriggerFields({
 
 function agentsIn(entry: WorkflowEntry | undefined): number {
   const def = entry?.def;
-  return def ? def.agents.length + (def.judge ? 1 : 0) : 0;
+  return def ? agentsOf(def).length : 0;
 }
 
 function previewText(trigger: RuleTrigger, agents: number): string {

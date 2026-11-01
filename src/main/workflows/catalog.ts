@@ -105,7 +105,7 @@ export class WorkflowCatalog {
     return scope === 'project' ? unsafeTarget(projectPath, path) : null;
   }
 
-  private problemIn(text: string): string | null {
+  problemIn(text: string): string | null {
     try {
       parseWorkflow(text);
       return null;
@@ -134,14 +134,29 @@ export class WorkflowCatalog {
   createPending(projectPath: string, scope: WorkflowScope, id: string, text: string): string {
     const clean = slugify(id);
     const path = join(this.folderOf(projectPath, scope), `${clean}.toml`);
-    const invalid = this.problemIn(text);
-    if (invalid) throw new WorkflowFileError(invalid);
-    const unsafe = this.unsafeAt(projectPath, scope, path);
-    if (unsafe) throw new WorkflowFileError(unsafe);
+    this.refuseBadFile(projectPath, scope, path, text);
     if (existsSync(path)) throw new WorkflowFileError(`${clean}.toml exists.`);
     this.write(path, text);
     this.onChange();
     return clean;
+  }
+
+  /** A builder's next save. A file with a new hash needs approval again. */
+  replaceDraft(projectPath: string, id: string, text: string): void {
+    const path = join(this.folderOf(projectPath, 'project'), `${id}.toml`);
+    this.refuseBadFile(projectPath, 'project', path, text);
+    this.write(path, text);
+    this.onChange();
+  }
+
+  private refuseBadFile(
+    projectPath: string,
+    scope: WorkflowScope,
+    path: string,
+    text: string
+  ): void {
+    const problem = this.problemIn(text) ?? this.unsafeAt(projectPath, scope, path);
+    if (problem) throw new WorkflowFileError(problem);
   }
 
   approve(projectPath: string, id: string, hash: string): boolean {
