@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { WorkflowProgram } from '../../../../shared/workflows';
 import {
   hasChange,
+  PROGRAM_LABELS,
   type ReviewAgent,
   type ReviewLine,
   type ReviewSetting,
@@ -14,11 +14,6 @@ const LINE_CLASS: Record<ReviewLine['sign'], string> = {
   '+': 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-200',
   '-': 'bg-red-500/10 text-red-700 dark:text-red-200',
   ' ': 'text-fleet-text-secondary'
-};
-
-const PROGRAM_LABELS: Record<WorkflowProgram, string> = {
-  pi: 'Pi',
-  claude: 'Claude Code'
 };
 
 const STATUS_BADGES: Partial<

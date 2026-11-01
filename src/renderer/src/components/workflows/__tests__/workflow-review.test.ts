@@ -96,6 +96,33 @@ describe('buildReview', () => {
     expect(buildReview(DEF, null).settings.some((row) => row.label === 'Name')).toBe(false);
   });
 
+  it('marks a new first agent when that changes who posts', () => {
+    const pi = { role: 'Pi agent', program: 'pi', prompt: 'One.' } as const;
+    const claude = { role: 'Claude agent', program: 'claude', prompt: 'Two.' } as const;
+    const inputs: WorkflowDef['inputs'] = [
+      { name: 'pr', label: 'Pull request', type: 'pr', required: true }
+    ];
+    const before: WorkflowDef = { ...DEF, inputs, agents: [pi, claude] };
+    const review = buildReview({ ...before, agents: [claude, pi] }, before);
+
+    expect(review.settings.find((row) => row.label === 'Posting')).toEqual({
+      label: 'Posting',
+      value: 'Claude Code posts the findings',
+      was: 'Pi posts the findings'
+    });
+    expect(review.agents.map((agent) => agent.status)).toEqual(['same', 'same', 'same']);
+    expect(reviewSummary(review)).toBe('Settings changed.');
+  });
+
+  it('has no posting row without a PR input, and no mark for a new order', () => {
+    const other = { role: 'Other', program: 'pi', prompt: 'Two.' } as const;
+    const before: WorkflowDef = { ...DEF, agents: [READER, other] };
+    const review = buildReview({ ...before, agents: [other, READER] }, before);
+
+    expect(review.settings.some((row) => row.label === 'Posting')).toBe(false);
+    expect(reviewSummary(review)).toBe('Only comments, spacing or order changed.');
+  });
+
   it('counts an input with a new name as a change', () => {
     const inputs = [{ ...DEF.inputs[0], name: 'subject' }];
     const review = buildReview({ ...DEF, inputs }, DEF);

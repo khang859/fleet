@@ -1,4 +1,4 @@
-import { diffLines } from 'diff';
+import { diffLines, type DiffOp } from '../../../../shared/agent-diff';
 import type {
   WorkflowAgentDef,
   WorkflowDef,
@@ -7,8 +7,10 @@ import type {
 } from '../../../../shared/workflows';
 import { parseToForm } from './workflow-toml';
 
-/** A file can hold 256 KB of very different lines, and the page must not stop for it. */
-const DIFF_TIMEOUT_MS = 200;
+export const PROGRAM_LABELS: Record<WorkflowProgram, string> = {
+  pi: 'Pi',
+  claude: 'Claude Code'
+};
 
 export type ReviewLine = { sign: '+' | '-' | ' '; text: string };
 
@@ -39,27 +41,14 @@ export type WorkflowReview = {
 
 type RosterAgent = WorkflowAgentDef & { last: boolean };
 
-function signedLines(sign: ReviewLine['sign'], text: string): ReviewLine[] {
-  if (text === '') return [];
-  return text
-    .replace(/\n$/, '')
-    .split('\n')
-    .map((line) => ({ sign, text: line }));
-}
+const SIGNS: Record<DiffOp['kind'], ReviewLine['sign']> = {
+  add: '+',
+  remove: '-',
+  context: ' '
+};
 
-function signOf(change: { added: boolean; removed: boolean }): ReviewLine['sign'] {
-  if (change.added) return '+';
-  return change.removed ? '-' : ' ';
-}
-
-/** The lines of the new text in order, with each removed line where it was. */
 function lineDiff(oldText: string, newText: string): ReviewLine[] {
-  const changes = diffLines(oldText, newText, {
-    ignoreNewlineAtEof: true,
-    timeout: DIFF_TIMEOUT_MS
-  });
-  if (!changes) return [...signedLines('-', oldText), ...signedLines('+', newText)];
-  return changes.flatMap((change) => signedLines(signOf(change), change.value));
+  return diffLines(oldText, newText).map((op) => ({ sign: SIGNS[op.kind], text: op.text }));
 }
 
 export function hasChange(lines: ReviewLine[]): boolean {
@@ -87,14 +76,21 @@ function finishText(def: WorkflowDef): string {
   return def.finish.path ? `Save the report to ${def.finish.path}` : 'Save the report';
 }
 
+/** Fleet posts with the first agent's program, so a new agent order can change who posts. */
+function postingText(def: WorkflowDef): string {
+  return `${PROGRAM_LABELS[def.agents[0].program]} posts the findings`;
+}
+
 function settingRows(def: WorkflowDef): Array<[string, string]> {
-  return [
+  const rows: Array<[string, string]> = [
     ['Name', def.name],
     ['Where', whereText(def)],
     ['Inputs', inputsText(def)],
     ['Board', def.board ? 'On - agents share their findings' : 'Off'],
     ['Finish', finishText(def)]
   ];
+  const hasPr = def.inputs.some((input) => input.type === 'pr');
+  return hasPr ? [...rows, ['Posting', postingText(def)]] : rows;
 }
 
 /** The sheet title already holds the name, so its row shows only a change. */
@@ -168,7 +164,7 @@ export function reviewOf(entry: WorkflowEntry): WorkflowReview | null {
 
 /** The raw file, with the change marked when an approved version exists. */
 export function fileLines(approvedText: string | null, text: string): ReviewLine[] {
-  return approvedText === null ? signedLines(' ', text) : lineDiff(approvedText, text);
+  return lineDiff(approvedText ?? text, text);
 }
 
 function agentWord(count: number): string {
