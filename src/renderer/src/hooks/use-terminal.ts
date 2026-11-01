@@ -82,6 +82,18 @@ const terminalRegistry = new Map<string, Terminal>();
 /** The same registry, for `npm run drive -- eval` to read a pane's buffer. Dev only. */
 export const terminalRegistryForDev = terminalRegistry;
 
+/**
+ * Move a pinned pane to the bottom, only if it is not there already.
+ *
+ * term.scrollToBottom() redraws every row even when it moves nothing, and a
+ * pinned pane calls this on every write. The check is exact, not isAtBottom():
+ * that allows a gap of 2 rows, which would leave a pinned pane short of the end.
+ */
+export function followBottom(term: Terminal): void {
+  const buf = term.buffer.active;
+  if (buf.viewportY !== buf.baseY) term.scrollToBottom();
+}
+
 /** Panes currently being restarted — onExit handler should skip tab close for these. */
 export const restartingPanes = new Set<string>();
 
@@ -449,7 +461,7 @@ function createTerminal(
 
     term.write(data, () => {
       if (pinnedToBottom) {
-        term.scrollToBottom();
+        followBottom(term);
       }
       window.fleet.ptyDrain(options.paneId);
     });
@@ -761,7 +773,7 @@ function createTerminal(
       const targetY = Math.min(savedViewportY, term.buffer.active.baseY);
       term.scrollToLine(targetY);
     } else {
-      term.scrollToBottom();
+      followBottom(term);
     }
     return true;
   };
