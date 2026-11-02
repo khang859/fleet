@@ -49,11 +49,18 @@ describe('agentBrief', () => {
 
     const brief = agentBrief(issueRun, def, WORKER, { issueText: 'The body.\n\n## Comment' });
 
+    expect(brief).toContain('# The GitHub issue');
     expect(brief).toContain('GitHub issue: #9 It breaks');
     expect(brief).toContain(`Link: ${SAMPLE_ISSUE.url}`);
     expect(brief).toContain('The body.\n\n## Comment');
     expect(brief.indexOf('The body.')).toBeLessThan(brief.indexOf('# Rules'));
     expect(brief).not.toContain('outside the team');
+  });
+
+  it('has no issue part in a run with no issue', () => {
+    const brief = agentBrief(makeRun(), def, WORKER);
+
+    expect(brief).not.toContain('# The GitHub issue');
   });
 
   it('warns about a stranger issue', () => {

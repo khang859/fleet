@@ -111,6 +111,63 @@ prompt = "Read it."
 action = "post-issue"
 `;
 
+const OPTIONAL_ISSUE = `name = "Look"
+
+[[inputs]]
+name = "issue"
+label = "Issue"
+type = "issue"
+required = false
+
+[[agents]]
+role = "Worker"
+program = "pi"
+prompt = "Look."
+`;
+
+const PLANNING_ISSUE = `name = "Plan"
+
+[[inputs]]
+name = "issue"
+label = "Issue"
+type = "issue"
+
+[[stages]]
+name = "Plan"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+plan = true
+prompt = "Plan."
+`;
+
+const REVIEW_WITH_ISSUE = `${REVIEW}
+[[inputs]]
+name = "issue"
+label = "Issue"
+type = "issue"
+`;
+
+const TWO_PRS = `name = "Compare"
+
+[[inputs]]
+name = "first"
+label = "First"
+type = "pr"
+
+[[inputs]]
+name = "second"
+label = "Second"
+type = "pr"
+
+[[agents]]
+role = "Worker"
+program = "pi"
+prompt = "Compare {{first}} and {{second}}."
+`;
+
 const OPTIONS = { origin: 'manual' as const, ruleId: null, focus: true };
 
 function wirePr(fields: Partial<PrWire> = {}): PrWire {
@@ -156,6 +213,17 @@ function fakeIssueGh(issue: object = WIRE_ISSUE, comments: string[] = []): Exec 
     );
   };
 }
+
+/** Plays `gh`: a pull request as well as an issue. */
+function fakePrAndIssueGh(pr: PrWire, comments: string[]): Exec {
+  const issue = fakeIssueGh(WIRE_ISSUE, comments);
+  return async (command, args, cwd, input) =>
+    args.some((arg) => arg.includes('/pulls/'))
+      ? Promise.resolve(JSON.stringify(pr))
+      : issue(command, args, cwd, input);
+}
+
+const STRANGER_COMMENT = JSON.stringify({ author: 'x', role: 'NONE', at: 'now', body: 'Hi.' });
 
 describe('WorkflowStarts', () => {
   let dir: string;
@@ -302,6 +370,58 @@ describe('WorkflowStarts', () => {
         OPTIONS
       );
       expect(h.manager.list().filter((run) => !run.locked)).toHaveLength(1);
+    });
+
+    it('refuses a plan file when a stranger wrote a comment', async () => {
+      saveApproved('plan', PLANNING_ISSUE);
+      const exec = fakeIssueGh(WIRE_ISSUE, [STRANGER_COMMENT]);
+
+      const result = await makeStarts({ exec }).start(request('plan', { issue: '9' }), OPTIONS);
+
+      expect(result).toMatchObject({ ok: false, code: 'locked-plan' });
+      expect(h.manager.list()).toHaveLength(0);
+    });
+
+    it('does not skip the trust question when the issue locks a team PR', async () => {
+      saveApproved('both', REVIEW_WITH_ISSUE);
+      const exec = fakePrAndIssueGh(wirePr(), [STRANGER_COMMENT]);
+
+      await makeStarts({ exec }).start(request('both', { pr: '12', issue: '9' }), OPTIONS);
+      await flush();
+
+      expect(h.manager.list()[0]).toMatchObject({ locked: true, teamPr: false });
+    });
+
+    it('needs no GitHub for a blank optional issue', async () => {
+      saveApproved('look', OPTIONAL_ISSUE);
+      const exec: Exec = async () => Promise.reject(new Error('signed out'));
+
+      const result = await makeStarts({ exec }).start(request('look', { issue: ' ' }), OPTIONS);
+
+      const run = h.manager.list()[0];
+      expect(result.ok).toBe(true);
+      expect(run.issue).toBeUndefined();
+      expect(h.deps.store.readIssue(run.id)).toBeNull();
+    });
+
+    it('previews a stranger issue as locked, until a person trusts it', async () => {
+      const exec = fakeIssueGh(WIRE_ISSUE, [STRANGER_COMMENT]);
+      const req = request('issue', { issue: '9' });
+
+      const preview = await makeStarts({ exec }).preview(req);
+      const trusted = await makeStarts({ exec }).preview({ ...req, trustPr: true });
+
+      expect(preview.issue?.locked).toBe(true);
+      expect(trusted.issue?.locked).toBe(false);
+    });
+
+    it('finds an active run when the preview names the issue by link', async () => {
+      const starts = makeStarts({ exec: fakeIssueGh() });
+      const started = await starts.start(request('issue', { issue: '9' }), OPTIONS);
+
+      const preview = await starts.preview(request('issue', { issue: ISSUE_URL }));
+
+      expect(preview.duplicateRunId).toBe(started.ok ? started.runId : '');
     });
 
     it('previews the issue with a sign-in check', async () => {
@@ -536,6 +656,15 @@ describe('WorkflowStarts', () => {
 
       expect(result.ok).toBe(true);
       expect(h.manager.list()[0].pr).toBeNull();
+    });
+
+    it('changes only the first PR input to a number', async () => {
+      saveApproved('compare', TWO_PRS);
+      const link = 'https://github.com/acme/app/pull/12';
+
+      await makeStarts().start(request('compare', { first: link, second: '34' }), OPTIONS);
+
+      expect(h.manager.list()[0].inputs).toEqual({ first: '12', second: '34' });
     });
 
     it('uses another program when asked', async () => {

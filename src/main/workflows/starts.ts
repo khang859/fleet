@@ -301,9 +301,10 @@ export class WorkflowStarts {
     numbers: { pr?: number; issue?: number }
   ): Record<string, string> {
     const plain = { ...inputs };
-    for (const input of def.inputs) {
-      const number = input.type === 'text' ? undefined : numbers[input.type];
-      if (number !== undefined) plain[input.name] = String(number);
+    for (const type of ['pr', 'issue'] as const) {
+      const input = def.inputs.find((candidate) => candidate.type === type);
+      const number = numbers[type];
+      if (input && number !== undefined) plain[input.name] = String(number);
     }
     return plain;
   }

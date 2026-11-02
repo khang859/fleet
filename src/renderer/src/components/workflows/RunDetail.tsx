@@ -4,6 +4,7 @@ import {
   agentChatHandle,
   agentsInStage,
   postTarget,
+  trustsOnRerun,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -218,7 +219,7 @@ function postsAtFinish(run: WorkflowRun): boolean {
 const REPORT_CLASS =
   'text-xs leading-relaxed [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs';
 
-function ReportSection({
+export function ReportSection({
   run,
   onSave,
   onPost
@@ -384,7 +385,7 @@ function RunNotes({ run }: { run: WorkflowRun }): React.JSX.Element {
   );
 }
 
-function RunHeader({
+export function RunHeader({
   run,
   onBack,
   onClose
@@ -398,7 +399,7 @@ function RunHeader({
       projectPath: run.projectPath,
       workflowId: run.workflowId,
       inputs: run.inputs,
-      trustPr: !run.locked
+      trustPr: trustsOnRerun(run)
     });
     if (!reply.ok) useToastStore.getState().show(reply.message);
   };

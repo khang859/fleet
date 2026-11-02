@@ -540,14 +540,14 @@ describe('fetchIssue', () => {
 });
 
 describe('postComment', () => {
-  it('runs the gh command of the kind, with the text on stdin', async () => {
+  it.each(['issue', 'pr'] as const)('runs gh %s comment, with the text on stdin', async (kind) => {
     const exec = vi.fn<Exec>(async () => Promise.resolve(''));
 
-    await postComment(exec, '/repo', { kind: 'issue', number: 9 }, 'text');
+    await postComment(exec, '/repo', { kind, number: 9 }, 'text');
 
     expect(exec).toHaveBeenCalledWith(
       'gh',
-      ['issue', 'comment', '9', '--body-file', '-'],
+      [kind, 'comment', '9', '--body-file', '-'],
       '/repo',
       'text'
     );

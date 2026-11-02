@@ -31,7 +31,7 @@ describe('WorkflowPosting', () => {
   let dir: string;
   let h: Harness;
   let run: WorkflowRun;
-  let comments: Array<{ number: string; body: string | undefined }>;
+  let comments: Array<{ command: string[]; number: string; body: string | undefined }>;
   let existing: string;
   let failing: boolean;
   let listFails: boolean;
@@ -43,7 +43,7 @@ describe('WorkflowPosting', () => {
       return listFails ? Promise.reject(new Error('no answer')) : Promise.resolve(existing);
     }
     if (failing) return Promise.reject(new Error('gh failed'));
-    comments.push({ number: args[2], body: input });
+    comments.push({ command: args.slice(0, 2), number: args[2], body: input });
     return Promise.resolve('');
   };
 
@@ -69,6 +69,7 @@ describe('WorkflowPosting', () => {
     await posting.post(run.id);
 
     expect(comments).toHaveLength(1);
+    expect(comments[0].command).toEqual(['pr', 'comment']);
     expect(comments[0].number).toBe('7');
     expect(comments[0].body).toContain('No problems left.');
     expect(comments[0].body).toContain(reportMarker(run.id));
@@ -200,6 +201,19 @@ describe('WorkflowPosting on an issue', () => {
     expect(posts()[0].body).toContain('No problems left.');
     expect(posts()[0].body).toContain(reportMarker(run.id));
     expect(run.report?.posted).toBe(true);
+  });
+
+  it('posts on the issue when the run also has a PR', async () => {
+    const def = makeDef({ finish: { action: 'post-issue' } });
+    const plan = makePlan(def, { pr: SAMPLE_PR, issue: SAMPLE_ISSUE, issueText: 'The body.' });
+    const both = await startRun(h, plan);
+    sessionsUp(h, both);
+    both.report = makeReport();
+
+    await posting.post(both.id);
+
+    expect(posts()[0].args).toEqual(['issue', 'comment', '9', '--body-file', '-']);
+    expect(calls[0].args).toContain('repos/{owner}/{repo}/issues/9/comments');
   });
 
   it('reads the comments of the issue for the mark', async () => {

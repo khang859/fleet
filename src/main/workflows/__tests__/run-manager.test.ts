@@ -108,6 +108,13 @@ describe('WorkflowRunManager', () => {
       expect(readFileSync(path, 'utf8')).toContain('The real text.');
     });
 
+    it('writes no issue part in the brief of a run with no issue', async () => {
+      const run = await startRun(h, makePlan(ONE_AGENT));
+      const path = join(h.deps.store.folder(run.id), 'prompts', `${run.agents[0].id}.md`);
+
+      expect(readFileSync(path, 'utf8')).not.toContain('# The GitHub issue');
+    });
+
     it('gives every agent of the issue starter read tools and no bash', async () => {
       const starter = STARTERS.find((candidate) => candidate.id === 'issue-review');
       const def = parseWorkflow(starter?.text ?? '');

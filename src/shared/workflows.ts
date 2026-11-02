@@ -300,6 +300,11 @@ export function postTarget(run: WorkflowRun): PostTarget | null {
   return pr ? { kind: 'pr', number: pr.number, label: `PR #${pr.number}` } : null;
 }
 
+/** A rerun reads an issue again and it can hold new comments, so the authors get a new check. */
+export function trustsOnRerun(run: WorkflowRun): boolean {
+  return !run.locked && !run.issue;
+}
+
 /** A run from an older Fleet has no stage: its last agent came after all others. */
 export function stageOf(agent: RunAgent): number {
   return agent.stage ?? (agent.isLast ? 1 : 0);

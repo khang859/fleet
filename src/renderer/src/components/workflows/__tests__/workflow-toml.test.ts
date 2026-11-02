@@ -261,5 +261,14 @@ describe('issue values', () => {
 
     expect(form.inputs[0].type).toBe('issue');
     expect(form.finish).toEqual({ action: 'post-issue' });
+
+    const written = formToToml(form);
+
+    expect(written).toContain('type = "issue"');
+    expect(written).toContain('action = "post-issue"');
+    expect(parseToForm(written)).toMatchObject({
+      inputs: [{ type: 'issue' }],
+      finish: { action: 'post-issue' }
+    });
   });
 });

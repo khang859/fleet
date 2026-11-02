@@ -132,7 +132,7 @@ function Inputs({
   );
 }
 
-function TargetLine({
+export function TargetLine({
   target,
   noun,
   from,

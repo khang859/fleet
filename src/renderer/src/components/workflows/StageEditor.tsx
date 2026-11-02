@@ -154,7 +154,7 @@ function StartPanel({ def, onChange }: EditProps): React.JSX.Element {
   );
 }
 
-function EndPanel({ def, onChange }: EditProps): React.JSX.Element {
+export function EndPanel({ def, onChange }: EditProps): React.JSX.Element {
   const action = def.finish?.action ?? 'none';
   const setAction = (value: string): void => {
     if (value === 'none') onChange({ ...def, finish: undefined });
