@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { RunTab } from '../../../shared/workflows';
-import { ApprovalStore } from '../approval';
+import { ApprovalStore, DisabledFiles } from '../approval';
 import { ToolRefused } from '../bridge-routes';
 import { builderBrief, WorkflowBuilder, type BuilderDeps } from '../builder';
 import { WorkflowCatalog } from '../catalog';
@@ -32,7 +32,11 @@ describe('WorkflowBuilder', () => {
     project = join(dir, 'project');
     mkdirSync(project);
     const approvals = new ApprovalStore(join(dir, 'approvals.json'), randomBytes(32));
-    catalog = new WorkflowCatalog(approvals, join(dir, 'home'));
+    catalog = new WorkflowCatalog(
+      approvals,
+      new DisabledFiles(join(dir, 'disabled.json'), randomBytes(32)),
+      join(dir, 'home')
+    );
     opened = [];
     tabs = [];
     deps = {
@@ -169,7 +173,7 @@ describe('WorkflowBuilder', () => {
     writeFileSync(draftPath('my-flow'), FIRST.replace('Do it.', 'Theirs.'));
     const next = FIRST.replace('Do it.', 'Both.');
 
-    await builder.reopen(project, 'my-flow');
+    await builder.reopen(project, 'my-flow', 'project');
     builder.saveDraft(paneId, next);
 
     expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(next);
@@ -214,7 +218,7 @@ describe('WorkflowBuilder', () => {
     builder.saveDraft(paneId, FIRST);
     builder.onPaneClosed(paneId);
 
-    await new WorkflowBuilder(deps).reopen(project, 'my-flow');
+    await new WorkflowBuilder(deps).reopen(project, 'my-flow', 'project');
 
     expect(opened[1].line).toContain("'chat-1'");
     expect(opened[1].line).toContain('--append-system-prompt-file');
@@ -224,7 +228,7 @@ describe('WorkflowBuilder', () => {
     await builder.start(project, 'pi');
     builder.saveDraft(opened[0].paneId, FIRST);
 
-    await builder.reopen(project, 'my-flow');
+    await builder.reopen(project, 'my-flow', 'project');
 
     expect(opened).toHaveLength(1);
     expect(tabs.at(-1)?.focus).toBe(true);

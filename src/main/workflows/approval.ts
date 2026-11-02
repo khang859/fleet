@@ -160,4 +160,39 @@ export class ApprovalStore {
     delete all[filePath];
     this.file.write(all);
   }
+
+  /** A person moved the file. Its bytes did not change, so its approval goes with it. */
+  move(from: string, to: string): void {
+    const all = this.file.read();
+    const entry = all[from] as Approval | undefined;
+    delete all[from];
+    if (entry) all[to] = entry;
+    else delete all[to];
+    this.file.write(all);
+  }
+}
+
+/** The workflow files a person turned off on this machine, by path. */
+export class DisabledFiles {
+  private readonly file: SignedFile<string[]>;
+
+  constructor(path: string, key: Buffer) {
+    this.file = new SignedFile(path, key, z.array(z.string()), []);
+  }
+
+  has(filePath: string): boolean {
+    return this.file.read().includes(filePath);
+  }
+
+  set(filePath: string, disabled: boolean): void {
+    const others = this.file.read().filter((path) => path !== filePath);
+    this.file.write(disabled ? [...others, filePath] : others);
+  }
+
+  /** The file moved: it stays off or on, and a replaced file's state goes. */
+  move(from: string, to: string): void {
+    const was = this.has(from);
+    this.set(from, false);
+    this.set(to, was);
+  }
 }

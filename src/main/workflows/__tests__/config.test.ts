@@ -262,26 +262,23 @@ describe('workflow files', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('lets a project file win over a personal one', () => {
+  it('lists a name in both scopes, project first', () => {
     writeFileSync(join(project, PROJECT_WORKFLOWS_DIR, 'shared.toml'), VALID);
     writeFileSync(join(personal, 'shared.toml'), VALID);
     writeFileSync(join(personal, 'mine.toml'), VALID);
     writeFileSync(join(personal, 'notes.txt'), 'not a workflow');
 
-    const { files, replaced } = findWorkflowFiles(project, personal);
+    const files = findWorkflowFiles(project, personal);
 
     expect(files.map((file) => [file.id, file.scope])).toEqual([
       ['shared', 'project'],
-      ['mine', 'personal']
+      ['mine', 'personal'],
+      ['shared', 'personal']
     ]);
-    expect([...replaced]).toEqual(['shared']);
   });
 
   it('copes with missing folders', () => {
-    const { files, replaced } = findWorkflowFiles(join(dir, 'none'), join(dir, 'gone'));
-
-    expect(files).toEqual([]);
-    expect(replaced.size).toBe(0);
+    expect(findWorkflowFiles(join(dir, 'none'), join(dir, 'gone'))).toEqual([]);
   });
 
   it('refuses a symlink', () => {

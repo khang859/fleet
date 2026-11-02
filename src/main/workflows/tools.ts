@@ -47,7 +47,8 @@ export const TOOLS = {
   },
   fleet_workflow_list: {
     panes: ['outside', 'run', 'last', 'builder'],
-    description: 'List the workflows of this project, with their approval state.',
+    description:
+      'List the workflows of this project, with their approval state. Each one is a project file, shared with the repo, or a personal file, only on this machine. One id can be in both scopes. A workflow that is turned off cannot run.',
     args: z.strictObject({ project: z.string().optional() })
   },
   fleet_workflow_run: {
@@ -56,6 +57,12 @@ export const TOOLS = {
       'Start an approved, unchanged workflow. Use fleet_workflow_list to see the inputs each one needs.',
     args: z.strictObject({
       workflow: z.string().min(1).describe('The workflow id.'),
+      scope: z
+        .enum(['project', 'personal'])
+        .optional()
+        .describe(
+          'Which file, when both scopes have this id. The default is the one that is on, project first.'
+        ),
       project: z.string().optional().describe('Project path. The default is this pane.'),
       inputs: z.record(z.string(), z.string()).default({})
     })
@@ -90,7 +97,7 @@ export const TOOLS = {
   fleet_workflow_create: {
     panes: ['outside'],
     description:
-      'Write a new workflow file. Call fleet_workflow_guide first for the format. The file waits for a person to approve it, and it never replaces a file.',
+      'Write a new project workflow file. Call fleet_workflow_guide first for the format. The file waits for a person to approve it, and it never replaces a file. A personal file with the same id can exist beside it.',
     args: z.strictObject({
       id: z.string().min(1).max(60).describe('File name, with no extension.'),
       project: z.string().optional().describe('Project path. The default is this pane.'),

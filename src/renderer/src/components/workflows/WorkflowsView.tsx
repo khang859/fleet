@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { MessageSquare, Pencil, Play, Sparkles, Trash2 } from 'lucide-react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { MessageSquare, Pencil, Play, Power, Sparkles, Trash2 } from 'lucide-react';
 import {
   agentsOf,
+  otherScope,
   type WorkflowEntry,
   type WorkflowRun,
   type WorkflowScope,
@@ -10,7 +11,7 @@ import {
 import { callWorkflows, showWorkflowError, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
-import { ApprovalBadge, Badge, Button, Empty } from './parts';
+import { ApprovalBadge, Badge, Button, Empty, ReplaceNotice, ScopeSwitch } from './parts';
 import { formatAgo } from './workflow-format';
 import { BuilderStart } from './BuilderStart';
 import { RunSheet } from './RunSheet';
@@ -22,92 +23,141 @@ function lastRunOf(entry: WorkflowEntry, runs: WorkflowRun[]): number | null {
   return own.length > 0 ? Math.max(...own.map((run) => run.createdAt)) : null;
 }
 
-function WorkflowRow({
-  entry,
-  lastRun,
-  onRun,
-  onEdit,
-  onDelete,
-  onTalk
-}: {
-  entry: WorkflowEntry;
-  lastRun: number | null;
+type RowActions = {
   onRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMove: () => void;
+  onToggle: () => void;
   /** Go back to the agent that made this file, when there is one. */
   onTalk?: () => void;
+};
+
+const ICON_BUTTON =
+  'rounded p-1 text-fleet-text-subtle opacity-0 hover:bg-fleet-surface-2 hover:text-fleet-text focus:opacity-100 group-hover:opacity-100';
+
+const SCOPE_HINT: Record<WorkflowScope, string> = {
+  project: 'Shared with the repo',
+  personal: 'Only on this machine'
+};
+
+function WorkflowRow({
+  entry,
+  lastRun,
+  inGroup,
+  busy,
+  actions
+}: {
+  entry: WorkflowEntry;
+  lastRun: number | null;
+  /** One of two files with this name: the group above names the file. */
+  inGroup: boolean;
+  /** A move or a toggle of this file is on its way. */
+  busy: boolean;
+  actions: RowActions;
 }): React.JSX.Element {
   const { def } = entry;
   const agents = def ? agentsOf(def).length : 0;
+  const dim = entry.disabled ? 'opacity-50' : '';
   return (
-    <div className="group flex items-center gap-3 border-b border-fleet-border px-4 py-2.5 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-xs font-medium text-fleet-text">
-            {def?.name ?? entry.id}
-          </span>
-          {entry.scope === 'personal' && <Badge tone="gray">Personal</Badge>}
-        </div>
+    <div className={`group flex items-center gap-3 py-2.5 pr-4 ${inGroup ? 'pl-9' : 'pl-4'}`}>
+      <div className={`min-w-0 flex-1 ${dim}`}>
+        <div className="truncate text-xs font-medium text-fleet-text">{def?.name ?? entry.id}</div>
         {entry.error ? (
           <pre className="mt-1 whitespace-pre-wrap font-mono text-[11px] text-red-300">
             {entry.error}
           </pre>
         ) : (
           <div className="truncate text-[11px] text-fleet-text-subtle">
-            {entry.replacesPersonal
-              ? 'This project file replaces your personal file of the same name.'
-              : `${entry.id}.toml`}
+            {inGroup ? SCOPE_HINT[entry.scope] : `${entry.id}.toml`}
           </div>
         )}
       </div>
-      <div className="w-16 text-[11px] tabular-nums text-fleet-text-muted">
+      <div className="w-36">
+        <ScopeSwitch scope={entry.scope} verb="Move to" busy={busy} onPick={actions.onMove} />
+      </div>
+      <div className={`w-16 text-[11px] tabular-nums text-fleet-text-muted ${dim}`}>
         {def ? `${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}
       </div>
-      <div className="w-20 text-[11px] text-fleet-text-muted">{formatAgo(lastRun)}</div>
+      <div className={`w-20 text-[11px] text-fleet-text-muted ${dim}`}>{formatAgo(lastRun)}</div>
       <div className="flex w-24 items-center">
-        {entry.error ? (
+        {entry.disabled ? (
+          <Badge tone="gray">Off</Badge>
+        ) : entry.error ? (
           <Badge tone="red">Bad file</Badge>
         ) : (
           <ApprovalBadge approval={entry.approval} />
         )}
       </div>
-      <div className="flex w-36 items-center justify-end gap-1">
-        {onTalk && (
-          <button
-            aria-label="Edit with the agent"
-            onClick={onTalk}
-            className="rounded p-1 text-fleet-text-subtle opacity-0 hover:bg-fleet-surface-2 hover:text-fleet-text focus:opacity-100 group-hover:opacity-100"
-          >
+      <div className="flex w-44 items-center justify-end gap-1">
+        {actions.onTalk && (
+          <button aria-label="Edit with the agent" onClick={actions.onTalk} className={ICON_BUTTON}>
             <MessageSquare size={13} />
           </button>
         )}
-        <button
-          aria-label="Edit"
-          onClick={onEdit}
-          className="rounded p-1 text-fleet-text-subtle opacity-0 hover:bg-fleet-surface-2 hover:text-fleet-text focus:opacity-100 group-hover:opacity-100"
-        >
+        <button aria-label="Edit" onClick={actions.onEdit} className={ICON_BUTTON}>
           <Pencil size={13} />
+        </button>
+        {/* Always here, so a press never moves Delete under the pointer. */}
+        <button
+          aria-label={entry.disabled ? 'Turn on' : 'Turn off'}
+          onClick={actions.onToggle}
+          className={ICON_BUTTON}
+        >
+          <Power size={13} />
         </button>
         <button
           aria-label="Delete"
-          onClick={onDelete}
-          className="rounded p-1 text-fleet-text-subtle opacity-0 hover:bg-fleet-surface-2 hover:text-red-300 focus:opacity-100 group-hover:opacity-100"
+          onClick={actions.onDelete}
+          className={`${ICON_BUTTON} hover:!text-red-300`}
         >
           <Trash2 size={13} />
         </button>
-        {def && (
-          <Button tone="primary" onClick={onRun}>
-            {entry.approval === 'approved' ? (
-              <>
-                <Play size={11} /> Run
-              </>
-            ) : (
-              'Review'
-            )}
-          </Button>
-        )}
+        <div className="flex w-[4.75rem] justify-end">
+          {entry.disabled ? (
+            <Button onClick={actions.onToggle}>Turn on</Button>
+          ) : (
+            def && (
+              <Button tone="primary" onClick={actions.onRun}>
+                {entry.approval === 'approved' ? (
+                  <>
+                    <Play size={11} /> Run
+                  </>
+                ) : (
+                  'Review'
+                )}
+              </Button>
+            )
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** The files of a list, with a name in both scopes as one group. */
+function groupById(entries: WorkflowEntry[]): WorkflowEntry[][] {
+  const groups = new Map<string, WorkflowEntry[]>();
+  for (const entry of entries) groups.set(entry.id, [...(groups.get(entry.id) ?? []), entry]);
+  return [...groups.values()];
+}
+
+function WorkflowGroup({
+  entries,
+  children
+}: {
+  entries: WorkflowEntry[];
+  children: ReactNode;
+}): React.JSX.Element {
+  if (entries.length === 1)
+    return <div className="border-b border-fleet-border last:border-b-0">{children}</div>;
+  return (
+    <div className="border-b border-fleet-border pb-1 last:border-b-0">
+      <div className="flex items-center gap-2 px-4 pt-2.5">
+        <span className="font-mono text-[11px] text-fleet-text-muted">{entries[0].id}.toml</span>
+        <Badge tone="gray">{entries.length} copies</Badge>
+      </div>
+      {children}
     </div>
   );
 }
@@ -176,14 +226,19 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
   const entries = useWorkflowsStore((s) => s.entries);
   const runs = useWorkflowsStore((s) => s.state.runs);
   const projects = useWorkflowsStore((s) => s.projects);
-  // Ids, not copies: the entries change live, and a dialog must show the file as it is now.
-  const [sheetId, setSheetId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Paths, not copies: the entries change live, and a dialog must show the file as it is now.
+  // Not ids: a project and a personal file can share an id.
+  const [sheetPath, setSheetPath] = useState<string | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  /** The file whose move waits for Replace, as the other scope has its name. */
+  const [replacingPath, setReplacingPath] = useState<string | null>(null);
+  /** The file whose move or toggle is on its way, so a second press waits for it. */
+  const [busyPath, setBusyPath] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditorSource | null>(null);
   const [making, setMaking] = useState(false);
   const [drafts, setDrafts] = useState<string[]>([]);
-  const sheet = entries.find((entry) => entry.id === sheetId) ?? null;
-  const deleting = entries.find((entry) => entry.id === deletingId) ?? null;
+  const sheet = entries.find((entry) => entry.path === sheetPath) ?? null;
+  const deleting = entries.find((entry) => entry.path === deletingPath) ?? null;
   const isRepo = projects.find((project) => project.path === projectPath)?.isRepo ?? true;
   const cutOff = runs.filter((run) => run.state === 'cut-off' && run.projectPath === projectPath);
 
@@ -192,7 +247,7 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
   }, [projectPath, entries]);
 
   const talk = async (entry: WorkflowEntry): Promise<void> => {
-    const reply = await callWorkflows('reopenBuilder', projectPath, entry.id);
+    const reply = await callWorkflows('reopenBuilder', projectPath, entry.id, entry.scope);
     if (!reply.ok) useToastStore.getState().show(reply.message);
   };
 
@@ -216,10 +271,48 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
 
   const remove = async (): Promise<void> => {
     if (!deleting) return;
-    await callWorkflows('remove', projectPath, deleting.id);
+    await callWorkflows('remove', projectPath, deleting.id, deleting.scope);
     useToastStore.getState().show(`Deleted ${deleting.def?.name ?? deleting.id}.`);
-    setDeletingId(null);
+    setDeletingPath(null);
   };
+
+  const move = async (entry: WorkflowEntry, replace: boolean): Promise<void> => {
+    const req = { projectPath, id: entry.id, from: entry.scope, replace };
+    const reply = await callWorkflows('move', req);
+    if (!reply.ok && reply.code === 'exists') {
+      setReplacingPath(entry.path);
+      return;
+    }
+    setReplacingPath(null);
+    const name = entry.def?.name ?? entry.id;
+    const toast = useToastStore.getState();
+    toast.show(reply.ok ? `Moved ${name} to ${otherScope(entry.scope)}.` : reply.message);
+  };
+
+  const toggle = async (entry: WorkflowEntry): Promise<void> => {
+    await callWorkflows('setDisabled', projectPath, entry.id, entry.scope, !entry.disabled);
+    const name = entry.def?.name ?? entry.id;
+    useToastStore
+      .getState()
+      .show(entry.disabled ? `Turned on ${name}.` : `Turned off ${name}. Nothing starts it now.`);
+  };
+
+  const once = (entry: WorkflowEntry, work: () => Promise<void>): void => {
+    if (busyPath !== null) return;
+    setBusyPath(entry.path);
+    work()
+      .catch(showWorkflowError)
+      .finally(() => setBusyPath(null));
+  };
+
+  const actionsOf = (entry: WorkflowEntry): RowActions => ({
+    onRun: () => setSheetPath(entry.path),
+    onEdit: () => void edit(entry).catch(showWorkflowError),
+    onDelete: () => setDeletingPath(entry.path),
+    onMove: () => once(entry, async () => move(entry, false)),
+    onToggle: () => once(entry, async () => toggle(entry)),
+    onTalk: drafts.includes(entry.path) ? () => void talk(entry) : undefined
+  });
 
   if (editing) {
     return (
@@ -261,22 +354,35 @@ export function WorkflowsView({ projectPath }: { projectPath: string }): React.J
         </>
       ) : (
         <div className="rounded-md border border-fleet-border">
-          {entries.map((entry) => (
-            <WorkflowRow
-              key={entry.path}
-              entry={entry}
-              lastRun={lastRunOf(entry, runs)}
-              onRun={() => setSheetId(entry.id)}
-              onEdit={() => void edit(entry).catch(showWorkflowError)}
-              onDelete={() => setDeletingId(entry.id)}
-              onTalk={drafts.includes(entry.id) ? () => void talk(entry) : undefined}
-            />
+          {groupById(entries).map((group) => (
+            <WorkflowGroup key={group[0].id} entries={group}>
+              {group.map((entry) => (
+                <Fragment key={entry.path}>
+                  <WorkflowRow
+                    entry={entry}
+                    lastRun={lastRunOf(entry, runs)}
+                    inGroup={group.length > 1}
+                    busy={busyPath === entry.path}
+                    actions={actionsOf(entry)}
+                  />
+                  {replacingPath === entry.path && (
+                    <div className={`pb-2.5 pr-4 ${group.length > 1 ? 'pl-9' : 'pl-4'}`}>
+                      <ReplaceNotice
+                        text={`Your ${otherScope(entry.scope)} workflows have a ${entry.id}.toml. Moving this one replaces it, and rules that used either one start this one.`}
+                        onCancel={() => setReplacingPath(null)}
+                        onReplace={() => once(entry, async () => move(entry, true))}
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              ))}
+            </WorkflowGroup>
           ))}
         </div>
       )}
-      <RunSheet projectPath={projectPath} entry={sheet} onClose={() => setSheetId(null)} />
+      <RunSheet projectPath={projectPath} entry={sheet} onClose={() => setSheetPath(null)} />
       <BuilderStart open={making} projectPath={projectPath} onClose={() => setMaking(false)} />
-      <DeleteDialog entry={deleting} onCancel={() => setDeletingId(null)} onConfirm={remove} />
+      <DeleteDialog entry={deleting} onCancel={() => setDeletingPath(null)} onConfirm={remove} />
     </div>
   );
 }

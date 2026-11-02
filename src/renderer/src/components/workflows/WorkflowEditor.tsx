@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { WorkflowDef, WorkflowScope } from '../../../../shared/workflows';
+import { findWorkflow, type WorkflowDef, type WorkflowScope } from '../../../../shared/workflows';
 import { workspaceSlug } from '../../../../shared/claude-config';
 import { callWorkflows } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
-import { Button, FIELD_CLASS } from './parts';
+import { Button, FIELD_CLASS, ReplaceNotice, ScopeSwitch } from './parts';
 import { StageEditor } from './StageEditor';
 import { formToToml, parseToForm } from './workflow-toml';
 
@@ -53,8 +53,11 @@ export function WorkflowEditor({
   const [baseHash, setBaseHash] = useState(source.baseHash);
   const [problem, setProblem] = useState<string | null>(null);
   const [diskText, setDiskText] = useState<string | null>(null);
+  /** The other scope has a file of this name, and Save must ask before it replaces it. */
+  const [clash, setClash] = useState(false);
   const checkProblem = useFileCheck(text);
   const isNew = source.baseHash === null;
+  const moves = !isNew && scope !== source.scope;
 
   const form = ((): WorkflowDef | null => {
     try {
@@ -64,21 +67,39 @@ export function WorkflowEditor({
     }
   })();
 
-  const save = async (): Promise<void> => {
+  const save = async (replace = false): Promise<void> => {
     const fileName = isNew ? workspaceSlug(form?.name ?? '') || source.fileName : source.fileName;
-    const reply = await callWorkflows('save', { projectPath, scope, fileName, text, baseHash });
+    const moveFrom = moves ? { id: source.fileName, scope: source.scope } : undefined;
+    const reply = await callWorkflows('save', {
+      projectPath,
+      scope,
+      fileName,
+      text,
+      baseHash,
+      moveFrom,
+      replace
+    });
     if (reply.ok) {
-      useToastStore.getState().show('Workflow saved.');
+      useToastStore.getState().show(moves ? `Workflow saved to ${scope}.` : 'Workflow saved.');
       onClose();
+      return;
+    }
+    if (moves && reply.code === 'exists') {
+      setClash(true);
       return;
     }
     setProblem(reply.message);
     setDiskText(reply.diskText ?? null);
   };
 
+  const pickScope = (value: WorkflowScope): void => {
+    setScope(value);
+    setClash(false);
+  };
+
   const overwrite = async (): Promise<void> => {
     const entries = await callWorkflows('list', projectPath);
-    const onDisk = entries.find((entry) => entry.id === source.fileName);
+    const onDisk = findWorkflow(entries, source.fileName, source.scope);
     setBaseHash(onDisk?.hash ?? null);
     setDiskText(null);
     setProblem('You saw the change on disk. Press Save to replace it.');
@@ -91,18 +112,12 @@ export function WorkflowEditor({
           Back to Workflows
         </Button>
         <div className="flex-1" />
-        {(['project', 'personal'] as const).map((value) => (
-          <button
-            key={value}
-            disabled={!isNew}
-            onClick={() => setScope(value)}
-            className={`rounded px-2.5 py-1 text-xs capitalize disabled:opacity-50 ${
-              scope === value ? 'bg-fleet-surface-2 text-fleet-text' : 'text-fleet-text-subtle'
-            }`}
-          >
-            {value}
-          </button>
-        ))}
+        {moves && (
+          <span className="mr-1 text-[11px] text-fleet-text-subtle">
+            Save moves this file to {scope}.
+          </span>
+        )}
+        <ScopeSwitch scope={scope} verb="Save to" onPick={pickScope} />
       </div>
 
       <div className="flex gap-1 border-b border-fleet-border">
@@ -171,9 +186,17 @@ export function WorkflowEditor({
         </div>
       )}
 
+      {clash && (
+        <ReplaceNotice
+          text={`Your ${scope} workflows have a ${source.fileName}.toml. Saving here replaces it.`}
+          onCancel={() => setClash(false)}
+          onReplace={async () => save(true)}
+        />
+      )}
+
       <div className="flex justify-end gap-2 pb-4">
         <Button onClick={onClose}>Cancel</Button>
-        <Button tone="primary" disabled={checkProblem !== null} onClick={save}>
+        <Button tone="primary" disabled={checkProblem !== null} onClick={async () => save()}>
           Save
         </Button>
       </div>

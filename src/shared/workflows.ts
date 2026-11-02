@@ -82,21 +82,38 @@ export function needsPersonAtRun(def: WorkflowDef): boolean {
 
 export type WorkflowScope = 'project' | 'personal';
 
+/**
+ * The file a name points to. With no scope, the project file comes first, as
+ * it did before a name could be in both scopes. `entries` lists project first.
+ */
+export function findWorkflow<T extends { id: string; scope: WorkflowScope }>(
+  entries: readonly T[],
+  id: string,
+  scope?: WorkflowScope
+): T | undefined {
+  const named = entries.filter((entry) => entry.id === id);
+  return scope ? named.find((entry) => entry.scope === scope) : named.at(0);
+}
+
+export function otherScope(scope: WorkflowScope): WorkflowScope {
+  return scope === 'project' ? 'personal' : 'project';
+}
+
 export type WorkflowApproval = 'approved' | 'needs-approval' | 'changed';
 
 /** One TOML file, whether or not it parsed. */
 export type WorkflowEntry = {
-  /** The file name without `.toml`. A project file wins over a personal one with this name. */
+  /** The file name without `.toml`. A project and a personal file can share it. */
   id: string;
   path: string;
   scope: WorkflowScope;
+  /** A person turned this file off on this machine. Nothing starts it. */
+  disabled: boolean;
   hash: string;
   def: WorkflowDef | null;
   /** What is wrong with the file, with its line when it has one. */
   error: string | null;
   approval: WorkflowApproval;
-  /** Set when this project file replaces a personal file of the same name. */
-  replacesPersonal: boolean;
   /** The text the approval covers, to show only what changed. */
   approvedText: string | null;
 };
@@ -240,6 +257,8 @@ export type RunOrigin = 'manual' | 'agent' | 'automatic';
 export type WorkflowRun = {
   id: string;
   workflowId: string;
+  /** Unset on runs from before a name could be in both scopes. */
+  workflowScope?: WorkflowScope;
   workflowName: string;
   workflowPath: string;
   projectPath: string;
@@ -337,6 +356,7 @@ export type BuilderInfo = {
   program: WorkflowProgram;
   /** The file name without `.toml`. Null until the first save. */
   draftId: string | null;
+  draftScope: WorkflowScope;
 };
 
 /** A saved agent definition, for the job list of Add agent. */
@@ -366,6 +386,8 @@ export type WorkflowRule = {
   name: string;
   projectPath: string;
   workflowId: string;
+  /** Unset on rules from before a name could be in both scopes: see `findWorkflow`. */
+  workflowScope?: WorkflowScope;
   inputs: Record<string, string>;
   trigger: RuleTrigger;
   missed: RuleMissed;
@@ -403,6 +425,7 @@ export type WorkflowNotice = {
   ask?: { path: string; hash: string };
   /** The file that an agent made, on an `agent-create` notice. */
   workflowId?: string;
+  workflowScope?: WorkflowScope;
   /** The agent whose plan waits, on a `needs-you` notice. */
   planAgentId?: string;
 };
@@ -451,6 +474,8 @@ export type WorkflowPreview = {
 export type StartRunRequest = {
   projectPath: string;
   workflowId: string;
+  /** Which file of this name. Unset: see `findWorkflow`. */
+  workflowScope?: WorkflowScope;
   inputs: Record<string, string>;
   /** Start even with an active run for this target. */
   force?: boolean;
@@ -475,6 +500,10 @@ export type SaveReportResult =
 export type SaveWorkflowRequest = {
   projectPath: string;
   scope: WorkflowScope;
+  /** The opened file, when this save puts it in the other scope. The save moves it. */
+  moveFrom?: { id: string; scope: WorkflowScope };
+  /** Replace a file of this name in `scope`, which a move would otherwise refuse. */
+  replace?: boolean;
   fileName: string;
   text: string;
   /** The file's hash when it was opened. A different hash on disk stops the save. */
@@ -484,6 +513,18 @@ export type SaveWorkflowRequest = {
 export type SaveWorkflowResult =
   | { ok: true; id: string; path: string }
   | { ok: false; code: 'invalid' | 'changed' | 'exists'; message: string; diskText?: string };
+
+export type MoveWorkflowRequest = {
+  projectPath: string;
+  id: string;
+  from: WorkflowScope;
+  /** Replace the file of this name in the other scope. */
+  replace: boolean;
+};
+
+export type MoveWorkflowResult =
+  | { ok: true }
+  | { ok: false; code: 'exists' | 'not-found' | 'invalid'; message: string };
 
 export type WorkflowStarter = {
   id: string;
@@ -522,8 +563,10 @@ export type WorkflowsApi = {
   readText: (path: string) => string;
   starters: () => { blank: string; starters: WorkflowStarter[] };
   save: (req: SaveWorkflowRequest) => SaveWorkflowResult;
-  remove: (projectPath: string, id: string) => void;
-  approve: (projectPath: string, id: string, hash: string) => boolean;
+  remove: (projectPath: string, id: string, scope: WorkflowScope) => void;
+  approve: (projectPath: string, id: string, scope: WorkflowScope, hash: string) => boolean;
+  move: (req: MoveWorkflowRequest) => MoveWorkflowResult;
+  setDisabled: (projectPath: string, id: string, scope: WorkflowScope, disabled: boolean) => void;
   importToml: (projectPath: string, scope: WorkflowScope) => Promise<string | null>;
   preview: (req: StartRunRequest) => Promise<WorkflowPreview>;
   start: (req: StartRunRequest) => Promise<StartRunResult>;
@@ -541,8 +584,13 @@ export type WorkflowsApi = {
   check: (text: string) => string | null;
   savedAgents: (projectPath: string) => Promise<SavedAgent[]>;
   startBuilder: (projectPath: string, program: WorkflowProgram) => Promise<BuilderStart>;
-  reopenBuilder: (projectPath: string, draftId: string) => Promise<BuilderStart>;
+  reopenBuilder: (
+    projectPath: string,
+    draftId: string,
+    scope: WorkflowScope
+  ) => Promise<BuilderStart>;
   builderInfo: (id: string) => BuilderInfo | null;
+  /** The paths of the drafts whose builder a person can go back to. */
   draftsWithBuilder: (projectPath: string) => string[];
   programs: () => Promise<Record<WorkflowProgram, boolean>>;
   answerPlan: (runId: string, agentId: string, answer: PlanAnswer) => Promise<boolean>;

@@ -401,7 +401,7 @@ export function RunSheet({
   const [choices, setChoices] = useState<Choices>(NO_CHOICES);
   const [problem, setProblem] = useState<string | null>(null);
   const [readHash, setReadHash] = useState<string | null>(null);
-  const entryId = entry?.id;
+  const entryPath = entry?.path;
 
   // The entry is live, so a change to the file must not clear what a person typed.
   useEffect(() => {
@@ -409,7 +409,7 @@ export function RunSheet({
     setChoices(NO_CHOICES);
     setProblem(null);
     setReadHash(null);
-  }, [entryId, initialInputs]);
+  }, [entryPath, initialInputs]);
 
   const needsApproval = entry !== null && entry.approval !== 'approved';
 
@@ -418,7 +418,7 @@ export function RunSheet({
   if (entry && wide !== needsApproval) setWide(needsApproval);
 
   const request: StartRunRequest | null = entry
-    ? { projectPath, workflowId: entry.id, inputs: values, ...choices }
+    ? { projectPath, workflowId: entry.id, workflowScope: entry.scope, inputs: values, ...choices }
     : null;
   const preview = usePreview(needsApproval ? null : request);
   const failed = preview?.checks.some((check) => !check.ok) ?? false;
@@ -436,7 +436,7 @@ export function RunSheet({
 
   const approve = async (): Promise<void> => {
     if (!entry || readHash === null) return;
-    const approved = await callWorkflows('approve', projectPath, entry.id, readHash);
+    const approved = await callWorkflows('approve', projectPath, entry.id, entry.scope, readHash);
     if (!approved) {
       setProblem('The file changed again. Check it once more.');
       return;
