@@ -1,7 +1,7 @@
 import { wslMountToWinPath } from '../shared/path-platform';
 
 /**
- * The resolved target of a `fleet-image://` / `fleet-pdf://` request.
+ * The resolved target of a `fleet-image://` request.
  * - `win`   — a Windows drive path or UNC path; directly readable by Node `fs`.
  * - `posix` — a bare POSIX path that reached the handler without a distro; the
  *             caller must bridge it to UNC using the **default** distro.
@@ -11,7 +11,7 @@ export type FleetProtocolPath =
   | { kind: 'posix'; posixPath: string };
 
 /**
- * Parse a `fleet-image`/`fleet-pdf` request URL into a filesystem target,
+ * Parse a `fleet-image` request URL into a filesystem target,
  * **without** `new URL`. The renderer's canonical builder (`toFleetImageUrl`)
  * emits empty-authority, per-segment-encoded URLs, but legacy call sites still
  * emit raw/`encodeURI`'d backslash shapes that make `new URL` throw

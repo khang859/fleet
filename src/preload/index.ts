@@ -981,7 +981,7 @@ const fleetApi = {
     stat: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteDirEntry | null>> =>
       typedInvoke(IPC_CHANNELS.REMOTE_SSH_STAT, host, path),
     /** Returns a *local* cache path, which is what viewer panes and the
-     *  fleet-image:// / fleet-pdf:// protocols consume unchanged. */
+     *  fleet-image:// protocol consume unchanged. */
     fetch: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteFetchResult>> =>
       typedInvoke(IPC_CHANNELS.REMOTE_SSH_FETCH, host, path),
     readText: async (host: RemoteHost, path: string): Promise<RemoteResult<RemoteTextResult>> =>

@@ -399,8 +399,8 @@ export const IPC_CHANNELS = {
   REMOTE_SSH_LIST: 'remote-ssh:list',
   REMOTE_SSH_STAT: 'remote-ssh:stat',
   // Materialises a remote file into the local cache and returns its local path,
-  // which is what lets the existing viewer panes and fleet-image:// /
-  // fleet-pdf:// protocols work on remote files unchanged.
+  // which is what lets the existing viewer panes and fleet-image:// work on
+  // remote files unchanged.
   REMOTE_SSH_FETCH: 'remote-ssh:fetch',
   REMOTE_SSH_READ_TEXT: 'remote-ssh:read-text',
   REMOTE_SSH_WRITE_TEXT: 'remote-ssh:write-text',

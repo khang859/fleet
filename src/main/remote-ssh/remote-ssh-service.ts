@@ -72,8 +72,8 @@ export class RemoteSshService {
 
   /**
    * Materialize a remote file into the local cache and return its local path.
-   * This is what lets `fleet-image://` / `fleet-pdf://` and the four viewer
-   * panes stay unchanged - they only ever see a local, `fs`-readable path.
+   * This is what lets `fleet-image://` and the four viewer panes stay
+   * unchanged - they only ever see a local, `fs`-readable path.
    */
   async fetch(host: RemoteHost, remotePath: string): Promise<RemoteFetchResult> {
     const info = await statRemotePath(host, remotePath);

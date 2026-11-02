@@ -16,9 +16,8 @@ export function isWslPath(p: string): boolean {
  * Worth a name of its own because one caller uses the answer to gate a security
  * decision rather than a formatting one: handed to the shell on Windows,
  * `\\host\share` makes the OS authenticate to that host, so any path that
- * reaches a reveal or an open has to be checked. The `fleet-image` and
- * `fleet-pdf` handlers ask the same question for a milder reason - Node `fs`
- * reads the WSL 9P share natively where `net.fetch` does not. One copy, so the
+ * reaches a reveal or an open has to be checked. The `fleet-image` handler
+ * asks the same question for a milder reason - Node `fs` reads the WSL 9P share natively where `net.fetch` does not. One copy, so the
  * two uses cannot drift apart.
  */
 export function isUncPath(p: string): boolean {
@@ -140,9 +139,8 @@ export function pathForPaneContext(p: string, ctx: PathContext): string {
 }
 
 /**
- * Canonical builder for the `fleet-image://` / `fleet-pdf://` / `fleet-media://`
- * schemes. Puts the absolute path in the URL **path** position after `origin` -
- * an empty authority for images and PDFs, {@link FLEET_MEDIA_ORIGIN} for media - with
+ * Canonical builder for the `fleet-image://` / `fleet-media://` schemes. Puts the absolute path in the URL **path** position after `origin` -
+ * an empty authority for images, {@link FLEET_MEDIA_ORIGIN} for media - with
  * per-segment percent-encoding, so it round-trips drive paths, UNC paths and
  * POSIX paths (incl. spaces, Unicode, `#`, `?`) without `new URL` mangling.
  *   'C:\\a b.png'                    → 'fleet-image:///C%3A/a%20b.png'
@@ -158,10 +156,6 @@ function buildFleetUrl(origin: string, absPath: string): string {
 
 export function toFleetImageUrl(absPath: string): string {
   return buildFleetUrl('fleet-image://', absPath);
-}
-
-export function toFleetPdfUrl(absPath: string): string {
-  return buildFleetUrl('fleet-pdf://', absPath);
 }
 
 /**
