@@ -29,7 +29,7 @@ const Name = z
 const Input = z.strictObject({
   name: Name,
   label: z.string().min(1).max(80),
-  type: z.enum(['text', 'pr']).default('text'),
+  type: z.enum(['text', 'pr', 'issue']).default('text'),
   required: z.boolean().default(true)
 });
 
@@ -60,7 +60,7 @@ const Stage = z.strictObject({
 type RawStage = z.infer<typeof Stage>;
 
 const Finish = z.strictObject({
-  action: z.enum(['save-report', 'post-pr', 'open-pr']),
+  action: z.enum(['save-report', 'post-pr', 'post-issue', 'open-pr']),
   path: z.string().max(400).optional()
 });
 
@@ -116,6 +116,17 @@ function placeholders(text: string): string[] {
   return [...text.matchAll(PLACEHOLDER)].map((match) => match[1]);
 }
 
+/** A run has one issue, and `post-issue` needs one to post on. */
+function issueProblems(def: WorkflowDef): string[] {
+  const issues = def.inputs.filter((input) => input.type === 'issue');
+  const problems: string[] = [];
+  if (issues.length > 1) problems.push('A file can have only one input with type = "issue".');
+  if (def.finish?.action === 'post-issue' && !issues.some((input) => input.required)) {
+    problems.push('action = "post-issue" needs one required input with type = "issue".');
+  }
+  return problems;
+}
+
 /** The rules TOML shape cannot state. Each one has its message in the design doc. */
 function checkRules(def: WorkflowDef): string[] {
   const problems: string[] = [];
@@ -143,7 +154,11 @@ function checkRules(def: WorkflowDef): string[] {
     problems.push('finish.path must end in .md.');
   }
   if (hasRepeatedRole(def)) problems.push('Two agents have the same role.');
-  return [...problems, ...(def.stages ? stageProblems(def, def.stages) : [])];
+  return [
+    ...problems,
+    ...issueProblems(def),
+    ...(def.stages ? stageProblems(def, def.stages) : [])
+  ];
 }
 
 /** A role can come back only as an agent that goes on with that role's session. */
@@ -302,17 +317,21 @@ export function slugify(text: string): string {
   return slug === '' ? 'run' : slug;
 }
 
-/** `{{slug}}`: the PR number when the workflow has one, or else the first text input. */
+/** `{{slug}}`: the PR or issue number when there is one, or else the first text input. */
 export function slugOf(def: WorkflowDef, inputs: Record<string, string>): string {
   const pr = def.inputs.find((input) => input.type === 'pr');
   if (pr) return slugify(`pr-${inputs[pr.name] ?? ''}`);
+  const issue = def.inputs.find((input) => input.type === 'issue');
+  if (issue) return slugify(`issue-${inputs[issue.name] ?? ''}`);
   const text = def.inputs.find((input) => input.type === 'text');
   return slugify(text ? (inputs[text.name] ?? '') : def.name);
 }
 
-/** What makes a start the same as another: the PR number, or else the input values. */
+/** What makes a start the same as another: the PR or issue number, or else the input values. */
 export function targetOf(def: WorkflowDef, inputs: Record<string, string>): string {
   const pr = def.inputs.find((input) => input.type === 'pr');
   if (pr) return `pr:${inputs[pr.name] ?? ''}`;
+  const issue = def.inputs.find((input) => input.type === 'issue');
+  if (issue) return `issue:${inputs[issue.name] ?? ''}`;
   return JSON.stringify(def.inputs.map((input) => inputs[input.name] ?? ''));
 }

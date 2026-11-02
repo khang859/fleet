@@ -7,12 +7,15 @@ import {
   fetchPr,
   ghStatus,
   isTeamPr,
+  fetchIssue,
   listOpenPrs,
   makeBranchWorktree,
   makePrWorktree,
   openBranchPr,
   changesSince,
+  parseIssueInput,
   parsePrInput,
+  postComment,
   repoRoot,
   reportMarker,
   runProgram,
@@ -418,5 +421,135 @@ describe('small helpers', () => {
 
   it('makes a hidden mark per report', () => {
     expect(reportMarker('run-1')).toBe('<!-- fleet:report:run-1 -->');
+  });
+});
+
+describe('parseIssueInput', () => {
+  it('reads a number, a # and a link', () => {
+    expect(parseIssueInput(' #748 ')).toEqual({ number: 748, repo: null });
+    expect(parseIssueInput('https://github.com/acme/app/issues/45#issuecomment-1')).toEqual({
+      number: 45,
+      repo: 'acme/app'
+    });
+  });
+
+  it('refuses what is not an issue', () => {
+    expect(parseIssueInput('')).toBeNull();
+    expect(parseIssueInput('12a')).toBeNull();
+    expect(parseIssueInput('https://github.com/acme/app/pull/45')).toBeNull();
+  });
+});
+
+describe('fetchIssue', () => {
+  const wire = {
+    number: 9,
+    title: 'It breaks',
+    html_url: 'https://github.com/acme/app/issues/9',
+    state: 'open',
+    body: 'Steps to see it.',
+    author_association: 'OWNER',
+    user: { login: 'khang' }
+  };
+
+  function comment(fields: Record<string, unknown> = {}): string {
+    const base = { author: 'sam', role: 'MEMBER', at: '2026-11-01T00:00:00Z', body: 'Me too.' };
+    return JSON.stringify({ ...base, ...fields });
+  }
+
+  function fakeGh(issue: object, comments: string[]): Exec {
+    return async (_command, args) =>
+      Promise.resolve(args.includes('--paginate') ? comments.join('\n') : JSON.stringify(issue));
+  }
+
+  it('reads the body and all comments', async () => {
+    const lines = [comment(), comment({ body: 'Second page.' })];
+
+    const info = await fetchIssue(fakeGh(wire, lines), '/repo', 9);
+
+    expect(info.ref).toEqual({
+      number: 9,
+      title: 'It breaks',
+      url: wire.html_url,
+      state: 'open'
+    });
+    expect(info.team).toBe(true);
+    expect(info.isPr).toBe(false);
+    expect(info.text).toContain('Opened by khang (OWNER).');
+    expect(info.text).toContain('Steps to see it.');
+    expect(info.text).toContain('Comment by sam (MEMBER)');
+    expect(info.text.indexOf('Me too.')).toBeLessThan(info.text.indexOf('Second page.'));
+  });
+
+  it('asks for each page of comments', async () => {
+    const exec = vi.fn<Exec>(fakeGh(wire, []));
+
+    await fetchIssue(exec, '/repo', 9);
+
+    const args = exec.mock.calls[1][1];
+    expect(args).toContain('--paginate');
+    expect(args).toContain('repos/{owner}/{repo}/issues/9/comments?per_page=100');
+  });
+
+  it('takes a null body and a deleted user', async () => {
+    const issue = { ...wire, body: null, user: null };
+    const lines = [comment({ author: null, body: null })];
+
+    const info = await fetchIssue(fakeGh(issue, lines), '/repo', 9);
+
+    expect(info.text).toContain('Opened by a deleted user (OWNER).');
+    expect(info.text).toContain('Comment by a deleted user');
+  });
+
+  it('is not the team when a stranger opened it', async () => {
+    const issue = { ...wire, author_association: 'NONE' };
+
+    expect((await fetchIssue(fakeGh(issue, []), '/repo', 9)).team).toBe(false);
+  });
+
+  it('is not the team when a stranger commented', async () => {
+    const lines = [comment(), comment({ role: 'CONTRIBUTOR' })];
+
+    expect((await fetchIssue(fakeGh(wire, lines), '/repo', 9)).team).toBe(false);
+  });
+
+  it('says that a PR is a PR, and reads no comments', async () => {
+    const exec = vi.fn<Exec>(fakeGh({ ...wire, pull_request: { url: 'x' } }, []));
+
+    const info = await fetchIssue(exec, '/repo', 9);
+
+    expect(info.isPr).toBe(true);
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the oldest comments from a very long thread', async () => {
+    const long = 'x'.repeat(70_000);
+    const lines = [
+      comment({ body: `first ${long}` }),
+      comment({ body: `second ${long}` }),
+      comment({ body: `third ${long}` })
+    ];
+
+    const { text } = await fetchIssue(fakeGh(wire, lines), '/repo', 9);
+
+    expect(text).toContain('Steps to see it.');
+    expect(text).toContain('Oldest comments that Fleet left out, as the text is long: 1.');
+    expect(text).not.toContain('first x');
+    expect(text).toContain('third x');
+    expect(text.length).toBeLessThanOrEqual(200_100);
+  });
+});
+
+describe('postComment', () => {
+  it('runs the gh command of the kind, with the text on stdin', async () => {
+    const exec = vi.fn<Exec>(async () => Promise.resolve(''));
+
+    await postComment(exec, '/repo', { kind: 'issue', number: 9 }, 'text');
+
+    expect(exec).toHaveBeenCalledWith(
+      'gh',
+      ['issue', 'comment', '9', '--body-file', '-'],
+      '/repo',
+      'text'
+    );
   });
 });

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
 import { FLEET_HOME } from '../../shared/constants';
-import type { RunBranch } from '../../shared/workflows';
+import type { IssueRef, RunBranch } from '../../shared/workflows';
 
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
@@ -79,14 +79,20 @@ function infoOf(pr: PrWire): PrInfo {
   };
 }
 
-/** A PR number from `123`, `#123` or a link. A link can name another repo. */
-export function parsePrInput(text: string): { number: number; repo: string | null } | null {
+type GithubRef = { number: number; repo: string | null };
+
+/** A number from `123`, `#123` or a link to that path. A link can name another repo. */
+function parseRef(text: string, path: 'pull' | 'issues'): GithubRef | null {
   const trimmed = text.trim();
   const plain = /^#?(\d+)$/.exec(trimmed);
   if (plain) return { number: Number(plain[1]), repo: null };
-  const link = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(trimmed);
+  const link = new RegExp(`^https?://[^/]+/([^/]+/[^/]+)/${path}/(\\d+)`).exec(trimmed);
   return link ? { number: Number(link[2]), repo: link[1] } : null;
 }
+
+export const parsePrInput = (text: string): GithubRef | null => parseRef(text, 'pull');
+
+export const parseIssueInput = (text: string): GithubRef | null => parseRef(text, 'issues');
 
 /** The repo root of a folder, or the folder itself when it is not in a repo. */
 export async function repoRoot(exec: Exec, path: string): Promise<string> {
@@ -109,6 +115,86 @@ export async function repoSlug(exec: Exec, cwd: string): Promise<string> {
 export async function fetchPr(exec: Exec, cwd: string, number: number): Promise<PrInfo> {
   const out = await exec('gh', ['api', `repos/{owner}/{repo}/pulls/${number}`], cwd);
   return infoOf(PR_WIRE.parse(JSON.parse(out)));
+}
+
+const ISSUE_WIRE = z.object({
+  number: z.number(),
+  title: z.string(),
+  html_url: z.string(),
+  state: z.string(),
+  body: z.string().nullish(),
+  author_association: z.string(),
+  user: z.object({ login: z.string() }).nullish(),
+  pull_request: z.unknown().optional()
+});
+
+/** One line per comment, with only what a brief reads. A deleted user has no login. */
+const ISSUE_COMMENT_FIELDS =
+  '.[] | {author: .user.login, role: .author_association, at: .created_at, body}';
+
+const ISSUE_COMMENT_LINE = z.object({
+  author: z.string().nullable(),
+  role: z.string(),
+  at: z.string(),
+  body: z.string().nullable()
+});
+
+type IssueComment = z.infer<typeof ISSUE_COMMENT_LINE>;
+
+/** Past this, a long thread would make every agent's system prompt too big. */
+const MAX_ISSUE_CHARS = 200_000;
+
+function commentText({ author, role, at, body }: IssueComment): string {
+  return `## Comment by ${author ?? 'a deleted user'} (${role}) at ${at}\n\n${body ?? ''}`;
+}
+
+/** The body and the newest comments that fit, in order. */
+function issueText(body: string, comments: string[]): string {
+  const kept: string[] = [];
+  let room = MAX_ISSUE_CHARS - body.length;
+  for (const comment of comments.toReversed()) {
+    room -= comment.length;
+    if (room < 0) break;
+    kept.unshift(comment);
+  }
+  const cut = comments.length - kept.length;
+  const note = cut > 0 ? [`Oldest comments that Fleet left out, as the text is long: ${cut}.`] : [];
+  return [body, ...note, ...kept].join('\n\n');
+}
+
+export type IssueInfo = {
+  ref: IssueRef;
+  /** The issue and all its comments come from people in the repo. */
+  team: boolean;
+  /** GitHub answers for a PR on its issue path too. */
+  isPr: boolean;
+  /** The body and the comments, for the briefs. */
+  text: string;
+};
+
+async function issueComments(exec: Exec, cwd: string, number: number): Promise<IssueComment[]> {
+  const path = `repos/{owner}/{repo}/issues/${number}/comments?per_page=100`;
+  const out = await exec('gh', ['api', '--paginate', path, '--jq', ISSUE_COMMENT_FIELDS], cwd);
+  const lines = out.split('\n').filter((line) => line !== '');
+  return lines.map((line) => ISSUE_COMMENT_LINE.parse(JSON.parse(line)));
+}
+
+export async function fetchIssue(exec: Exec, cwd: string, number: number): Promise<IssueInfo> {
+  const out = await exec('gh', ['api', `repos/{owner}/{repo}/issues/${number}`], cwd);
+  const issue = ISSUE_WIRE.parse(JSON.parse(out));
+  const ref = { number: issue.number, title: issue.title, url: issue.html_url, state: issue.state };
+  if (issue.pull_request) return { ref, team: false, isPr: true, text: '' };
+
+  const comments = await issueComments(exec, cwd, number);
+  const roles = [issue.author_association, ...comments.map((comment) => comment.role)];
+  const author = issue.user?.login ?? 'a deleted user';
+  const heading = `Opened by ${author} (${issue.author_association}).`;
+  return {
+    ref,
+    team: roles.every((role) => TEAM_ROLES.has(role)),
+    isPr: false,
+    text: issueText(`${heading}\n\n${issue.body ?? ''}`, comments.map(commentText))
+  };
 }
 
 /** Whether `gh` is signed in, with what to do when it is not. */
@@ -371,21 +457,18 @@ export function reportMarker(runId: string): string {
 export async function postComment(
   exec: Exec,
   cwd: string,
-  prNumber: number,
+  target: { kind: 'pr' | 'issue'; number: number },
   body: string
 ): Promise<void> {
-  await exec('gh', ['pr', 'comment', String(prNumber), '--body-file', '-'], cwd, body);
+  const args = [target.kind, 'comment', String(target.number), '--body-file', '-'];
+  await exec('gh', args, cwd, body);
 }
 
-/** Every comment on the PR, to look for the mark of a report that may have gone out. */
-export async function listCommentBodies(
-  exec: Exec,
-  cwd: string,
-  prNumber: number
-): Promise<string> {
+/** Every comment on the PR or issue, to look for the mark of a report that may have gone out. */
+export async function listCommentBodies(exec: Exec, cwd: string, number: number): Promise<string> {
   return exec(
     'gh',
-    ['api', '--paginate', `repos/{owner}/{repo}/issues/${prNumber}/comments`, '--jq', '.[].body'],
+    ['api', '--paginate', `repos/{owner}/{repo}/issues/${number}/comments`, '--jq', '.[].body'],
     cwd
   );
 }

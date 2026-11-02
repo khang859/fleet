@@ -14,7 +14,7 @@ import { usePrograms } from './use-programs';
 import { Button, Field, FIELD_CLASS, SectionTitle } from './parts';
 import { AgentChips, StageColumns, type MapColumn } from './StageMap';
 import { PROGRAM_LABELS, whereText } from './workflow-review';
-import { workspaceOf } from './workflow-toml';
+import { inputTypeOf, workspaceOf } from './workflow-toml';
 import {
   addAgent,
   addStage,
@@ -63,10 +63,11 @@ function InputRow({
         aria-label="Type"
         className={`${FIELD_CLASS} w-32`}
         value={input.type}
-        onChange={(e) => onChange({ ...input, type: e.target.value === 'pr' ? 'pr' : 'text' })}
+        onChange={(e) => onChange({ ...input, type: inputTypeOf(e.target.value) })}
       >
         <option value="text">Text</option>
         <option value="pr">Pull request</option>
+        <option value="issue">GitHub issue</option>
       </select>
       <button
         aria-label="Remove input"
@@ -157,7 +158,12 @@ function EndPanel({ def, onChange }: EditProps): React.JSX.Element {
   const action = def.finish?.action ?? 'none';
   const setAction = (value: string): void => {
     if (value === 'none') onChange({ ...def, finish: undefined });
-    else if (value === 'open-pr' || value === 'post-pr' || value === 'save-report') {
+    else if (
+      value === 'open-pr' ||
+      value === 'post-pr' ||
+      value === 'post-issue' ||
+      value === 'save-report'
+    ) {
       onChange({ ...def, finish: { action: value } });
     }
   };
@@ -167,6 +173,7 @@ function EndPanel({ def, onChange }: EditProps): React.JSX.Element {
         <select className={FIELD_CLASS} value={action} onChange={(e) => setAction(e.target.value)}>
           <option value="open-pr">Open a pull request</option>
           <option value="post-pr">Post the report on the PR</option>
+          <option value="post-issue">Post the report on the issue</option>
           <option value="save-report">Save a report file</option>
           <option value="none">Do nothing</option>
         </select>

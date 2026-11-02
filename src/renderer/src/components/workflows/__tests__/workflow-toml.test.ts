@@ -243,3 +243,23 @@ describe('stage files', () => {
     expect(formToToml(FULL)).not.toContain('stages');
   });
 });
+
+describe('issue values', () => {
+  it('keeps an issue input and post-issue through a round trip', () => {
+    const text = [
+      'name = "Issues"',
+      '[[inputs]]',
+      'name = "issue"',
+      'label = "Issue"',
+      'type = "issue"',
+      '[finish]',
+      'action = "post-issue"',
+      ''
+    ].join('\n');
+
+    const form = parseToForm(text);
+
+    expect(form.inputs[0].type).toBe('issue');
+    expect(form.finish).toEqual({ action: 'post-issue' });
+  });
+});

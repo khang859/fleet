@@ -5,7 +5,7 @@ export type WorkflowProgram = 'pi' | 'claude';
 export type WorkflowInput = {
   name: string;
   label: string;
-  type: 'text' | 'pr';
+  type: 'text' | 'pr' | 'issue';
   required: boolean;
 };
 
@@ -35,7 +35,7 @@ export type WorkflowStageDef = {
 };
 
 export type WorkflowFinish = {
-  action: 'save-report' | 'post-pr' | 'open-pr';
+  action: 'save-report' | 'post-pr' | 'post-issue' | 'open-pr';
   path?: string;
 };
 
@@ -214,7 +214,7 @@ export type RunReport = {
   /** The agents with no summary, for an Incomplete report. */
   missing: string[];
   savedTo: string | null;
-  /** It went to the PR. A run from an older Fleet has no value here. */
+  /** It went to the PR or the issue. A run from an older Fleet has no value here. */
   posted: boolean;
 };
 
@@ -225,6 +225,14 @@ export type PrRef = {
   headSha: string;
   /** What the run reviewed moved on after it started. */
   movedOn: boolean;
+};
+
+/** The issue of a run. Its text is in the run folder, as a run record goes to the page. */
+export type IssueRef = {
+  number: number;
+  title: string;
+  url: string;
+  state: string;
 };
 
 export type RunOrigin = 'manual' | 'agent' | 'automatic';
@@ -248,7 +256,9 @@ export type WorkflowRun = {
   cwd: string;
   worktreePath: string | null;
   pr: PrRef | null;
-  /** A stranger's PR. Agents start with read-only tools. */
+  /** The issue of an `issue` input. A run from an older Fleet has none. */
+  issue?: IssueRef;
+  /** A stranger's PR or issue. Agents start with read-only tools. */
   locked: boolean;
   /** What stopped a queued or a failed start, for a person to read. */
   problem: string | null;
@@ -278,6 +288,17 @@ export type WorkflowRun = {
   /** Why an `open-pr` run opened no pull request. */
   prProblem?: string;
 };
+
+export type PostTarget = { kind: 'pr' | 'issue'; number: number; label: string };
+
+/** Where Post sends a report. `post-issue` means the issue, and else a PR goes first. */
+export function postTarget(run: WorkflowRun): PostTarget | null {
+  const { pr, issue } = run;
+  if (issue && (run.finish?.action === 'post-issue' || !pr)) {
+    return { kind: 'issue', number: issue.number, label: `issue #${issue.number}` };
+  }
+  return pr ? { kind: 'pr', number: pr.number, label: `PR #${pr.number}` } : null;
+}
 
 /** A run from an older Fleet has no stage: its last agent came after all others. */
 export function stageOf(agent: RunAgent): number {
@@ -419,6 +440,8 @@ export type WorkflowPreview = {
   checks: WorkflowCheck[];
   /** The PR the run would use, once its input is known. */
   pr: { number: number; title: string; url: string; state: string; locked: boolean } | null;
+  /** The issue the run would use, once its input is known. */
+  issue: (IssueRef & { locked: boolean }) | null;
   /** Claude Code agents that cannot run here, with the reason. */
   programNotes: string[];
   /** An active run for this workflow and target. */
@@ -433,7 +456,7 @@ export type StartRunRequest = {
   force?: boolean;
   /** Review a closed PR anyway. */
   allowClosedPr?: boolean;
-  /** Treat a stranger's PR as a team PR, for this run. */
+  /** Treat a stranger's PR or issue as the team's, for this run. */
   trustPr?: boolean;
   /** Program to use per agent role, when a program is not usable here. */
   programOverride?: WorkflowProgram;

@@ -9,6 +9,7 @@ import {
   makeDef,
   makeHarness,
   makePlan,
+  SAMPLE_ISSUE,
   SAMPLE_PR,
   sessionsUp,
   startRun,
@@ -156,5 +157,70 @@ describe('WorkflowPosting', () => {
 
   it('refuses a run that is gone', async () => {
     await expect(posting.post('gone')).rejects.toThrow('gone');
+  });
+});
+
+describe('WorkflowPosting on an issue', () => {
+  let dir: string;
+  let h: Harness;
+  let run: WorkflowRun;
+  let calls: Array<{ args: string[]; body: string | undefined }>;
+  let existing: string;
+  let posting: WorkflowPosting;
+
+  /** Plays `gh`: it records each call and lists what is on the issue. */
+  const exec: Exec = async (_command, args, _cwd, input) => {
+    calls.push({ args, body: input });
+    return Promise.resolve(args[0] === 'api' ? existing : '');
+  };
+
+  const posts = (): typeof calls => calls.filter((call) => call.args[0] !== 'api');
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fleet-wf-posting-issue-'));
+    calls = [];
+    existing = '';
+    h = makeHarness(dir);
+    const def = makeDef({ finish: { action: 'post-issue' } });
+    run = await startRun(h, makePlan(def, { issue: SAMPLE_ISSUE, issueText: 'The body.' }));
+    sessionsUp(h, run);
+    run.report = makeReport();
+    posting = new WorkflowPosting({ runs: h.manager, exec });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('posts one issue comment on the right issue', async () => {
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0].args).toEqual(['issue', 'comment', '9', '--body-file', '-']);
+    expect(posts()[0].body).toContain('No problems left.');
+    expect(posts()[0].body).toContain(reportMarker(run.id));
+    expect(run.report?.posted).toBe(true);
+  });
+
+  it('reads the comments of the issue for the mark', async () => {
+    await posting.post(run.id);
+
+    expect(calls[0].args).toContain('repos/{owner}/{repo}/issues/9/comments');
+  });
+
+  it('never posts twice', async () => {
+    await posting.post(run.id);
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('marks a report that a lost answer hid, and posts nothing', async () => {
+    existing = `Looks good.\n${reportMarker(run.id)}\n`;
+
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(0);
+    expect(run.report?.posted).toBe(true);
   });
 });
