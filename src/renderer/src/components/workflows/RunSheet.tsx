@@ -20,10 +20,16 @@ type Choices = {
   force: boolean;
   allowClosedPr: boolean;
   trustPr: boolean;
+  trustIssue: boolean;
   programOverride?: WorkflowProgram;
 };
 
-const NO_CHOICES: Choices = { force: false, allowClosedPr: false, trustPr: false };
+const NO_CHOICES: Choices = {
+  force: false,
+  allowClosedPr: false,
+  trustPr: false,
+  trustIssue: false
+};
 
 const PREVIEW_DELAY_MS = 350;
 
@@ -224,16 +230,16 @@ function RunForm({
   values,
   onChange,
   preview,
-  trusted,
-  onTrust,
+  choices,
+  onChoose,
   onFix
 }: {
   entry: WorkflowEntry;
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
   preview: WorkflowPreview | null;
-  trusted: boolean;
-  onTrust: () => void;
+  choices: Choices;
+  onChoose: (choice: Partial<Choices>) => void;
   onFix: (fix: string) => void;
 }): React.JSX.Element {
   return (
@@ -244,8 +250,8 @@ function RunForm({
           target={preview.pr}
           noun="PR"
           from="This PR comes from outside the team."
-          trusted={trusted}
-          onTrust={onTrust}
+          trusted={choices.trustPr}
+          onTrust={() => onChoose({ trustPr: true })}
         />
       )}
       {preview?.issue && (
@@ -254,8 +260,8 @@ function RunForm({
           noun="issue"
           from="People outside the team wrote some of this issue."
           closed={preview.issue.state === 'closed'}
-          trusted={trusted}
-          onTrust={onTrust}
+          trusted={choices.trustIssue}
+          onTrust={() => onChoose({ trustIssue: true })}
         />
       )}
       <RunPlan entry={entry} />
@@ -308,6 +314,25 @@ function fixChoice(fix: string): Partial<Choices> {
   if (fix === 'Use Pi for this run') return { programOverride: 'pi' };
   if (fix === 'Use Claude Code for this run') return { programOverride: 'claude' };
   return {};
+}
+
+/** Trust is for one PR or issue, so it ends when that input changes. */
+function trustAfterEdit(
+  entry: WorkflowEntry | null,
+  choices: Choices,
+  before: Record<string, string>,
+  after: Record<string, string>
+): Choices {
+  const changed = (type: 'pr' | 'issue'): boolean =>
+    (entry?.def?.inputs ?? []).some(
+      (input) => input.type === type && before[input.name] !== after[input.name]
+    );
+
+  return {
+    ...choices,
+    trustPr: choices.trustPr && !changed('pr'),
+    trustIssue: choices.trustIssue && !changed('issue')
+  };
 }
 
 function sheetTitle(entry: WorkflowEntry | null): string {
@@ -401,7 +426,13 @@ export function RunSheet({
   const missing = missingInput(entry, values);
   const { starting, start } = useStartRun(request, onClose, setProblem);
 
-  const applyFix = (fix: string): void => setChoices({ ...choices, ...fixChoice(fix) });
+  const choose = (choice: Partial<Choices>): void => setChoices({ ...choices, ...choice });
+  const applyFix = (fix: string): void => choose(fixChoice(fix));
+
+  const editValues = (next: Record<string, string>): void => {
+    setChoices(trustAfterEdit(entry, choices, values, next));
+    setValues(next);
+  };
 
   const approve = async (): Promise<void> => {
     if (!entry || readHash === null) return;
@@ -434,10 +465,10 @@ export function RunSheet({
           <RunForm
             entry={entry}
             values={values}
-            onChange={setValues}
+            onChange={editValues}
             preview={preview}
-            trusted={choices.trustPr}
-            onTrust={() => setChoices({ ...choices, trustPr: true })}
+            choices={choices}
+            onChoose={choose}
             onFix={applyFix}
           />
         )}
@@ -447,7 +478,7 @@ export function RunSheet({
               onClose();
               openRun(duplicate);
             }}
-            onForce={() => setChoices({ ...choices, force: true })}
+            onForce={() => choose({ force: true })}
           />
         )}
         <SheetProblems error={entry?.error} problem={problem} />

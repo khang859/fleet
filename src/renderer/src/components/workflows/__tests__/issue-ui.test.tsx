@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkflowDef, WorkflowRun } from '../../../../../shared/workflows';
+import type {
+  StartRunRequest,
+  WorkflowDef,
+  WorkflowEntry,
+  WorkflowPreview,
+  WorkflowRun
+} from '../../../../../shared/workflows';
 import { callWorkflows } from '../../../store/workflows-store';
 import { ReportSection, RunHeader } from '../RunDetail';
-import { TargetLine } from '../RunSheet';
+import { RunSheet, TargetLine } from '../RunSheet';
 import { EndPanel } from '../StageEditor';
 import { finishNote } from '../stage-notes';
 
@@ -45,6 +51,60 @@ function runOf(fields: object = {}): WorkflowRun {
     report: { text: 'Done.', incomplete: false, missing: [], savedTo: null, posted: false },
     ...fields
   } as unknown as WorkflowRun;
+}
+
+const BOTH_INPUTS = [
+  { name: 'pr', label: 'Pull request', type: 'pr', required: true },
+  { name: 'issue', label: 'Issue', type: 'issue', required: true }
+] as const;
+
+const BOTH_ENTRY = {
+  id: 'both',
+  approval: 'approved',
+  def: { ...DEF, inputs: [...BOTH_INPUTS] }
+} as unknown as WorkflowEntry;
+
+const PR = { number: 12, title: 'Fix it', url: 'https://x/12', state: 'open' as const };
+
+/** Plays the main process: each target is locked until the request trusts it. */
+function previewOf(request: StartRunRequest): WorkflowPreview {
+  return {
+    checks: [],
+    pr: { ...PR, locked: request.trustPr !== true },
+    issue: { ...ISSUE, state: 'open', locked: request.trustIssue !== true },
+    programNotes: [],
+    duplicateRunId: null
+  };
+}
+
+function mockPreviews(): void {
+  vi.mocked(callWorkflows).mockImplementation(async (name: string, ...args: unknown[]) =>
+    Promise.resolve(name === 'preview' ? previewOf(args[0] as StartRunRequest) : null)
+  );
+}
+
+function lastPreview(): StartRunRequest {
+  const calls = vi.mocked(callWorkflows).mock.calls.filter(([name]) => name === 'preview');
+  return calls[calls.length - 1][1] as StartRunRequest;
+}
+
+/** The button goes once the preview that holds the trust is back. */
+async function trust(name: string): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name }));
+  await waitFor(() => expect(screen.queryByRole('button', { name })).toBeNull());
+}
+
+async function renderBothLocked(): Promise<void> {
+  mockPreviews();
+  render(
+    <RunSheet
+      projectPath="/repo"
+      entry={BOTH_ENTRY}
+      initialInputs={{ pr: '12', issue: '9' }}
+      onClose={vi.fn()}
+    />
+  );
+  await screen.findByRole('button', { name: 'Trust this PR' });
 }
 
 describe('issue parts of the workflow UI', () => {
@@ -124,7 +184,17 @@ describe('issue parts of the workflow UI', () => {
   });
 
   it('does not trust an issue on a rerun', () => {
-    render(<RunHeader run={runOf()} onBack={vi.fn()} onClose={vi.fn()} />);
+    render(<RunHeader run={runOf({ pr: PR })} onBack={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }));
+
+    expect(callWorkflows).toHaveBeenCalledWith('start', expect.objectContaining({ trustPr: true }));
+    expect(vi.mocked(callWorkflows).mock.calls[0][1]).not.toHaveProperty('trustIssue');
+  });
+
+  it('keeps a locked PR locked on a rerun', () => {
+    const run = runOf({ pr: PR, locked: true });
+    render(<RunHeader run={run} onBack={vi.fn()} onClose={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Run again' }));
 
@@ -132,5 +202,36 @@ describe('issue parts of the workflow UI', () => {
       'start',
       expect.objectContaining({ trustPr: false })
     );
+  });
+
+  it('trusts only the target a person picks', async () => {
+    await renderBothLocked();
+
+    await trust('Trust this PR');
+
+    expect(screen.getAllByText('Trusted')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Trust this issue' })).toBeTruthy();
+    expect(lastPreview()).toMatchObject({ trustPr: true, trustIssue: false });
+  });
+
+  it('asks again when the trusted issue changes', async () => {
+    await renderBothLocked();
+    await trust('Trust this issue');
+    await trust('Trust this PR');
+
+    fireEvent.change(screen.getByLabelText('Issue'), { target: { value: '10' } });
+
+    await screen.findByRole('button', { name: 'Trust this issue' });
+    expect(lastPreview()).toMatchObject({ trustPr: true, trustIssue: false });
+  });
+
+  it('asks again when the trusted PR changes', async () => {
+    await renderBothLocked();
+    await trust('Trust this PR');
+
+    fireEvent.change(screen.getByLabelText('Pull request'), { target: { value: '13' } });
+
+    await screen.findByRole('button', { name: 'Trust this PR' });
+    expect(lastPreview()).toMatchObject({ trustPr: false });
   });
 });

@@ -240,9 +240,9 @@ export class WorkflowStarts {
     checks.push(this.bridgeCheck());
 
     const text = this.inputOfType(def, 'pr', req.inputs);
-    const hasIssue = def.inputs.some((input) => input.type === 'issue');
+    const namesIssue = this.namesIssue(def, req.inputs);
     let pr: WorkflowPreview['pr'] = null;
-    if (text !== null || hasIssue || def.finish?.action === 'open-pr') {
+    if (text !== null || namesIssue || def.finish?.action === 'open-pr') {
       checks.push(await this.githubCheck(req.projectPath));
     }
     if (text !== null) pr = text.trim() === '' ? null : await this.previewPr(req, text, checks);
@@ -364,7 +364,7 @@ export class WorkflowStarts {
     if (text.trim() === '') return { info: null, locked: false };
     const info = await this.resolveIssue(req.projectPath, text);
     if (isRefusal(info)) return info;
-    return { info, locked: !info.team && req.trustPr !== true };
+    return { info, locked: !info.team && req.trustIssue !== true };
   }
 
   /** The one way to start a run, from a person, an agent or a rule. */

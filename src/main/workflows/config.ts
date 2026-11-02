@@ -327,11 +327,15 @@ export function slugOf(def: WorkflowDef, inputs: Record<string, string>): string
   return slugify(text ? (inputs[text.name] ?? '') : def.name);
 }
 
-/** What makes a start the same as another: the PR or issue number, or else the input values. */
+/** What makes a start the same as another: the PR and issue numbers, or else the input values. */
 export function targetOf(def: WorkflowDef, inputs: Record<string, string>): string {
   const pr = def.inputs.find((input) => input.type === 'pr');
-  if (pr) return `pr:${inputs[pr.name] ?? ''}`;
   const issue = def.inputs.find((input) => input.type === 'issue');
-  if (issue) return `issue:${inputs[issue.name] ?? ''}`;
+  const numbers = [
+    pr && `pr:${inputs[pr.name] ?? ''}`,
+    issue && `issue:${inputs[issue.name] ?? ''}`
+  ].filter(Boolean);
+
+  if (numbers.length > 0) return numbers.join(' ');
   return JSON.stringify(def.inputs.map((input) => inputs[input.name] ?? ''));
 }

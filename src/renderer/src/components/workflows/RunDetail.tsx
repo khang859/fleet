@@ -4,7 +4,6 @@ import {
   agentChatHandle,
   agentsInStage,
   postTarget,
-  trustsOnRerun,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -399,7 +398,8 @@ export function RunHeader({
       projectPath: run.projectPath,
       workflowId: run.workflowId,
       inputs: run.inputs,
-      trustPr: trustsOnRerun(run)
+      // An issue can get new comments, so a rerun never carries its trust.
+      trustPr: !run.locked
     });
     if (!reply.ok) useToastStore.getState().show(reply.message);
   };

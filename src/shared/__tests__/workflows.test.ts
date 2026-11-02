@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { postTarget, trustsOnRerun, type WorkflowRun } from '../workflows';
+import { postTarget, type WorkflowRun } from '../workflows';
 
 const PR = { number: 7 };
 const ISSUE = { number: 9 };
@@ -26,19 +26,5 @@ describe('postTarget', () => {
 
   it('has no target with neither', () => {
     expect(postTarget(runOf({}))).toBeNull();
-  });
-});
-
-describe('trustsOnRerun', () => {
-  it('keeps the trust of a PR run', () => {
-    expect(trustsOnRerun(runOf({ pr: PR }))).toBe(true);
-  });
-
-  it('keeps a locked run locked', () => {
-    expect(trustsOnRerun(runOf({ pr: PR, locked: true }))).toBe(false);
-  });
-
-  it('checks the authors of an issue again', () => {
-    expect(trustsOnRerun(runOf({ issue: ISSUE }))).toBe(false);
   });
 });

@@ -300,11 +300,6 @@ export function postTarget(run: WorkflowRun): PostTarget | null {
   return pr ? { kind: 'pr', number: pr.number, label: `PR #${pr.number}` } : null;
 }
 
-/** A rerun reads an issue again and it can hold new comments, so the authors get a new check. */
-export function trustsOnRerun(run: WorkflowRun): boolean {
-  return !run.locked && !run.issue;
-}
-
 /** A run from an older Fleet has no stage: its last agent came after all others. */
 export function stageOf(agent: RunAgent): number {
   return agent.stage ?? (agent.isLast ? 1 : 0);
@@ -461,8 +456,10 @@ export type StartRunRequest = {
   force?: boolean;
   /** Review a closed PR anyway. */
   allowClosedPr?: boolean;
-  /** Treat a stranger's PR or issue as the team's, for this run. */
+  /** Treat a stranger's PR as the team's, for this run. */
   trustPr?: boolean;
+  /** Treat a stranger's issue as the team's, for this run. */
+  trustIssue?: boolean;
   /** Program to use per agent role, when a program is not usable here. */
   programOverride?: WorkflowProgram;
 };

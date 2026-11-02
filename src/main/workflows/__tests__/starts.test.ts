@@ -215,8 +215,8 @@ function fakeIssueGh(issue: object = WIRE_ISSUE, comments: string[] = []): Exec 
 }
 
 /** Plays `gh`: a pull request as well as an issue. */
-function fakePrAndIssueGh(pr: PrWire, comments: string[]): Exec {
-  const issue = fakeIssueGh(WIRE_ISSUE, comments);
+function fakePrAndIssueGh(pr: PrWire, comments: string[], wire: object = WIRE_ISSUE): Exec {
+  const issue = fakeIssueGh(wire, comments);
   return async (command, args, cwd, input) =>
     args.some((arg) => arg.includes('/pulls/'))
       ? Promise.resolve(JSON.stringify(pr))
@@ -271,8 +271,8 @@ describe('WorkflowStarts', () => {
       saveApproved('issue', ISSUE_REVIEW);
     });
 
-    const start = async (inputs: Record<string, string>, exec: Exec, trustPr?: boolean) =>
-      makeStarts({ exec }).start({ ...request('issue', inputs), trustPr }, OPTIONS);
+    const start = async (inputs: Record<string, string>, exec: Exec) =>
+      makeStarts({ exec }).start(request('issue', inputs), OPTIONS);
 
     it.each(['9', '#9', ISSUE_URL])('gives agents the real text for %s', async (issue) => {
       const result = await start({ issue }, fakeIssueGh());
@@ -366,7 +366,7 @@ describe('WorkflowStarts', () => {
       expect(h.manager.list()[0].locked).toBe(true);
 
       await makeStarts({ exec }).start(
-        { ...request('issue', { issue: '9' }), force: true, trustPr: true },
+        { ...request('issue', { issue: '9' }), force: true, trustIssue: true },
         OPTIONS
       );
       expect(h.manager.list().filter((run) => !run.locked)).toHaveLength(1);
@@ -392,6 +392,43 @@ describe('WorkflowStarts', () => {
       expect(h.manager.list()[0]).toMatchObject({ locked: true, teamPr: false });
     });
 
+    it('keeps each target locked until a person trusts that target', async () => {
+      saveApproved('both', REVIEW_WITH_ISSUE);
+      const stranger = wirePr({ author_association: 'NONE' });
+      const exec = fakePrAndIssueGh(stranger, [STRANGER_COMMENT]);
+      const req = request('both', { pr: '12', issue: '9' });
+      const starts = makeStarts({ exec });
+
+      const prOnly = await starts.preview({ ...req, trustPr: true });
+      const issueOnly = await starts.preview({ ...req, trustIssue: true });
+      await starts.start({ ...req, trustPr: true }, OPTIONS);
+      await starts.start({ ...req, trustIssue: true, force: true }, OPTIONS);
+      await starts.start({ ...req, trustPr: true, trustIssue: true, force: true }, OPTIONS);
+
+      expect(prOnly.pr?.locked).toBe(false);
+      expect(prOnly.issue?.locked).toBe(true);
+      expect(issueOnly.pr?.locked).toBe(true);
+      expect(issueOnly.issue?.locked).toBe(false);
+      expect(h.manager.list().filter((run) => run.locked)).toHaveLength(2);
+    });
+
+    it('sees one PR with two issues as two targets', async () => {
+      saveApproved('both', REVIEW_WITH_ISSUE);
+      const nine = makeStarts({ exec: fakePrAndIssueGh(wirePr(), []) });
+      const ten = makeStarts({
+        exec: fakePrAndIssueGh(wirePr(), [], { ...WIRE_ISSUE, number: 10 })
+      });
+      await nine.start(request('both', { pr: '12', issue: '9' }), OPTIONS);
+
+      const preview = await ten.preview(request('both', { pr: '12', issue: '10' }));
+      const result = await ten.start(request('both', { pr: '12', issue: '10' }), OPTIONS);
+      const again = await nine.start(request('both', { pr: '12', issue: '9' }), OPTIONS);
+
+      expect(preview.duplicateRunId).toBeNull();
+      expect(result).toMatchObject({ ok: true });
+      expect(again).toMatchObject({ ok: false, code: 'duplicate' });
+    });
+
     it('needs no GitHub for a blank optional issue', async () => {
       saveApproved('look', OPTIONAL_ISSUE);
       const exec: Exec = async () => Promise.reject(new Error('signed out'));
@@ -404,12 +441,22 @@ describe('WorkflowStarts', () => {
       expect(h.deps.store.readIssue(run.id)).toBeNull();
     });
 
+    it('needs no GitHub in the preview for a blank optional issue', async () => {
+      saveApproved('look', OPTIONAL_ISSUE);
+      const exec: Exec = async () => Promise.reject(new Error('signed out'));
+
+      const preview = await makeStarts({ exec }).preview(request('look', { issue: ' ' }));
+
+      expect(preview.checks.every((check) => check.ok)).toBe(true);
+      expect(preview.checks.map((check) => check.label)).not.toContain('GitHub CLI is signed in');
+    });
+
     it('previews a stranger issue as locked, until a person trusts it', async () => {
       const exec = fakeIssueGh(WIRE_ISSUE, [STRANGER_COMMENT]);
       const req = request('issue', { issue: '9' });
 
       const preview = await makeStarts({ exec }).preview(req);
-      const trusted = await makeStarts({ exec }).preview({ ...req, trustPr: true });
+      const trusted = await makeStarts({ exec }).preview({ ...req, trustIssue: true });
 
       expect(preview.issue?.locked).toBe(true);
       expect(trusted.issue?.locked).toBe(false);

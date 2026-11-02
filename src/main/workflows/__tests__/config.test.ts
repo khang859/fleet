@@ -222,6 +222,14 @@ describe('slugOf and targetOf', () => {
     expect(targetOf(def, { pr: '12', task: 'Other' })).toBe('pr:12');
   });
 
+  it('uses both numbers for a run with a PR and an issue', () => {
+    const issueInput = { name: 'issue', label: 'Issue', type: 'issue' as const, required: true };
+    const def = makeDef({ inputs: [prInput, issueInput] });
+
+    expect(targetOf(def, { pr: '12', issue: '9' })).toBe('pr:12 issue:9');
+    expect(targetOf(def, { pr: '12', issue: '10' })).toBe('pr:12 issue:10');
+  });
+
   it('uses the first text input with no PR', () => {
     const def = makeDef({ inputs: [textInput] });
 
