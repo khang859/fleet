@@ -156,7 +156,7 @@ import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import { scanImageFolder } from './slideshow-scanner';
-import { readFileRange } from './file-range';
+import { readFileRange, type FileVersion } from './file-range';
 import { adoptBackground, pruneBackgroundStore } from './background-store';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
@@ -775,8 +775,14 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.FILE_READ_RANGE,
-    async (_event, filePath: string, begin: number, end: number, pathContext?: PathContext) =>
-      readFileRange(resolveCtxPath(pathContext, filePath), begin, end)
+    async (
+      _event,
+      filePath: string,
+      begin: number,
+      end: number,
+      version: FileVersion,
+      pathContext?: PathContext
+    ) => readFileRange(resolveCtxPath(pathContext, filePath), begin, end, version)
   );
 
   ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) => {

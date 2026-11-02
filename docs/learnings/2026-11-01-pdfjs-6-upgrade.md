@@ -36,6 +36,12 @@ Firefox works the same way.
 
 The transport must ignore a range that arrives after `abort()`, because pdf.js throws on a chunk that it did not ask for.
 
+Each range opens the file again, so the open view has no fixed copy.
+A rewrite (a build) or a delete (remote cache eviction) would mix bytes from two versions.
+The pane sends the size and change time from `stat` with each read, and `readFileRange` returns null when they changed.
+The pane then shows "The file changed on disk." with a Reload button.
+`fleet open` on the same file only focuses the open pane, so a "reopen it" message would not help.
+
 ## The text layer needs CSS that a type check cannot see
 
 pdf.js 5 and later moved span sizes out of inline styles.
