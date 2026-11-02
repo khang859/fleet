@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { StartRunRequest } from '../../../shared/workflows';
-import { ApprovalStore } from '../approval';
+import { ApprovalStore, DisabledFiles } from '../approval';
 import { WorkflowCatalog } from '../catalog';
 import { PROJECT_WORKFLOWS_DIR } from '../config';
 import type { Exec, PrWire } from '../pr';
@@ -236,7 +236,11 @@ describe('WorkflowStarts', () => {
     project = join(dir, 'project');
     mkdirSync(project);
     const approvals = new ApprovalStore(join(dir, 'approvals.json'), randomBytes(32));
-    catalog = new WorkflowCatalog(approvals, join(dir, 'personal'));
+    catalog = new WorkflowCatalog(
+      approvals,
+      new DisabledFiles(join(dir, 'disabled.json'), randomBytes(32)),
+      join(dir, 'personal')
+    );
     h = makeHarness(dir);
   });
 

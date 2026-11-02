@@ -26,7 +26,7 @@ function entryOf(def: WorkflowDef | null, approvedText: string | null): Workflow
     def,
     error: null,
     approval: approvedText === null ? 'needs-approval' : 'changed',
-    replacesPersonal: false,
+    disabled: false,
     approvedText
   };
 }

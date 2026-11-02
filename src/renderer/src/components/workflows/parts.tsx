@@ -1,5 +1,11 @@
 import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import type { AgentState, RunState, WorkflowApproval } from '../../../../shared/workflows';
+import { TriangleAlert } from 'lucide-react';
+import type {
+  AgentState,
+  RunState,
+  WorkflowApproval,
+  WorkflowScope
+} from '../../../../shared/workflows';
 import { showWorkflowError } from '../../store/workflows-store';
 
 type Tone = 'plain' | 'primary' | 'danger' | 'quiet';
@@ -191,6 +197,90 @@ export function SectionTitle({
     <div className="flex items-center justify-between gap-2 pb-2">
       <h3 className="text-xs font-medium text-fleet-text-secondary">{children}</h3>
       {right}
+    </div>
+  );
+}
+
+const SCOPE_ON: Record<WorkflowScope, string> = {
+  project: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+  personal: 'bg-orange-500/15 text-orange-700 dark:text-orange-300'
+};
+
+/**
+ * Where a file is, as a switch. Pressing the other side picks it: a row moves
+ * the file there, and the editor saves it there.
+ */
+export function ScopeSwitch({
+  scope,
+  verb,
+  busy = false,
+  onPick
+}: {
+  scope: WorkflowScope;
+  /** What a press does, such as "Move to". */
+  verb: string;
+  busy?: boolean;
+  onPick: (scope: WorkflowScope) => unknown;
+}): React.JSX.Element {
+  return (
+    <div
+      role="group"
+      aria-label="Location"
+      aria-busy={busy || undefined}
+      className="inline-flex rounded border border-fleet-border bg-fleet-bg p-0.5"
+    >
+      {(['project', 'personal'] as const).map((value) => {
+        const on = scope === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={on}
+            aria-disabled={on || busy || undefined}
+            aria-label={on ? undefined : `${verb} ${value}`}
+            title={on ? undefined : `${verb} ${value}`}
+            onClick={on || busy ? undefined : () => onPick(value)}
+            className={`rounded-sm px-2 py-0.5 text-[11px] capitalize transition ${
+              on
+                ? SCOPE_ON[value]
+                : busy
+                  ? 'cursor-wait text-fleet-text-subtle'
+                  : 'text-fleet-text-subtle hover:bg-fleet-surface-2 hover:text-fleet-text'
+            }`}
+          >
+            {value}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Asks before a move or a save replaces the file of the same name in the other scope. */
+export function ReplaceNotice({
+  text,
+  onCancel,
+  onReplace
+}: {
+  text: string;
+  onCancel: () => void;
+  onReplace: () => unknown;
+}): React.JSX.Element {
+  return (
+    <div
+      role="alert"
+      className="flex items-center gap-3 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2"
+    >
+      <TriangleAlert
+        size={13}
+        className="shrink-0 text-amber-700 dark:text-amber-300"
+        aria-hidden
+      />
+      <p className="flex-1 text-[11px] leading-relaxed text-fleet-text-secondary">{text}</p>
+      <Button onClick={onCancel}>Cancel</Button>
+      <Button tone="danger" onClick={onReplace}>
+        Replace
+      </Button>
     </div>
   );
 }

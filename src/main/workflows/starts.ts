@@ -219,7 +219,7 @@ export class WorkflowStarts {
   }
 
   private entryOrNull(req: StartRunRequest): WorkflowEntry | undefined {
-    return this.deps.catalog.find(req.projectPath, req.workflowId);
+    return this.deps.catalog.find(req.projectPath, req.workflowId, req.workflowScope);
   }
 
   /** What the run sheet shows. Nothing here changes anything. */
@@ -315,6 +315,7 @@ export class WorkflowStarts {
     if (!entry) return refuse('not-found', `No workflow named ${req.workflowId}.`);
     if (entry.error || !entry.def)
       return refuse('invalid', entry.error ?? 'The file is not valid.');
+    if (entry.disabled) return refuse('disabled', `${entry.def.name} is turned off.`);
     if (entry.approval === 'needs-approval') {
       return refuse('needs-approval', `${entry.def.name} needs approval.`);
     }
@@ -399,6 +400,7 @@ export class WorkflowStarts {
 
     const run = this.deps.runs.create({
       workflowId: entry.id,
+      workflowScope: entry.scope,
       path: entry.path,
       projectPath: req.projectPath,
       def,

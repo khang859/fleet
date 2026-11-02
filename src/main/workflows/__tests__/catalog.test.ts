@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalStore } from '../approval';
+import { ApprovalStore, DisabledFiles } from '../approval';
 import { WorkflowCatalog } from '../catalog';
 import { hashText, PROJECT_WORKFLOWS_DIR, WorkflowFileError } from '../config';
 
@@ -29,6 +29,7 @@ describe('WorkflowCatalog', () => {
   let project: string;
   let personal: string;
   let approvals: ApprovalStore;
+  let disabled: DisabledFiles;
   let catalog: WorkflowCatalog;
 
   function projectFile(id: string): string {
@@ -50,7 +51,8 @@ describe('WorkflowCatalog', () => {
     personal = join(dir, 'personal');
     mkdirSync(project);
     approvals = new ApprovalStore(join(dir, 'approvals.json'), randomBytes(32));
-    catalog = new WorkflowCatalog(approvals, personal);
+    disabled = new DisabledFiles(join(dir, 'disabled.json'), randomBytes(32));
+    catalog = new WorkflowCatalog(approvals, disabled, personal);
   });
 
   afterEach(() => {
@@ -59,12 +61,12 @@ describe('WorkflowCatalog', () => {
 
   it('says when a person changes the list', () => {
     const changed = vi.fn();
-    const watched = new WorkflowCatalog(approvals, personal, changed);
+    const watched = new WorkflowCatalog(approvals, disabled, personal, changed);
 
     watched.save(saveRequest(null, TEXT));
     writeProjectFile('task', OTHER_TEXT);
-    watched.approve(project, 'task', hashText(OTHER_TEXT));
-    watched.remove(project, 'task');
+    watched.approve(project, 'task', 'project', hashText(OTHER_TEXT));
+    watched.remove(project, 'task', 'project');
 
     expect(changed).toHaveBeenCalledTimes(3);
   });
@@ -101,7 +103,7 @@ describe('WorkflowCatalog', () => {
         error: null,
         approval: 'needs-approval',
         hash: hashText(TEXT),
-        replacesPersonal: false
+        disabled: false
       });
       expect(entry.def?.name).toBe('Task');
     });
@@ -115,13 +117,14 @@ describe('WorkflowCatalog', () => {
       expect(entry.error).toContain('Line');
     });
 
-    it('marks a project file that replaces a personal one', () => {
+    it('lists a name in both scopes, and finds the project one first', () => {
       writeProjectFile('task', TEXT);
       mkdirSync(personal);
-      writeFileSync(join(personal, 'task.toml'), TEXT);
+      writeFileSync(join(personal, 'task.toml'), OTHER_TEXT);
 
-      expect(catalog.list(project)).toHaveLength(1);
-      expect(catalog.find(project, 'task')?.replacesPersonal).toBe(true);
+      expect(catalog.list(project).map((entry) => entry.scope)).toEqual(['project', 'personal']);
+      expect(catalog.find(project, 'task')?.scope).toBe('project');
+      expect(catalog.find(project, 'task', 'personal')?.hash).toBe(hashText(OTHER_TEXT));
     });
   });
 
@@ -213,7 +216,7 @@ describe('WorkflowCatalog', () => {
     it('approves the hash a person saw', () => {
       writeProjectFile('task', TEXT);
 
-      expect(catalog.approve(project, 'task', hashText(TEXT))).toBe(true);
+      expect(catalog.approve(project, 'task', 'project', hashText(TEXT))).toBe(true);
       expect(catalog.find(project, 'task')?.approval).toBe('approved');
       expect(catalog.find(project, 'task')?.approvedText).toBe(TEXT);
     });
@@ -230,12 +233,12 @@ describe('WorkflowCatalog', () => {
     it('refuses a hash that is out of date', () => {
       writeProjectFile('task', OTHER_TEXT);
 
-      expect(catalog.approve(project, 'task', hashText(TEXT))).toBe(false);
+      expect(catalog.approve(project, 'task', 'project', hashText(TEXT))).toBe(false);
     });
 
     it('leaves agents out until a person allows them', () => {
       writeProjectFile('task', TEXT);
-      catalog.approve(project, 'task', hashText(TEXT));
+      catalog.approve(project, 'task', 'project', hashText(TEXT));
 
       expect(approvals.agentsMayStart(projectFile('task'), hashText(TEXT))).toBe(false);
     });
@@ -245,13 +248,164 @@ describe('WorkflowCatalog', () => {
     it('deletes the file and its approval', () => {
       catalog.save(saveRequest(null));
 
-      catalog.remove(project, 'task');
+      catalog.remove(project, 'task', 'project');
 
       expect(existsSync(projectFile('task'))).toBe(false);
 
       writeProjectFile('task', TEXT);
 
       expect(catalog.find(project, 'task')?.approval).toBe('needs-approval');
+    });
+
+    it('deletes only the file of the scope it names', () => {
+      catalog.save(saveRequest(null));
+      catalog.save({ ...saveRequest(null), scope: 'personal' });
+
+      catalog.remove(project, 'task', 'personal');
+
+      expect(catalog.list(project).map((entry) => entry.scope)).toEqual(['project']);
+    });
+  });
+
+  describe('move', () => {
+    const personalFile = (id: string): string => join(personal, `${id}.toml`);
+    const move = (from: 'project' | 'personal', replace = false) =>
+      catalog.move({ projectPath: project, id: 'task', from, replace });
+
+    it('moves a project file to personal, still approved', () => {
+      catalog.save(saveRequest(null));
+
+      expect(move('project')).toEqual({ ok: true });
+
+      expect(existsSync(projectFile('task'))).toBe(false);
+      expect(readFileSync(personalFile('task'), 'utf8')).toBe(TEXT);
+      expect(catalog.list(project)).toMatchObject([{ scope: 'personal', approval: 'approved' }]);
+    });
+
+    it('moves a personal file to the project', () => {
+      catalog.save({ ...saveRequest(null), scope: 'personal' });
+
+      expect(move('personal')).toEqual({ ok: true });
+
+      expect(catalog.list(project)).toMatchObject([{ scope: 'project', approval: 'approved' }]);
+    });
+
+    it('keeps a file that needs approval needing it', () => {
+      writeProjectFile('task', TEXT);
+
+      move('project');
+
+      expect(catalog.find(project, 'task', 'personal')?.approval).toBe('needs-approval');
+    });
+
+    it('keeps a file that is off, off', () => {
+      writeProjectFile('task', TEXT);
+      catalog.setDisabled(project, 'task', 'project', true);
+
+      move('project');
+
+      expect(catalog.find(project, 'task', 'personal')?.disabled).toBe(true);
+      expect(disabled.has(projectFile('task'))).toBe(false);
+    });
+
+    it('refuses to replace a file unless asked', () => {
+      writeProjectFile('task', TEXT);
+      mkdirSync(personal);
+      writeFileSync(personalFile('task'), OTHER_TEXT);
+
+      expect(move('project')).toMatchObject({ ok: false, code: 'exists' });
+      expect(catalog.list(project)).toHaveLength(2);
+
+      expect(move('project', true)).toEqual({ ok: true });
+      expect(readFileSync(personalFile('task'), 'utf8')).toBe(TEXT);
+      expect(catalog.list(project)).toHaveLength(1);
+    });
+
+    it('drops the approval of the file it replaces', () => {
+      writeProjectFile('task', TEXT);
+      catalog.save({ ...saveRequest(null, OTHER_TEXT), scope: 'personal' });
+
+      move('project', true);
+
+      expect(catalog.find(project, 'task', 'personal')?.approval).toBe('needs-approval');
+    });
+
+    it('says when there is no such file', () => {
+      expect(move('personal')).toMatchObject({ ok: false, code: 'not-found' });
+    });
+
+    it('refuses a project symlink where the file would land', () => {
+      catalog.save({ ...saveRequest(null), scope: 'personal' });
+      const outside = join(dir, 'outside');
+      mkdirSync(outside);
+      symlinkSync(outside, join(project, '.fleet'));
+
+      expect(move('personal')).toMatchObject({ ok: false, code: 'invalid' });
+      expect(existsSync(personalFile('task'))).toBe(true);
+    });
+  });
+
+  describe('save to the other scope', () => {
+    it('moves the opened file', () => {
+      const first = catalog.save(saveRequest(null));
+      const baseHash = hashText(TEXT);
+
+      const result = catalog.save({
+        ...saveRequest(baseHash, OTHER_TEXT),
+        scope: 'personal',
+        moveFrom: { id: 'task', scope: 'project' }
+      });
+
+      expect(first.ok && result.ok).toBe(true);
+      expect(catalog.list(project)).toMatchObject([
+        { scope: 'personal', approval: 'approved', hash: hashText(OTHER_TEXT) }
+      ]);
+    });
+
+    it('asks before it replaces a file there', () => {
+      catalog.save(saveRequest(null));
+      catalog.save({ ...saveRequest(null, OTHER_TEXT), scope: 'personal' });
+      const req = {
+        ...saveRequest(hashText(TEXT)),
+        scope: 'personal' as const,
+        moveFrom: { id: 'task', scope: 'project' as const }
+      };
+
+      expect(catalog.save(req)).toMatchObject({ ok: false, code: 'exists' });
+      expect(catalog.save({ ...req, replace: true })).toMatchObject({ ok: true });
+      expect(catalog.list(project)).toMatchObject([{ scope: 'personal', hash: hashText(TEXT) }]);
+    });
+
+    it('stops when the opened file changed on disk', () => {
+      catalog.save(saveRequest(null));
+      writeProjectFile('task', OTHER_TEXT);
+
+      const result = catalog.save({
+        ...saveRequest(hashText(TEXT)),
+        scope: 'personal',
+        moveFrom: { id: 'task', scope: 'project' }
+      });
+
+      expect(result).toMatchObject({ ok: false, code: 'changed' });
+      expect(existsSync(projectFile('task'))).toBe(true);
+    });
+  });
+
+  describe('setDisabled', () => {
+    it('turns one scope off and leaves the other on', () => {
+      writeProjectFile('task', TEXT);
+      mkdirSync(personal);
+      writeFileSync(join(personal, 'task.toml'), TEXT);
+
+      expect(catalog.setDisabled(project, 'task', 'personal', true)).toBe(true);
+
+      expect(catalog.list(project).map((entry) => entry.disabled)).toEqual([false, true]);
+      catalog.setDisabled(project, 'task', 'personal', false);
+      expect(catalog.find(project, 'task', 'personal')?.disabled).toBe(false);
+    });
+
+    it('says when there is no such file', () => {
+      expect(catalog.setDisabled(project, 'task', 'project', true)).toBe(false);
     });
   });
 });

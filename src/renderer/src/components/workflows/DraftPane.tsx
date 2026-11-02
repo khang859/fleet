@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { BuilderInfo, WorkflowEntry } from '../../../../shared/workflows';
+import { findWorkflow, type BuilderInfo, type WorkflowEntry } from '../../../../shared/workflows';
 import { callWorkflows, showWorkflowError } from '../../store/workflows-store';
 import { ApprovalBadge, Button } from './parts';
 import { RunSheet } from './RunSheet';
@@ -11,7 +11,8 @@ async function readDraft(builderId: string): Promise<Draft | null> {
   const info = await callWorkflows('builderInfo', builderId);
   if (!info) return null;
   const entries = await callWorkflows('list', info.projectPath);
-  return { info, entry: entries.find((each) => each.id === info.draftId) ?? null };
+  const entry = info.draftId ? findWorkflow(entries, info.draftId, info.draftScope) : undefined;
+  return { info, entry: entry ?? null };
 }
 
 function useDraft(builderId: string): { draft: Draft | null; reload: () => void } {

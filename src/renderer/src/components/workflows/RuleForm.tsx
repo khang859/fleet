@@ -6,7 +6,7 @@ import type {
   WorkflowEntry,
   WorkflowRule
 } from '../../../../shared/workflows';
-import { agentsOf, runsPerDay } from '../../../../shared/workflows';
+import { agentsOf, findWorkflow, runsPerDay } from '../../../../shared/workflows';
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
 import { useToastStore } from '../../store/toast-store';
 import { Button, CountInput, Field, FIELD_CLASS } from './parts';
@@ -196,6 +196,14 @@ function previewText(trigger: RuleTrigger, agents: number): string {
   return `About ${count} ${runs} a day, with ${team} each.`;
 }
 
+/** Why the rule's own file cannot start now. */
+function waitOf(entry: WorkflowEntry): string {
+  if (entry.disabled) return ' - turned off';
+  if (entry.def === null) return ' - bad file';
+  if (entry.approval !== 'approved') return ' - needs approval';
+  return '';
+}
+
 export function RuleForm({
   projectPath,
   rule,
@@ -206,16 +214,23 @@ export function RuleForm({
   onClose: () => void;
 }): React.JSX.Element {
   const entries = useWorkflowsStore((s) => s.entries);
-  const usable = entries.filter((entry) => entry.def !== null && entry.approval === 'approved');
-  const [pickedId, setPickedId] = useState(rule?.workflowId ?? null);
-  const workflowId = pickedId ?? usable.at(0)?.id ?? '';
+  // The rule's own file stays a choice when it cannot start now, so a save never swaps it.
+  const own = rule ? findWorkflow(entries, rule.workflowId, rule.workflowScope) : undefined;
+  const usable = entries.filter(
+    (entry) =>
+      entry === own || (entry.def !== null && entry.approval === 'approved' && !entry.disabled)
+  );
+  // A path, not an id: a project and a personal file can share an id.
+  const [pickedPath, setPickedPath] = useState(own?.path ?? null);
   const [name, setName] = useState(rule?.name ?? '');
   const [trigger, setTrigger] = useState<RuleTrigger>(rule?.trigger ?? defaultTrigger('interval'));
   const [inputs, setInputs] = useState<Record<string, string>>(rule?.inputs ?? {});
   const [missed, setMissed] = useState<RuleMissed>(rule?.missed ?? 'run-once');
   const [dailyLimit, setDailyLimit] = useState(rule?.dailyLimit ?? DEFAULT_DAILY_LIMIT);
 
-  const entry = usable.find((candidate) => candidate.id === workflowId);
+  const entry = usable.find((candidate) => candidate.path === pickedPath) ?? usable.at(0);
+  const workflowId = entry?.id ?? rule?.workflowId ?? '';
+  const shared = (id: string): boolean => usable.filter((each) => each.id === id).length > 1;
   const ruleInputs = (entry?.def?.inputs ?? []).filter(
     (input) => !(trigger.kind === 'new-pr' && input.type === 'pr')
   );
@@ -229,6 +244,7 @@ export function RuleForm({
       name: name.trim() || entry?.def?.name || workflowId,
       projectPath,
       workflowId,
+      workflowScope: entry?.scope ?? rule?.workflowScope,
       inputs,
       trigger,
       missed,
@@ -246,12 +262,15 @@ export function RuleForm({
       <Field label="Workflow">
         <select
           className={FIELD_CLASS}
-          value={workflowId}
-          onChange={(e) => setPickedId(e.target.value)}
+          value={entry?.path ?? ''}
+          onChange={(e) => setPickedPath(e.target.value)}
         >
           {usable.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.def?.name}
+            <option key={candidate.path} value={candidate.path}>
+              {candidate.def?.name ?? candidate.id}
+              {shared(candidate.id) &&
+                (candidate.scope === 'project' ? ' (Project)' : ' (Personal)')}
+              {waitOf(candidate)}
             </option>
           ))}
         </select>

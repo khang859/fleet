@@ -1,13 +1,17 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type {
-  SaveWorkflowRequest,
-  SaveWorkflowResult,
-  WorkflowDef,
-  WorkflowEntry,
-  WorkflowScope
+import {
+  findWorkflow,
+  otherScope,
+  type MoveWorkflowRequest,
+  type MoveWorkflowResult,
+  type SaveWorkflowRequest,
+  type SaveWorkflowResult,
+  type WorkflowDef,
+  type WorkflowEntry,
+  type WorkflowScope
 } from '../../shared/workflows';
-import type { ApprovalStore } from './approval';
+import type { ApprovalStore, DisabledFiles } from './approval';
 import {
   findWorkflowFiles,
   hashText,
@@ -32,22 +36,23 @@ function messageOf(err: unknown): string {
 export class WorkflowCatalog {
   constructor(
     private readonly approvals: ApprovalStore,
+    private readonly disabled: DisabledFiles,
     private readonly personalDir: string,
     /** Called after Fleet itself changes what `list` answers. */
     private readonly onChange: () => void = () => undefined
   ) {}
 
   list(projectPath: string): WorkflowEntry[] {
-    const { files, replaced } = findWorkflowFiles(projectPath, this.personalDir);
-    return files.map((file) => this.entryOf(file, replaced.has(file.id)));
+    return findWorkflowFiles(projectPath, this.personalDir).map((file) => this.entryOf(file));
   }
 
-  find(projectPath: string, id: string): WorkflowEntry | undefined {
-    return this.list(projectPath).find((entry) => entry.id === id);
+  /** The file a name points to. See `findWorkflow` for a name with no scope. */
+  find(projectPath: string, id: string, scope?: WorkflowScope): WorkflowEntry | undefined {
+    return findWorkflow(this.list(projectPath), id, scope);
   }
 
-  private entryOf(file: FoundFile, replacesPersonal: boolean): WorkflowEntry {
-    const base = { id: file.id, path: file.path, scope: file.scope, replacesPersonal };
+  private entryOf(file: FoundFile): WorkflowEntry {
+    const base = { id: file.id, path: file.path, scope: file.scope };
     let hash = '';
     let def: WorkflowDef | null = null;
     let error: string | null = null;
@@ -63,6 +68,7 @@ export class WorkflowCatalog {
       hash,
       def,
       error,
+      disabled: this.disabled.has(file.path),
       approval: this.approvals.stateOf(file.path, hash),
       approvedText: this.approvals.approvedText(file.path)
     };
@@ -77,6 +83,10 @@ export class WorkflowCatalog {
     return scope === 'project' ? join(projectPath, PROJECT_WORKFLOWS_DIR) : this.personalDir;
   }
 
+  private pathOf(projectPath: string, scope: WorkflowScope, id: string): string {
+    return join(this.folderOf(projectPath, scope), `${id}.toml`);
+  }
+
   private write(path: string, text: string): void {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, text);
@@ -84,24 +94,75 @@ export class WorkflowCatalog {
 
   /**
    * A save from the editor. It approves the file, unless the file changed on
-   * disk since it was opened: then a person sees that change first.
+   * disk since it was opened: then a person sees that change first. A save
+   * with `moveFrom` puts the opened file in the other scope.
    */
   save(req: SaveWorkflowRequest): SaveWorkflowResult {
     const id = slugify(req.fileName);
-    const path = join(this.folderOf(req.projectPath, req.scope), `${id}.toml`);
-    const invalid = this.problemIn(req.text);
+    const path = this.pathOf(req.projectPath, req.scope, id);
+    const invalid = this.problemIn(req.text) ?? this.unsafeAt(req.projectPath, req.scope, path);
     if (invalid) return { ok: false, code: 'invalid', message: invalid };
 
-    const unsafe = this.unsafeAt(req.projectPath, req.scope, path);
-    if (unsafe) return { ok: false, code: 'invalid', message: unsafe };
+    const { moveFrom } = req;
+    if (moveFrom && moveFrom.scope !== req.scope) {
+      const source = this.find(req.projectPath, moveFrom.id, moveFrom.scope);
+      if (!source) return { ok: false, code: 'invalid', message: 'The file you opened is gone.' };
+      const conflict = this.conflictAt(source.path, req.baseHash);
+      if (conflict) return conflict;
+      const refused = this.relocate(req.projectPath, source, req.scope, id, req.text, req.replace);
+      if (refused) return refused;
+    } else {
+      const conflict = this.conflictAt(path, req.baseHash);
+      if (conflict) return conflict;
+      this.write(path, req.text);
+    }
 
-    const conflict = this.conflictAt(path, req.baseHash);
-    if (conflict) return conflict;
-
-    this.write(path, req.text);
     this.approvals.approve(path, hashText(req.text), req.text, 'editor');
     this.onChange();
     return { ok: true, id, path };
+  }
+
+  /** Put a file in the other scope, with its approval and its on or off state. */
+  move(req: MoveWorkflowRequest): MoveWorkflowResult {
+    const source = this.find(req.projectPath, req.id, req.from);
+    if (!source) return { ok: false, code: 'not-found', message: `No workflow named ${req.id}.` };
+    let text: string;
+    try {
+      text = readWorkflowFile(source.path).text;
+    } catch (err) {
+      return { ok: false, code: 'invalid', message: messageOf(err) };
+    }
+    const to = otherScope(req.from);
+    const refused = this.relocate(req.projectPath, source, to, source.id, text, req.replace);
+    if (refused) return refused;
+    this.onChange();
+    return { ok: true };
+  }
+
+  /**
+   * Writes `text` as `id` in scope `to` and removes the source, with its
+   * approval and its on or off state. The new file is written before the old
+   * one goes, so a crash loses nothing. It asks before it replaces a file.
+   */
+  private relocate(
+    projectPath: string,
+    source: WorkflowEntry,
+    to: WorkflowScope,
+    id: string,
+    text: string,
+    replace: boolean | undefined
+  ): { ok: false; code: 'invalid' | 'exists'; message: string } | null {
+    const path = this.pathOf(projectPath, to, id);
+    const unsafe = this.unsafeAt(projectPath, to, path);
+    if (unsafe) return { ok: false, code: 'invalid', message: unsafe };
+    if (existsSync(path) && !replace) {
+      return { ok: false, code: 'exists', message: `A ${to} workflow named ${id} exists.` };
+    }
+    this.write(path, text);
+    this.approvals.move(source.path, path);
+    this.disabled.move(source.path, path);
+    rmSync(source.path, { force: true });
+    return null;
   }
 
   /** A project is not trusted: it can ship a symlink where a save would land. */
@@ -137,7 +198,7 @@ export class WorkflowCatalog {
   /** A file from an agent or an import. It waits for a person, and never replaces a file. */
   createPending(projectPath: string, scope: WorkflowScope, id: string, text: string): string {
     const clean = slugify(id);
-    const path = join(this.folderOf(projectPath, scope), `${clean}.toml`);
+    const path = this.pathOf(projectPath, scope, clean);
     this.refuseBadFile(projectPath, scope, path, text);
     if (existsSync(path)) throw new WorkflowFileError(`${clean}.toml exists.`);
     this.write(path, text);
@@ -149,10 +210,18 @@ export class WorkflowCatalog {
    * A builder's next save, over the file that it saved last. A person's change
    * is never lost. A file with a new hash needs approval again.
    */
-  replaceDraft(projectPath: string, id: string, text: string, ownHash: string | null): void {
-    const path = join(this.folderOf(projectPath, 'project'), `${id}.toml`);
-    this.refuseBadFile(projectPath, 'project', path, text);
-    if (this.find(projectPath, id)?.hash !== ownHash) throw new WorkflowFileError(DRAFT_MOVED);
+  replaceDraft(
+    projectPath: string,
+    scope: WorkflowScope,
+    id: string,
+    text: string,
+    ownHash: string | null
+  ): void {
+    const path = this.pathOf(projectPath, scope, id);
+    this.refuseBadFile(projectPath, scope, path, text);
+    if (this.find(projectPath, id, scope)?.hash !== ownHash) {
+      throw new WorkflowFileError(DRAFT_MOVED);
+    }
     this.write(path, text);
     this.onChange();
   }
@@ -167,19 +236,29 @@ export class WorkflowCatalog {
     if (problem) throw new WorkflowFileError(problem);
   }
 
-  approve(projectPath: string, id: string, hash: string): boolean {
-    const entry = this.find(projectPath, id);
+  approve(projectPath: string, id: string, scope: WorkflowScope, hash: string): boolean {
+    const entry = this.find(projectPath, id, scope);
     if (entry?.hash !== hash) return false;
     this.approvals.approve(entry.path, hash, this.readText(entry.path), 'person');
     this.onChange();
     return true;
   }
 
-  remove(projectPath: string, id: string): void {
-    const entry = this.find(projectPath, id);
+  /** Turn a file off or on, on this machine. False when there is no such file. */
+  setDisabled(projectPath: string, id: string, scope: WorkflowScope, disabled: boolean): boolean {
+    const entry = this.find(projectPath, id, scope);
+    if (!entry) return false;
+    this.disabled.set(entry.path, disabled);
+    this.onChange();
+    return true;
+  }
+
+  remove(projectPath: string, id: string, scope: WorkflowScope): void {
+    const entry = this.find(projectPath, id, scope);
     if (!entry) return;
     rmSync(entry.path, { force: true });
     this.approvals.forget(entry.path);
+    this.disabled.set(entry.path, false);
     this.onChange();
   }
 }

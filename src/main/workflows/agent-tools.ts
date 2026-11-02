@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { WorkflowEntry, WorkflowNotice } from '../../shared/workflows';
+import type { WorkflowEntry, WorkflowNotice, WorkflowScope } from '../../shared/workflows';
 import type { ApprovalStore } from './approval';
 import { ToolRefused } from './bridge-routes';
 import type { WorkflowCatalog } from './catalog';
@@ -112,6 +112,8 @@ export class WorkflowAgentTools {
     const projectPath = await this.projectOf(paneId, args.project);
     return this.deps.catalog.list(projectPath).map((entry) => ({
       id: entry.id,
+      scope: entry.scope,
+      disabled: entry.disabled,
       name: entry.def?.name ?? entry.id,
       inputs: entry.def?.inputs ?? [],
       approval: entry.approval,
@@ -119,15 +121,26 @@ export class WorkflowAgentTools {
     }));
   }
 
+  /** With no scope, the file that is on wins, and then the project file. */
+  private pick(
+    projectPath: string,
+    id: string,
+    scope: WorkflowScope | undefined
+  ): WorkflowEntry | undefined {
+    if (scope) return this.deps.catalog.find(projectPath, id, scope);
+    const named = this.deps.catalog.list(projectPath).filter((entry) => entry.id === id);
+    return named.find((entry) => !entry.disabled) ?? named.at(0);
+  }
+
   private async run(paneId: string, args: ToolArgs['fleet_workflow_run']): Promise<unknown> {
     const projectPath = await this.projectOf(paneId, args.project);
-    const { workflow: workflowId, inputs } = args;
-    const entry = this.deps.catalog.find(projectPath, workflowId);
+    const { workflow: workflowId, scope, inputs } = args;
+    const entry = this.pick(projectPath, workflowId, scope);
     if (!entry) throw new ToolRefused('not-found', `No workflow named ${workflowId}.`);
     this.requireStart(projectPath, entry);
 
     const started = await this.deps.starts.start(
-      { projectPath, workflowId, inputs },
+      { projectPath, workflowId, workflowScope: entry.scope, inputs },
       { origin: 'agent', ruleId: null, focus: false }
     );
     if (!started.ok) throw new ToolRefused(started.code, started.message);
@@ -179,7 +192,8 @@ export class WorkflowAgentTools {
       text: `An agent made the workflow ${id}. It waits for your approval.`,
       runId: null,
       projectPath,
-      workflowId: id
+      workflowId: id,
+      workflowScope: 'project'
     });
     return { id, path: join(PROJECT_WORKFLOWS_DIR, `${id}.toml`) };
   }

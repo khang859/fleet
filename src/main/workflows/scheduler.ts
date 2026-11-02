@@ -4,7 +4,8 @@ import type {
   AwayEntry,
   StartRunResult,
   WorkflowLimits,
-  WorkflowRule
+  WorkflowRule,
+  WorkflowScope
 } from '../../shared/workflows';
 import { createLogger } from '../logger';
 import type { SignedFile } from './approval';
@@ -43,6 +44,7 @@ export const Rule = z.object({
   name: z.string().min(1).max(80),
   projectPath: z.string(),
   workflowId: z.string(),
+  workflowScope: z.enum(['project', 'personal']).optional(),
   inputs: z.record(z.string(), z.string()),
   trigger: Trigger,
   missed: z.enum(['run-once', 'skip']),
@@ -320,6 +322,11 @@ export class WorkflowScheduler {
     for (const rule of this.data.rules) {
       if (rule.pausedReason !== null && match(rule)) this.update(rule.id, { pausedReason: null });
     }
+  }
+
+  /** Its workflow moved to the other scope, and the rule goes with it. */
+  repoint(id: string, workflowScope: WorkflowScope): void {
+    this.update(id, { workflowScope });
   }
 
   pause(id: string, reason: string): void {

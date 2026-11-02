@@ -2,7 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkflowEntries, WorkflowEntry, WorkflowNotice } from '../../../shared/workflows';
+import type {
+  WorkflowEntries,
+  WorkflowEntry,
+  WorkflowNotice,
+  WorkflowRule,
+  WorkflowScope
+} from '../../../shared/workflows';
 import { WorkflowsBridge } from '../bridge-routes';
 import { PROJECT_WORKFLOWS_DIR } from '../config';
 import { workflowGuide } from '../guide';
@@ -158,7 +164,7 @@ function entryOf(id = 'task'): WorkflowEntry {
 
 /** A person approved the file on the page, so it runs but agents must ask. */
 function approveByHand(id = 'task'): void {
-  world.service.catalog.approve(world.project, id, entryOf(id).hash);
+  world.service.catalog.approve(world.project, id, 'project', entryOf(id).hash);
 }
 
 function notices(): WorkflowNotice[] {
@@ -492,7 +498,7 @@ describe('the live list', () => {
     await call('fleet_workflow_create', { id: 'task', toml: TASK });
     expect(notices()).toHaveLength(1);
 
-    world.service.approve(world.project, 'task', entryOf().hash);
+    world.service.approve(world.project, 'task', 'project', entryOf().hash);
 
     expect(notices()).toEqual([]);
   });
@@ -572,5 +578,146 @@ describe('fleet_workflow_create', () => {
 
     expect(reply).toMatchObject({ ok: false, code: 'refused' });
     expect(existsSync(world.catalogPath('new-flow'))).toBe(false);
+  });
+});
+
+describe('a name in both scopes', () => {
+  function saveBoth(): void {
+    saveInEditor();
+    const { project: projectPath, service } = world;
+    service.save({ projectPath, scope: 'personal', fileName: 'task', text: TASK, baseHash: null });
+  }
+
+  function addRule(workflowScope?: WorkflowScope): string {
+    return world.service.scheduler.saveRule({
+      name: 'Daily',
+      projectPath: world.project,
+      workflowId: 'task',
+      workflowScope,
+      inputs: { task: 'Do it.' },
+      trigger: { kind: 'time', at: '09:00', days: [0, 1, 2, 3, 4, 5, 6] },
+      missed: 'skip',
+      enabled: true,
+      pausedReason: null,
+      dailyLimit: 5
+    }).id;
+  }
+
+  function ruleOf(id: string): WorkflowRule | undefined {
+    return world.service.scheduler.rules().find((rule) => rule.id === id);
+  }
+
+  function startedScope(reply: Reply): WorkflowScope | undefined {
+    const { run: runId } = reply.data as { run: string };
+    return world.service.runs.get(runId)?.workflowScope;
+  }
+
+  it('lists both, with their scopes', async () => {
+    saveBoth();
+
+    const reply = await call('fleet_workflow_list', {});
+
+    expect(reply.data).toMatchObject([
+      { id: 'task', scope: 'project', disabled: false },
+      { id: 'task', scope: 'personal', disabled: false }
+    ]);
+  });
+
+  it('starts the project file when no scope is given', async () => {
+    saveBoth();
+
+    expect(startedScope(await runTask())).toBe('project');
+  });
+
+  it('starts the scope an agent names', async () => {
+    saveBoth();
+
+    const args = { workflow: 'task', scope: 'personal', inputs: { task: 'Do it.' } };
+    expect(startedScope(await call('fleet_workflow_run', args))).toBe('personal');
+  });
+
+  it('starts the file that is on when the other is off', async () => {
+    saveBoth();
+    world.service.setDisabled(world.project, 'task', 'project', true);
+
+    expect(startedScope(await runTask())).toBe('personal');
+  });
+
+  it('refuses a file that is off', async () => {
+    saveInEditor();
+    world.service.setDisabled(world.project, 'task', 'project', true);
+
+    expect(await runTask()).toMatchObject({ ok: false, code: 'disabled' });
+  });
+
+  it('pauses the rules of a file that is off, and goes on when it is on', () => {
+    saveBoth();
+    const own = addRule('personal');
+    const other = addRule('project');
+
+    world.service.setDisabled(world.project, 'task', 'personal', true);
+
+    expect(ruleOf(own)?.pausedReason).toBe('Its workflow is turned off.');
+    expect(ruleOf(other)?.pausedReason).toBeNull();
+    world.service.setDisabled(world.project, 'task', 'personal', false);
+    expect(ruleOf(own)?.pausedReason).toBeNull();
+  });
+
+  it('moves the rules, the builder and the create notice with the file', async () => {
+    await call('fleet_workflow_create', { id: 'task', toml: TASK });
+    const old = addRule();
+
+    const moved = world.service.move({
+      projectPath: world.project,
+      id: 'task',
+      from: 'project',
+      replace: false
+    });
+
+    expect(moved).toEqual({ ok: true });
+    expect(ruleOf(old)?.workflowScope).toBe('personal');
+    expect(notices()).toMatchObject([{ kind: 'agent-create', workflowScope: 'personal' }]);
+    world.service.approve(world.project, 'task', 'personal', entryOf().hash);
+    expect(notices()).toEqual([]);
+  });
+
+  it('points its runs at the moved file, so a rerun finds it', async () => {
+    saveInEditor();
+    const { run: runId } = (await runTask()).data as { run: string };
+
+    world.service.move({ projectPath: world.project, id: 'task', from: 'project', replace: false });
+
+    const personal = world.service.catalog.find(world.project, 'task', 'personal');
+    expect(world.service.runs.get(runId)).toMatchObject({
+      workflowScope: 'personal',
+      workflowPath: personal?.path
+    });
+  });
+
+  it('moves the rules when an editor save moves the file', () => {
+    saveInEditor();
+    const rule = addRule('project');
+
+    world.service.save({
+      projectPath: world.project,
+      scope: 'personal',
+      fileName: 'task',
+      text: TASK,
+      baseHash: entryOf().hash,
+      moveFrom: { id: 'task', scope: 'project' }
+    });
+
+    expect(ruleOf(rule)?.workflowScope).toBe('personal');
+  });
+
+  it('pauses only the rules of the scope it deletes', () => {
+    saveBoth();
+    const own = addRule('personal');
+    const other = addRule();
+
+    world.service.remove(world.project, 'task', 'personal');
+
+    expect(ruleOf(own)?.pausedReason).toBe('Its workflow file was deleted.');
+    expect(ruleOf(other)?.pausedReason).toBeNull();
   });
 });

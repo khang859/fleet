@@ -30,7 +30,7 @@ function entryOf(overrides: Partial<WorkflowEntry> = {}): WorkflowEntry {
     def: DEF,
     error: null,
     approval: 'needs-approval',
-    replacesPersonal: false,
+    disabled: false,
     approvedText: null,
     ...overrides
   };
