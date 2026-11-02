@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.150.0
+
+- **Move a workflow between Project and Personal.**
+  Each workflow row and the editor have a Project | Personal switch, and pressing the other side moves the file.
+  A move keeps the approval, the rules, the runs and Run again, and it asks before it replaces a file with the same name.
+  When both scopes have the same workflow, Fleet lists the two copies together (#753).
+- **Turn a workflow off on this machine.**
+  A copy that is off stays listed with an "Off" badge, nothing can start it, and its rules pause until it is turned back on (#753).
+- **Choose the model and effort for each workflow agent.**
+  Stage agents take `model` and `effort`, and the editor has Model and Effort fields for Claude Code and Pi.
+  The run sheet can change them for one run, and "Make with an agent" can pick them for the builder (#754).
+- **The workflow builder and read agents can research.**
+  They can now search the web, use MCP servers and run shell commands, but they still cannot edit files.
+  Runs on a stranger's PR or issue stay locked (#755).
+
 ## v2.149.2
 
 - **PDF panes open again.**
