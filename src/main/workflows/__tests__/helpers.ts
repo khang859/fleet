@@ -109,6 +109,7 @@ export function makeRun(overrides: Partial<WorkflowRun> = {}): WorkflowRun {
 export function makePlan(def: WorkflowDef, overrides: Partial<RunPlan> = {}): RunPlan {
   return {
     workflowId: 'review',
+    workflowScope: 'project',
     path: '/repo/.fleet/workflows/review.toml',
     projectPath: '/repo',
     def,

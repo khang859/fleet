@@ -296,16 +296,12 @@ function tomlFilesIn(dir: string, scope: WorkflowScope): FoundFile[] {
     .map((name) => ({ id: name.slice(0, -'.toml'.length), path: join(dir, name), scope }));
 }
 
-/** Project files first, then the personal files whose names no project file took. */
-export function findWorkflowFiles(
-  projectPath: string,
-  personalDir: string
-): { files: FoundFile[]; replaced: Set<string> } {
-  const project = tomlFilesIn(join(projectPath, PROJECT_WORKFLOWS_DIR), 'project');
-  const taken = new Set(project.map((file) => file.id));
-  const personal = tomlFilesIn(personalDir, 'personal');
-  const replaced = new Set(personal.filter((file) => taken.has(file.id)).map((file) => file.id));
-  return { files: [...project, ...personal.filter((file) => !taken.has(file.id))], replaced };
+/** Project files first, then personal files. A name can be in both. */
+export function findWorkflowFiles(projectPath: string, personalDir: string): FoundFile[] {
+  return [
+    ...tomlFilesIn(join(projectPath, PROJECT_WORKFLOWS_DIR), 'project'),
+    ...tomlFilesIn(personalDir, 'personal')
+  ];
 }
 
 /** Fill `{{name}}` from `values`. Every name was checked when the file was parsed. */

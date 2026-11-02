@@ -1,19 +1,19 @@
 import { useState } from 'react';
-import type { WorkflowRule } from '../../../../shared/workflows';
+import { findWorkflow, type WorkflowRule } from '../../../../shared/workflows';
 import { useToastStore } from '../../store/toast-store';
 import { callWorkflows, useWorkflowsStore } from '../../store/workflows-store';
 import { RunSheet } from './RunSheet';
 import { hasPrInput } from './workflow-format';
 
-type PrSheet = { rule: WorkflowRule; workflowId: string };
+type PrSheet = { rule: WorkflowRule; path: string };
 
 /** The workflow a new-PR rule starts, when Run now must ask which PR. */
 async function prSheetFor(rule: WorkflowRule | undefined): Promise<PrSheet | null> {
   if (rule?.trigger.kind !== 'new-pr') return null;
   await useWorkflowsStore.getState().setProject(rule.projectPath);
   const { entries } = useWorkflowsStore.getState();
-  const entry = entries.find((item) => item.id === rule.workflowId);
-  return entry && hasPrInput(entry) ? { rule, workflowId: entry.id } : null;
+  const entry = findWorkflow(entries, rule.workflowId, rule.workflowScope);
+  return entry && hasPrInput(entry) ? { rule, path: entry.path } : null;
 }
 
 async function startRule(ruleId: string): Promise<void> {
@@ -27,7 +27,7 @@ export function useRunRule(): {
   sheet: React.JSX.Element;
 } {
   const [prSheet, setPrSheet] = useState<PrSheet | null>(null);
-  const entry = useWorkflowsStore((s) => s.entries.find((e) => e.id === prSheet?.workflowId));
+  const entry = useWorkflowsStore((s) => s.entries.find((e) => e.path === prSheet?.path));
 
   const open = async (ruleId: string): Promise<void> => {
     const { rules } = useWorkflowsStore.getState().state;

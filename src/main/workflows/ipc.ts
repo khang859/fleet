@@ -84,9 +84,12 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     list: (projectPath) => service.list(projectPath),
     readText: (path) => catalog.readText(path),
     starters: () => service.starters(),
-    save: (req) => catalog.save(req),
-    remove: (projectPath, id) => service.remove(projectPath, id),
-    approve: (projectPath, id, hash) => service.approve(projectPath, id, hash),
+    save: (req) => service.save(req),
+    remove: (projectPath, id, scope) => service.remove(projectPath, id, scope),
+    approve: (projectPath, id, scope, hash) => service.approve(projectPath, id, scope, hash),
+    move: (req) => service.move(req),
+    setDisabled: (projectPath, id, scope, disabled) =>
+      service.setDisabled(projectPath, id, scope, disabled),
     importToml,
     preview: async (req) => service.preview(req),
     start: async (req) => service.startManual(req),
@@ -104,7 +107,8 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     savedAgents: async (projectPath) => savedAgents(projectPath),
     startBuilder: async (projectPath, program, choice) =>
       service.builder.start(projectPath, program, choice),
-    reopenBuilder: async (projectPath, draftId) => service.builder.reopen(projectPath, draftId),
+    reopenBuilder: async (projectPath, draftId, scope) =>
+      service.builder.reopen(projectPath, draftId, scope),
     builderInfo: (id) => service.builder.info(id),
     draftsWithBuilder: (projectPath) => service.builder.draftsWithSession(projectPath),
     programs: async () => service.programs(),

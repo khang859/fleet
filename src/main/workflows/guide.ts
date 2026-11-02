@@ -12,7 +12,7 @@ A workflow is one TOML file. One press starts several agents, each in its own pa
 4. Tell the person to open the Workflows page and press Review. You cannot approve a file, because a prompt can tell an agent to do anything.
 5. After approval, the person presses Run. You can also call fleet_workflow_run. The first time, Fleet asks the person to allow that.
 
-fleet_workflow_create never replaces a file. To change a file, ask the person to edit it in Fleet.`;
+fleet_workflow_create writes a project file and never replaces a file. To change a file, or to move it to the person's personal workflows, ask the person to do it in Fleet.`;
 
 const FORMAT = `## Format
 

@@ -4,10 +4,16 @@ import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { ClaudePendingPermission, ClaudeSessionChange } from '../../shared/claude-sessions';
 import {
+  findWorkflow,
   needsPersonAtRun,
+  otherScope,
+  type MoveWorkflowRequest,
+  type MoveWorkflowResult,
   type PlanBuildMode,
   type RunTab,
   type SaveReportResult,
+  type SaveWorkflowRequest,
+  type SaveWorkflowResult,
   type StartRunRequest,
   type StartRunResult,
   type WorkflowDef,
@@ -18,11 +24,18 @@ import {
   type WorkflowProject,
   type WorkflowRule,
   type WorkflowRun,
+  type WorkflowScope,
   type WorkflowsState
 } from '../../shared/workflows';
 import { CLAUDE_MODELS, parsePiModels } from '../../shared/workflow-models';
 import { createLogger } from '../logger';
-import { ApprovalStore, loadSigningKey, SignedFile, type KeyVault } from './approval';
+import {
+  ApprovalStore,
+  DisabledFiles,
+  loadSigningKey,
+  SignedFile,
+  type KeyVault
+} from './approval';
 import { WorkflowAgentTools } from './agent-tools';
 import type { BridgeHandler, PiEvent, WorkflowsBridge } from './bridge-routes';
 import { WorkflowBuilder } from './builder';
@@ -65,6 +78,22 @@ const CLOCK_MS = 5_000;
 /** Holds a person's own workflows, inside the Fleet home folder. */
 const PERSONAL_DIR_NAME = 'workflows';
 const WORKING = new Set(['starting', 'working']);
+const DISABLED_REASON = 'Its workflow is turned off.';
+
+/** The notice that an agent made this file. Notices from before scopes were about project files. */
+function isCreateNoticeFor(
+  notice: WorkflowNotice,
+  projectPath: string,
+  id: string,
+  scope: WorkflowScope
+): boolean {
+  return (
+    notice.kind === 'agent-create' &&
+    notice.projectPath === projectPath &&
+    notice.workflowId === id &&
+    (notice.workflowScope ?? 'project') === scope
+  );
+}
 
 export type WorkflowsDeps = {
   home: string;
@@ -128,7 +157,12 @@ export class WorkflowsService implements BridgeHandler {
     const store = new RunStore(join(deps.home, 'workflow-runs'));
 
     this.approvals = new ApprovalStore(join(deps.home, 'workflow-approvals.json'), key);
-    this.catalog = new WorkflowCatalog(this.approvals, personalDir, () => this.pushEntries());
+    this.catalog = new WorkflowCatalog(
+      this.approvals,
+      new DisabledFiles(join(deps.home, 'workflow-disabled.json'), key),
+      personalDir,
+      () => this.pushEntries()
+    );
     this.scheduler = new WorkflowScheduler({
       file: new SignedFile(join(deps.home, 'workflow-rules.json'), key, RULES_SCHEMA, EMPTY_RULES),
       now: deps.now,
@@ -491,37 +525,94 @@ export class WorkflowsService implements BridgeHandler {
     return { blank: BLANK_WORKFLOW, starters: STARTERS };
   }
 
-  approve(projectPath: string, id: string, hash: string): boolean {
-    const approved = this.catalog.approve(projectPath, id, hash);
+  /** The rules that start this file. Read it before the file moves or goes. */
+  private rulesUsing(projectPath: string, id: string, scope: WorkflowScope): WorkflowRule[] {
+    const entries = this.catalog.list(projectPath);
+    return this.scheduler.rules().filter((rule) => {
+      if (rule.projectPath !== projectPath || rule.workflowId !== id) return false;
+      return findWorkflow(entries, id, rule.workflowScope)?.scope === scope;
+    });
+  }
+
+  approve(projectPath: string, id: string, scope: WorkflowScope, hash: string): boolean {
+    const rules = new Set(this.rulesUsing(projectPath, id, scope).map((rule) => rule.id));
+    const approved = this.catalog.approve(projectPath, id, scope, hash);
     if (approved) {
+      // A rule paused because its file is off stays paused until the file is on.
       this.scheduler.resumePaused(
-        (rule) => rule.projectPath === projectPath && rule.workflowId === id
+        (rule) => rules.has(rule.id) && rule.pausedReason !== DISABLED_REASON
       );
-      this.dropCreateNotice(projectPath, id);
+      this.dropCreateNotice(projectPath, id, scope);
     }
     return approved;
   }
 
   /** The file an agent made was approved or deleted, so nothing waits for review. */
-  private dropCreateNotice(projectPath: string, id: string): void {
+  private dropCreateNotice(projectPath: string, id: string, scope: WorkflowScope): void {
     this.notices = this.notices.filter(
-      (notice) =>
-        notice.kind !== 'agent-create' ||
-        notice.projectPath !== projectPath ||
-        notice.workflowId !== id
+      (notice) => !isCreateNoticeFor(notice, projectPath, id, scope)
     );
     this.pushState();
   }
 
   /** A deleted file pauses each rule that uses it, with the reason. */
-  remove(projectPath: string, id: string): void {
-    this.catalog.remove(projectPath, id);
-    for (const rule of this.scheduler.rules()) {
-      if (rule.projectPath === projectPath && rule.workflowId === id) {
-        this.scheduler.pause(rule.id, 'Its workflow file was deleted.');
-      }
+  remove(projectPath: string, id: string, scope: WorkflowScope): void {
+    const rules = this.rulesUsing(projectPath, id, scope);
+    this.catalog.remove(projectPath, id, scope);
+    for (const rule of rules) this.scheduler.pause(rule.id, 'Its workflow file was deleted.');
+    this.dropCreateNotice(projectPath, id, scope);
+  }
+
+  /** A file that is off starts no run. Its rules pause until it is on again. */
+  setDisabled(projectPath: string, id: string, scope: WorkflowScope, disabled: boolean): void {
+    const rules = this.rulesUsing(projectPath, id, scope);
+    if (!this.catalog.setDisabled(projectPath, id, scope, disabled)) return;
+    if (disabled) {
+      for (const rule of rules) this.scheduler.pause(rule.id, DISABLED_REASON);
+      return;
     }
-    this.dropCreateNotice(projectPath, id);
+    const ids = new Set(rules.map((rule) => rule.id));
+    this.scheduler.resumePaused(
+      (rule) => ids.has(rule.id) && rule.pausedReason === DISABLED_REASON
+    );
+  }
+
+  move(req: MoveWorkflowRequest): MoveWorkflowResult {
+    return this.moving(req.projectPath, req.id, req.from, () => this.catalog.move(req));
+  }
+
+  /** An editor save can move the file too. */
+  save(req: SaveWorkflowRequest): SaveWorkflowResult {
+    const { moveFrom } = req;
+    if (!moveFrom || moveFrom.scope === req.scope) return this.catalog.save(req);
+    return this.moving(req.projectPath, moveFrom.id, moveFrom.scope, () => this.catalog.save(req));
+  }
+
+  /**
+   * Moves a file with `change`, then points what named it at its new place:
+   * rules, runs, notices and its builder. What named it is read before the move.
+   */
+  private moving<T extends { ok: boolean }>(
+    projectPath: string,
+    id: string,
+    from: WorkflowScope,
+    change: () => T
+  ): T {
+    const rules = this.rulesUsing(projectPath, id, from);
+    const oldPath = this.catalog.find(projectPath, id, from)?.path;
+    const result = change();
+    if (!result.ok) return result;
+
+    const to = otherScope(from);
+    const newPath = this.catalog.find(projectPath, id, to)?.path;
+    for (const rule of rules) this.scheduler.repoint(rule.id, to);
+    if (oldPath && newPath) this.runs.noteFileMoved(oldPath, newPath, to);
+    this.builder.onMoved(projectPath, id, from, to);
+    this.notices = this.notices.map((notice) =>
+      isCreateNoticeFor(notice, projectPath, id, from) ? { ...notice, workflowScope: to } : notice
+    );
+    this.pushState();
+    return result;
   }
 
   /** A file from outside: it arrives needing approval, as any file a person did not write here. */
@@ -609,7 +700,7 @@ export class WorkflowsService implements BridgeHandler {
   }
 
   private ruleProblem(rule: WorkflowRule): string | null {
-    const def = this.catalog.find(rule.projectPath, rule.workflowId)?.def;
+    const def = this.catalog.find(rule.projectPath, rule.workflowId, rule.workflowScope)?.def;
     if (!def || !needsPersonAtRun(def)) return null;
     return 'This workflow talks with a person, so a rule cannot start it.';
   }
@@ -644,12 +735,12 @@ export class WorkflowsService implements BridgeHandler {
 
   private async startFromRule(rule: WorkflowRule, pr: number | null): Promise<StartOutcome> {
     const { projectPath, workflowId } = rule;
-    const entry = this.catalog.find(projectPath, workflowId);
+    const entry = this.catalog.find(projectPath, workflowId, rule.workflowScope);
     if (!entry) return { ok: false, busy: false, reason: 'Its workflow file is gone.' };
 
     const inputs = this.inputsFor(rule, entry.def, pr);
     const started = await this.starts.start(
-      { projectPath, workflowId, inputs },
+      { projectPath, workflowId, workflowScope: entry.scope, inputs },
       { origin: 'automatic', ruleId: rule.id, focus: false }
     );
     return startOutcome(started, pr);

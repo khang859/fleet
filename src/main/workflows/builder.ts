@@ -7,7 +7,8 @@ import type {
   BuilderStart,
   RunTab,
   WorkflowNotice,
-  WorkflowProgram
+  WorkflowProgram,
+  WorkflowScope
 } from '../../shared/workflows';
 import { modelChoiceProblem, type ModelChoice } from '../../shared/workflow-models';
 import { writeAtomicSync } from '../fs-atomic';
@@ -26,6 +27,8 @@ const SAVED = z.object({
   project: z.string(),
   program: z.enum(['pi', 'claude']),
   draftId: z.string().nullable(),
+  /** Where the draft is now. A person can move it. Sessions from before this field were project. */
+  draftScope: z.enum(['project', 'personal']).default('project'),
   /** The hash of this builder's last save, to see if a person changed the file. */
   draftHash: z.string().nullable(),
   sessionId: z.string().nullable(),
@@ -119,6 +122,7 @@ export class WorkflowBuilder {
       model: choice.model,
       effort: choice.effort,
       draftId: null,
+      draftScope: 'project',
       draftHash: null,
       sessionId: null,
       transcriptPath: null
@@ -137,10 +141,8 @@ export class WorkflowBuilder {
   }
 
   /** Go back to the agent that made a draft: its old talk, with the same brief. */
-  async reopen(project: string, draftId: string): Promise<BuilderStart> {
-    const session = [...this.sessions.values()].find(
-      (candidate) => candidate.project === project && candidate.draftId === draftId
-    );
+  async reopen(project: string, draftId: string, scope: WorkflowScope): Promise<BuilderStart> {
+    const session = this.sessionFor(project, draftId, scope);
     if (!session) return { ok: false, message: 'No builder session made this draft.' };
     this.acceptFile(session);
     const open = this.paneOf(session.id);
@@ -155,7 +157,25 @@ export class WorkflowBuilder {
   /** A person gave the draft back to the agent, so its next save can replace this file. */
   private acceptFile(session: Saved): void {
     if (!session.draftId) return;
-    session.draftHash = this.deps.catalog.find(session.project, session.draftId)?.hash ?? null;
+    const { project, draftId, draftScope } = session;
+    session.draftHash = this.deps.catalog.find(project, draftId, draftScope)?.hash ?? null;
+    this.persist();
+  }
+
+  private sessionFor(project: string, draftId: string, scope: WorkflowScope): Saved | undefined {
+    return [...this.sessions.values()].find(
+      (candidate) =>
+        candidate.project === project &&
+        candidate.draftId === draftId &&
+        candidate.draftScope === scope
+    );
+  }
+
+  /** A person moved a draft, so its builder goes on saving it where it is now. */
+  onMoved(project: string, draftId: string, from: WorkflowScope, to: WorkflowScope): void {
+    const session = this.sessionFor(project, draftId, from);
+    if (!session) return;
+    session.draftScope = to;
     this.persist();
   }
 
@@ -255,8 +275,8 @@ export class WorkflowBuilder {
   }
 
   private writeDraft(session: Saved, paneId: string, toml: string): void {
-    const { project, draftId, draftHash } = session;
-    if (draftId) this.deps.catalog.replaceDraft(project, draftId, toml, draftHash);
+    const { project, draftId, draftScope, draftHash } = session;
+    if (draftId) this.deps.catalog.replaceDraft(project, draftScope, draftId, toml, draftHash);
     else this.createDraft(session, paneId, toml);
   }
 
@@ -271,7 +291,8 @@ export class WorkflowBuilder {
       text: `An agent made the workflow ${session.draftId}. It waits for your approval.`,
       runId: null,
       projectPath: session.project,
-      workflowId: session.draftId
+      workflowId: session.draftId,
+      workflowScope: 'project'
     });
   }
 
@@ -287,15 +308,18 @@ export class WorkflowBuilder {
   info(id: string): BuilderInfo | null {
     const session = this.sessions.get(id);
     if (!session) return null;
-    const { project, program, draftId } = session;
-    return { id, projectPath: project, program, draftId };
+    const { project, program, draftId, draftScope } = session;
+    return { id, projectPath: project, program, draftId, draftScope };
   }
 
-  /** Whether a person can go back to the agent that made this draft. */
+  /** The paths of the drafts a person can go back to the agent that made. */
   draftsWithSession(project: string): string[] {
     return [...this.sessions.values()]
-      .filter((session) => session.project === project && session.draftId !== null)
-      .flatMap((session) => session.draftId ?? []);
+      .filter((session) => session.project === project)
+      .flatMap(({ draftId, draftScope }) => {
+        const entry = draftId ? this.deps.catalog.find(project, draftId, draftScope) : undefined;
+        return entry ? [entry.path] : [];
+      });
   }
 
   tabs(): RunTab[] {

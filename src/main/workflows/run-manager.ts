@@ -19,6 +19,7 @@ import {
   type WorkflowNotice,
   type WorkflowProgram,
   type WorkflowRun,
+  type WorkflowScope,
   type WorkflowStageDef
 } from '../../shared/workflows';
 import { effectiveChoices, type ModelChoice } from '../../shared/workflow-models';
@@ -99,6 +100,7 @@ export type RunDeps = {
 /** What a start needs. The service checked all of it before it calls `create`. */
 export type RunPlan = {
   workflowId: string;
+  workflowScope: WorkflowScope;
   path: string;
   projectPath: string;
   def: WorkflowDef;
@@ -388,6 +390,7 @@ export class WorkflowRunManager {
     return {
       id: randomUUID(),
       workflowId: plan.workflowId,
+      workflowScope: plan.workflowScope,
       workflowName: def.name,
       workflowPath: plan.path,
       projectPath: plan.projectPath,
@@ -1265,6 +1268,16 @@ export class WorkflowRunManager {
     if (!run?.report) return;
     run.report = { ...run.report, ...change };
     this.commit(run);
+  }
+
+  /** A person moved a workflow file, so its runs name the file where it is now. */
+  noteFileMoved(from: string, to: string, scope: WorkflowScope): void {
+    for (const run of this.runs.values()) {
+      if (run.workflowPath !== from) continue;
+      run.workflowPath = to;
+      run.workflowScope = scope;
+      this.commit(run);
+    }
   }
 
   /** The PR got a new commit, so the findings are for an old one. */

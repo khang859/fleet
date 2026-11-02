@@ -397,6 +397,7 @@ export function RunHeader({
     const reply = await callWorkflows('start', {
       projectPath: run.projectPath,
       workflowId: run.workflowId,
+      workflowScope: run.workflowScope,
       inputs: run.inputs,
       // An issue can get new comments, so a rerun never carries its trust.
       trustPr: !run.locked
