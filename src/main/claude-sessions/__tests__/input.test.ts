@@ -212,6 +212,17 @@ describe('PromptInput', () => {
     expect(listeners.size).toBe(1);
   });
 
+  it('takes no acknowledgement from another pane running the same conversation', async () => {
+    ackOnSubmit = false;
+    const pending = input.send('s1', 'hello');
+    await vi.advanceTimersByTimeAsync(SUBMIT_DELAY_MS);
+
+    emit('UserPromptSubmit', session({ paneId: 'pane-2' }), hashPrompt('hello'));
+    await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS);
+
+    expect(await pending).toEqual({ ok: true, confirmed: false, text: 'hello' });
+  });
+
   it('confirms a prompt Claude Code got as it was typed', async () => {
     submitHash = (typed) => hashPrompt(typed);
     expect(await input.send('s1', '  Run the tests\n')).toEqual({

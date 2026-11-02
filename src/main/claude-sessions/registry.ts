@@ -308,12 +308,15 @@ export class ClaudeSessionRegistry {
 
   /**
    * The transcript showed a turn stop or start that no hook event reported.
-   * Panes running one conversation share its transcript, so it goes to the
-   * one active last.
+   * Panes running one conversation share its transcript, so it cannot say
+   * which pane it was: with more than one live, nothing is settled.
    */
   settle(sessionId: string, signal: TranscriptSignal): void {
-    const entry = this.find(sessionId);
-    if (!entry || entry.session.phase === 'ended') return;
+    const live = [...this.entries.values()].filter(
+      ({ session }) => session.sessionId === sessionId && session.phase !== 'ended'
+    );
+    if (live.length !== 1) return;
+    const [entry] = live;
     const next = settlePhase(entry.session, signal);
     if (next === entry.session) return;
     log.debug('phase settled from transcript', { sessionId, signal, phase: next.phase });

@@ -300,6 +300,18 @@ describe('ClaudeSessionRegistry', () => {
       registry.settle('s1', 'turnStopped');
       expect(registry.get('s1')?.phase).toBe('ended');
     });
+
+    it('settles nothing when the conversation runs in two panes', () => {
+      alive.add(5000);
+      registry.ingest(ev(), pane);
+      registry.ingest(ev({ pid: 5000 }), { paneId: 'pane-2' });
+
+      // The shared transcript cannot say which pane stopped.
+      registry.settle('s1', 'turnStopped');
+
+      expect(registry.getByPane('pane-1')?.phase).toBe('processing');
+      expect(registry.getByPane('pane-2')?.phase).toBe('processing');
+    });
   });
 
   describe('epochs', () => {
