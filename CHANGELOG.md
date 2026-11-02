@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.149.2
+
+- **PDF panes open again.**
+  A PDF pane showed "Failed to load PDF", because Chromium blocked the old way Fleet loaded the file.
+  The pane now reads the file through the app, and it also works for WSL paths (#751).
+- **Security: the PDF library is now pdf.js 6.5.438.**
+  The old version 4.10.38 had known security issues (#745, #751).
+- **A PDF can now turn.**
+  The Rotate button in the PDF toolbar turns the page 90 degrees each time.
+  Text selection stays in line on a turned page (#751).
+- **Large PDFs open fast and no longer crash Fleet.**
+  The pane reads only the parts of the file that the open page needs.
+  A 377 MB PDF crashed Fleet before, and now its first page shows in less than a second.
+  If the file changes on disk while it is open, the pane shows a Reload button (#752).
+- **Terminal panes use less power when idle, and typing shows at once.**
+  Fleet no longer wakes 63 times a second when all panes are idle.
+  A pane that stopped after a large burst of output now starts again (#747).
+- **The GitHub issue review workflow can read and post issues.**
+  Fleet reads the issue and its comments for the agents, and a person presses Post.
+  An issue with text from outside the team is locked until a person trusts it (#749).
+
 ## v2.149.1
 
 - **Many open terminal panes now use much less CPU.**
