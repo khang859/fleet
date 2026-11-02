@@ -73,9 +73,13 @@ function planRules(program: WorkflowProgram): string[] {
   ];
 }
 
-function accessRules(def: WorkflowDef, agent: BriefAgent): string[] {
+const READER_RULE =
+  '- Do not change code or files. You can research: search the web, read pages, use your MCP tools and run read-only shell commands.';
+
+function accessRules(run: WorkflowRun, def: WorkflowDef, agent: BriefAgent): string[] {
   if (!def.stages) return [];
-  if (agent.access !== 'write') return ['- You have read-only tools. You cannot change code.'];
+  if (run.locked) return ['- You have read-only tools. You cannot change code.'];
+  if (agent.access !== 'write') return [READER_RULE];
   if (def.workspace !== 'new-branch') return [];
   return ['- Commit your work on this branch before you finish. Later steps read only commits.'];
 }
@@ -147,7 +151,7 @@ export function agentBrief(
   const rules = [
     ...(def.board ? boardRules(agent.program) : []),
     ...(agent.isLast ? lastAgentRules(agent.program) : []),
-    ...accessRules(def, agent),
+    ...accessRules(run, def, agent),
     ...(agent.talks ? talkRules(agent.program) : []),
     ...(agent.plan ? planRules(agent.program) : []),
     ...finishRules(def, agent, finish),

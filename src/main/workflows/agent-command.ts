@@ -5,8 +5,10 @@ import { posixShellQuote } from '../remote-ssh/ssh-quote';
  * How much an agent may do. See the Limits part of the design doc.
  * `write` is an agent in a stage file. It has no person at its start, so Pi must
  * not stop at its trust question, which Fleet cannot see.
+ * `research` has every tool but the edit tools: the shell, the web and the person's
+ * MCP servers. `locked` has only read tools, for text from outside the team.
  */
-export type AgentMode = 'normal' | 'team-pr' | 'locked' | 'write';
+export type AgentMode = 'normal' | 'team-pr' | 'locked' | 'research' | 'write';
 
 export type AgentCommand = {
   program: WorkflowProgram;
@@ -34,11 +36,18 @@ export type AgentCommand = {
 /** A resumed Pi takes back its old tool list, unless the write tools are named. */
 const PI_WRITE_TOOLS = '+edit,+write,+bash';
 
+/** Named with `+`, so a resumed Pi does not take back an old read-only list. */
+const PI_RESEARCH_TOOLS = ['--tools', '+bash,+grep,+find,+ls', '--exclude-tools', 'edit,write'];
+
+/** The Claude Code tools that change files. Bash stays, and so do web and MCP tools. */
+const CLAUDE_EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit'];
+
 function piAccessArgs(cmd: AgentCommand): string[] {
   if (cmd.mode === 'team-pr') return ['--approve'];
   if (cmd.mode === 'locked') {
     return ['--no-approve', '--tools', 'read,grep,find,ls,fleet_*', '--exclude-tools', 'mcp__*'];
   }
+  if (cmd.mode === 'research') return ['--no-approve', ...PI_RESEARCH_TOOLS];
   if (cmd.mode !== 'write') return [];
   return cmd.resume ? ['--no-approve', '--tools', PI_WRITE_TOOLS] : ['--no-approve'];
 }
@@ -57,8 +66,9 @@ function claudeReadTools(cmd: AgentCommand): string {
 }
 
 function claudeArgs(cmd: AgentCommand): string[] {
-  // `--add-dir` takes many values, so a later flag must stop it before the message.
+  // `--add-dir` and `--disallowedTools` take many values, so a later flag must stop them.
   const args = cmd.addDir ? ['--add-dir', cmd.addDir] : [];
+  if (cmd.mode === 'research') args.push('--disallowedTools', ...CLAUDE_EDIT_TOOLS);
   args.push('--append-system-prompt-file', cmd.briefPath);
   if (cmd.resume) args.push('--resume', cmd.resume);
   if (cmd.permissionMode) args.push('--permission-mode', cmd.permissionMode);

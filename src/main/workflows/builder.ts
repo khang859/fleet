@@ -66,8 +66,9 @@ export function builderBrief(program: WorkflowProgram): string {
 
 # Rules
 
-- This pane makes workflows. You cannot change code or start a run here, and you have no tool for that. If the person asks for other work, say that this pane only makes workflows.
+- This pane makes workflows. Do not change code or files here, and you cannot start a run. If the person asks for other work, say that this pane only makes workflows.
 - You can read the project, to learn how its work is done.
+- You can research: search the web, read pages, use your MCP tools and run read-only shell commands. Use them when the person asks, or to learn the best way to do a step.
 - Ask what the workflow must do, then which steps run in order and which run at the same time. ${ask}
 - Ask which program each agent uses, if the person did not say.
 - Use ${list} to see the workflows this project has.
@@ -196,7 +197,7 @@ export class WorkflowBuilder {
     const paneId = randomUUID();
     const line = agentCommandLine({
       program: session.program,
-      mode: 'locked',
+      mode: 'research',
       briefPath: this.briefPath(session),
       message: null,
       resume,

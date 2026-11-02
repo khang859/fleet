@@ -693,7 +693,7 @@ export class WorkflowsService implements BridgeHandler {
     }
   }
 
-  /** The change a read-only agent reads, from where the run's work split off. */
+  /** The change a read agent reads, from where the run's work split off. */
   private async changesOf(run: WorkflowRun): Promise<string> {
     const base = run.branch?.baseSha ?? (await forkPoint(this.exec, run.cwd));
     return base ? changesSince(this.exec, run.cwd, base) : '';

@@ -115,11 +115,24 @@ describe('WorkflowRunManager', () => {
       expect(readFileSync(path, 'utf8')).not.toContain('# The GitHub issue');
     });
 
-    it('gives every agent of the issue starter read tools and no bash', async () => {
+    it('lets every agent of a team issue review research, with no edit tools', async () => {
       const starter = STARTERS.find((candidate) => candidate.id === 'issue-review');
       const def = parseWorkflow(starter?.text ?? '');
 
       await startRun(h, makePlan(def, { issue: SAMPLE_ISSUE, issueText: 'Text.' }));
+
+      expect(h.opened).toHaveLength(3);
+      for (const { line } of h.opened) {
+        expect(line).toContain(`'--exclude-tools' 'edit,write'`);
+      }
+    });
+
+    it('gives every agent of a stranger issue review read tools and no bash', async () => {
+      const starter = STARTERS.find((candidate) => candidate.id === 'issue-review');
+      const def = parseWorkflow(starter?.text ?? '');
+      const plan = makePlan(def, { issue: SAMPLE_ISSUE, issueText: 'Text.', locked: true });
+
+      await startRun(h, plan);
 
       expect(h.opened).toHaveLength(3);
       for (const { line } of h.opened) {

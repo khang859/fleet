@@ -40,13 +40,18 @@ A file with both `agents` and `stages` SHALL be refused.
 ### Requirement: Access per agent
 
 Each agent in a stage file SHALL have `read` or `write` access, with `read` as the default.
-Fleet SHALL enforce read access with program tool limits and not with prompt text.
-A locked run SHALL make all its agents read only.
+An agent with `read` access SHALL have no edit tools, and SHALL keep the shell, web tools and the person's MCP servers, so that it can research.
+A locked run SHALL make all its agents read only, with only read tools and no shell, web or MCP tools.
 
-#### Scenario: A read-only agent tries to edit
+#### Scenario: A read agent tries to edit
 
 - **WHEN** an agent with `read` access tries to edit a file
-- **THEN** the program has no tool to do it
+- **THEN** the program has no edit tool, and the brief tells the agent not to change files
+
+#### Scenario: A read agent researches
+
+- **WHEN** an agent with `read` access in a run that is not locked searches the web or calls an MCP tool
+- **THEN** the program runs the tool with its normal permission checks
 
 #### Scenario: A locked run
 
@@ -56,7 +61,7 @@ A locked run SHALL make all its agents read only.
 #### Scenario: A read-only Pi agent
 
 - **WHEN** Fleet starts a Pi agent with `read` access
-- **THEN** Pi has only its read tools and the Fleet tools, and it ignores project `.pi` files
+- **THEN** Pi has no edit or write tool, keeps its shell, extension and MCP tools, and it ignores project `.pi` files
 
 #### Scenario: A Pi agent in a project with `.pi` files
 

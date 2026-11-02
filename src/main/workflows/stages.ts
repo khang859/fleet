@@ -75,8 +75,9 @@ export function skipsItself(run: WorkflowRun, stage: WorkflowStageDef): boolean 
 export function agentMode(run: WorkflowRun, def: WorkflowDef, agent: RunAgent): AgentMode {
   if (run.locked) return 'locked';
   if (!def.stages) return run.teamPr ? 'team-pr' : 'normal';
-  if (agent.access !== 'write') return 'locked';
+  if (agent.access !== 'write') return 'research';
   // Pi has no plan mode: the write tools do not exist in it until a person approves.
+  // Research would give it the shell, so it keeps only read tools.
   if (agent.plan && !agent.planApproved && agent.program === 'pi') return 'locked';
   return run.teamPr ? 'team-pr' : 'write';
 }

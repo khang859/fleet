@@ -93,7 +93,7 @@ export function AgentChips({ agent }: { agent: WorkflowAgentDef }): React.JSX.El
       {agent.access === 'write' ? (
         <Badge tone="amber">Changes code</Badge>
       ) : (
-        <Badge tone="gray">Read only</Badge>
+        <Badge tone="gray">Read and research</Badge>
       )}
       {agent.talks && <Badge tone="blue">Talks with you</Badge>}
       {agent.plan && <Badge tone="blue">Plan approval</Badge>}
