@@ -49,6 +49,8 @@ Top-level keys:
 - talks: true means that the agent talks with a person, and Fleet waits for that person. Such a file cannot run from an automatic rule.
 - plan: true means that the agent must get its plan approved before it changes code. It needs access = "write", and the file cannot run from an automatic rule.
 - resume: the role of an agent in an earlier stage. This agent goes on with that agent's session, and it remembers that talk. It keeps the access of that agent, unless you set access.
+- model: optional. With no model, the program uses its own default. For "claude", use an alias such as "opus", "sonnet", "haiku" or "fable", or a full model ID. For "pi", use "provider/model", as pi --list-models shows it. Set it only when the person asks for a model. An agent with resume keeps the model of the named agent, unless you set model.
+- effort: optional. With no effort, the program uses its own default. "claude" takes "low", "medium", "high", "xhigh" or "max". "pi" takes "off", "minimal", "low", "medium", "high", "xhigh" or "max". An agent with resume keeps the effort of the named agent, unless you set effort.
 
 With a finish, the last stage must have one agent. Its summary is the report.
 

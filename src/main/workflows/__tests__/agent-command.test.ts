@@ -33,6 +33,25 @@ describe('agentCommandLine', () => {
     );
   });
 
+  it('starts pi with a model and a thinking level', () => {
+    const line = agentCommandLine(command({ model: 'openai/gpt-5', effort: 'high' }), 'linux');
+
+    expect(line).toBe(
+      `exec pi '--append-system-prompt' '/runs/brief.md' '--model' 'openai/gpt-5' '--thinking' 'high' 'Start now.'`
+    );
+  });
+
+  it('starts claude with a model and an effort level, also on resume', () => {
+    const line = agentCommandLine(
+      command({ program: 'claude', resume: 'abc', model: 'opus', effort: 'max' }),
+      'linux'
+    );
+
+    expect(line).toBe(
+      `exec claude '--append-system-prompt-file' '/runs/brief.md' '--resume' 'abc' '--model' 'opus' '--effort' 'max' 'Start now.'`
+    );
+  });
+
   it('approves a team PR for pi', () => {
     expect(agentCommandLine(command({ mode: 'team-pr' }), 'linux')).toContain(`'--approve'`);
   });

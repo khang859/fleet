@@ -23,6 +23,27 @@ program = "pi"
 prompt = "{{task}}"
 `;
 
+const MODELS = `name = "Models"
+
+[[stages]]
+name = "Work"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+model = "opus"
+effort = "high"
+prompt = "Work."
+
+[[stages]]
+name = "Again"
+
+[[stages.agents]]
+role = "Next"
+resume = "Lead"
+prompt = "Go on."
+`;
+
 const REVIEW = `name = "Review"
 workspace = "pr-worktree"
 
@@ -726,6 +747,56 @@ describe('WorkflowStarts', () => {
       await flush();
 
       expect(h.opened[0].line).toMatch(/^exec claude /);
+    });
+
+    it('starts each agent with the model and effort of the file', async () => {
+      saveApproved('models', MODELS);
+
+      await makeStarts().start(request('models', {}), OPTIONS);
+      await flush();
+
+      expect(h.manager.list()[0].agents.map(({ model, effort }) => ({ model, effort }))).toEqual([
+        { model: 'opus', effort: 'high' },
+        { model: 'opus', effort: 'high' }
+      ]);
+      expect(h.opened[0].line).toContain(`'--model' 'opus' '--effort' 'high'`);
+    });
+
+    it('uses the model a person chose for this run, and a returning agent follows it', async () => {
+      saveApproved('models', MODELS);
+      const req = {
+        ...request('models', {}),
+        modelChoices: { Lead: { model: 'sonnet', effort: undefined } }
+      };
+
+      await makeStarts().start(req, OPTIONS);
+
+      expect(h.manager.list()[0].agents.map(({ model, effort }) => ({ model, effort }))).toEqual([
+        { model: 'sonnet', effort: undefined },
+        { model: 'sonnet', effort: undefined }
+      ]);
+    });
+
+    it('refuses a choice the program cannot take', async () => {
+      saveApproved('models', MODELS);
+      const req = { ...request('models', {}), modelChoices: { Lead: { effort: 'off' } } };
+
+      const result = await makeStarts().start(req, OPTIONS);
+
+      expect(result).toMatchObject({ ok: false, code: 'bad-model' });
+      expect(h.manager.list()).toEqual([]);
+    });
+
+    it('drops the model when a run moves to another program', async () => {
+      saveApproved('models', MODELS);
+      const req = { ...request('models', {}), programOverride: 'pi' as const };
+
+      await makeStarts().start(req, OPTIONS);
+      await flush();
+
+      expect(h.manager.list()[0].agents[0]).toMatchObject({ program: 'pi', effort: 'high' });
+      expect(h.manager.list()[0].agents[0].model).toBeUndefined();
+      expect(h.opened[0].line).not.toContain('--model');
     });
 
     it('locks a stranger PR', async () => {

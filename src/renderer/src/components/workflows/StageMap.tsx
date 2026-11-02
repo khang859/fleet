@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { ArrowDown, ArrowRight } from 'lucide-react';
 import { stagesOf, type WorkflowAgentDef, type WorkflowDef } from '../../../../shared/workflows';
-import { PROGRAM_LABELS } from './workflow-review';
+import { programText } from './workflow-review';
 import { finishNote } from './stage-notes';
 import { Badge } from './parts';
 
@@ -114,8 +114,8 @@ export function ReadOnlyMap({ def }: { def: WorkflowDef }): React.JSX.Element {
           children: stage.agents.map((agent, at) => (
             <div key={at} className="space-y-1 rounded-md border border-fleet-border p-2">
               <div className="truncate text-xs font-medium text-fleet-text">{agent.role}</div>
-              <div className="text-[11px] text-fleet-text-subtle">
-                {PROGRAM_LABELS[agent.program]}
+              <div className="truncate text-[11px] text-fleet-text-subtle">
+                {programText(agent)}
               </div>
               <AgentChips agent={agent} />
             </div>

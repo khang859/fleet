@@ -79,6 +79,22 @@ describe('buildReview', () => {
     expect(judge).toMatchObject({ status: 'changed', wasProgram: undefined, last: false });
   });
 
+  it('marks a change of model or effort', () => {
+    const def: WorkflowDef = { ...DEF, agents: [{ ...READER, model: 'openai/gpt-5' }] };
+    const back: WorkflowDef = { ...DEF, agents: [{ ...READER, effort: 'high' }] };
+
+    expect(buildReview(def, DEF).agents[0]).toMatchObject({
+      status: 'changed',
+      choice: 'openai/gpt-5',
+      wasChoice: ''
+    });
+    expect(buildReview(back, def).agents[0]).toMatchObject({
+      choice: 'high',
+      wasChoice: 'openai/gpt-5'
+    });
+    expect(buildReview(DEF, DEF).agents[0]).toMatchObject({ status: 'same', wasChoice: undefined });
+  });
+
   it('keeps the old value of a changed setting, and shows the name only if it changed', () => {
     const def: WorkflowDef = { ...DEF, name: 'Big', finish: undefined };
     const review = buildReview(def, DEF);

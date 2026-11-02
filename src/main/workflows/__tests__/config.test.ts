@@ -400,6 +400,37 @@ describe('stage files', () => {
     expect(errorOf(text)).toContain('must use the program of Lead');
   });
 
+  it('reads model and effort as written, so a returning agent still follows its target', () => {
+    const text = STAGE_FILE.replace(
+      'prompt = "Plan and build."',
+      'model = "opus"\neffort = "high"\nprompt = "Plan and build."'
+    );
+    const def = parseWorkflow(text);
+
+    expect(def.stages?.[0].agents[0]).toMatchObject({ model: 'opus', effort: 'high' });
+    expect(def.stages?.[2].agents[0].model).toBeUndefined();
+  });
+
+  it('refuses a model that is not a model name', () => {
+    const text = STAGE_FILE.replace(
+      'prompt = "Look for bugs."',
+      'model = "--yolo"\nprompt = "Look for bugs."'
+    );
+
+    expect(errorOf(text)).toContain('must be a model name');
+  });
+
+  it('refuses a level the program does not take, also through resume', () => {
+    const bugs = STAGE_FILE.replace(
+      'prompt = "Look for bugs."',
+      'effort = "huge"\nprompt = "Look for bugs."'
+    );
+    const fixer = STAGE_FILE.replace('resume = "Lead"', 'resume = "Lead"\neffort = "off"');
+
+    expect(errorOf(bugs)).toContain('Bugs has effort = "huge", but pi takes off, minimal');
+    expect(errorOf(fixer)).toContain('Lead has effort = "off", but claude takes low');
+  });
+
   it('refuses a repeated role with no resume', () => {
     const text = STAGE_FILE.replace('role = "Bugs"', 'role = "Tests"');
 

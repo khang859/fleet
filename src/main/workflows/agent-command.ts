@@ -25,6 +25,10 @@ export type AgentCommand = {
   talks?: boolean;
   /** The Claude Code mode to start in. */
   permissionMode?: 'plan' | 'auto' | 'acceptEdits' | 'default';
+  /** Checked against `MODEL_PATTERN`. Unset uses the program default. */
+  model?: string;
+  /** A level of `EFFORT_LEVELS` for this program. Unset uses the program default. */
+  effort?: string;
 };
 
 /** A resumed Pi takes back its old tool list, unless the write tools are named. */
@@ -43,6 +47,8 @@ function piArgs(cmd: AgentCommand): string[] {
   const args = cmd.devExtension ? ['-ne', '-e', cmd.devExtension] : [];
   if (cmd.resume) args.push('--session', cmd.resume);
   args.push('--append-system-prompt', cmd.briefPath);
+  if (cmd.model) args.push('--model', cmd.model);
+  if (cmd.effort) args.push('--thinking', cmd.effort);
   return [...args, ...piAccessArgs(cmd)];
 }
 
@@ -56,6 +62,8 @@ function claudeArgs(cmd: AgentCommand): string[] {
   args.push('--append-system-prompt-file', cmd.briefPath);
   if (cmd.resume) args.push('--resume', cmd.resume);
   if (cmd.permissionMode) args.push('--permission-mode', cmd.permissionMode);
+  if (cmd.model) args.push('--model', cmd.model);
+  if (cmd.effort) args.push('--effort', cmd.effort);
   if (cmd.mode === 'locked') {
     args.push('--tools', claudeReadTools(cmd), '--setting-sources', 'user', '--strict-mcp-config');
   }

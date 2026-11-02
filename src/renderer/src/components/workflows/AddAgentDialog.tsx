@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { WORKFLOW_JOBS, type WorkflowJob } from '../../../../shared/workflow-jobs';
+import { switchProgram } from '../../../../shared/workflow-models';
 import type {
   SavedAgent,
   WorkflowAgentDef,
@@ -11,7 +12,7 @@ import { Overlay } from '../Overlay';
 import { Button, Field, FIELD_CLASS } from './parts';
 import { PROGRAM_LABELS } from './workflow-review';
 import { hasTwoWriters } from './workflow-stage-edit';
-import { AgentAccessFields, ProgramField } from './agent-fields';
+import { AgentAccessFields, ModelFields, ProgramField } from './agent-fields';
 import { usePrograms } from './use-programs';
 
 function jobOfSaved(agent: SavedAgent): WorkflowJob {
@@ -150,9 +151,15 @@ export function AddAgentDialog({
             <ProgramField
               programs={programs}
               value={agent.program}
-              onChange={(program) => setAgent({ ...agent, program })}
+              onChange={(program) => setAgent(switchProgram(agent, program))}
             />
           </div>
+          <ModelFields
+            key={picked}
+            program={agent.program}
+            value={{ model: agent.model, effort: agent.effort }}
+            onChange={(choice) => setAgent({ ...agent, ...choice })}
+          />
           <AgentAccessFields agent={agent} onChange={setAgent} />
           {twoWriters && (
             <p className="rounded border border-amber-500/30 px-2.5 py-2 text-[11px] text-amber-200">

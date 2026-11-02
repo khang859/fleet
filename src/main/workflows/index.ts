@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { ClaudePendingPermission, ClaudeSessionChange } from '../../shared/claude-sessions';
 import {
@@ -26,6 +27,7 @@ import {
   type WorkflowScope,
   type WorkflowsState
 } from '../../shared/workflows';
+import { CLAUDE_MODELS, parsePiModels } from '../../shared/workflow-models';
 import { createLogger } from '../logger';
 import {
   ApprovalStore,
@@ -506,6 +508,17 @@ export class WorkflowsService implements BridgeHandler {
     const { hasProgram } = this.deps;
     const [pi, claude] = await Promise.all([hasProgram('pi'), hasProgram('claude')]);
     return { pi, claude };
+  }
+
+  /** Claude Code takes its aliases. Pi lists the models of the providers set up here. */
+  async models(program: WorkflowProgram): Promise<string[]> {
+    if (program === 'claude') return [...CLAUDE_MODELS];
+    if (!(await this.deps.hasProgram('pi'))) return [];
+    try {
+      return parsePiModels(await this.exec('pi', ['--list-models'], homedir()));
+    } catch {
+      return [];
+    }
   }
 
   starters(): { blank: string; starters: typeof STARTERS } {

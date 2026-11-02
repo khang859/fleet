@@ -10,6 +10,7 @@ import type {
   WorkflowProgram,
   WorkflowScope
 } from '../../shared/workflows';
+import { modelChoiceProblem, type ModelChoice } from '../../shared/workflow-models';
 import { writeAtomicSync } from '../fs-atomic';
 import { agentCommandLine } from './agent-command';
 import { ToolRefused } from './bridge-routes';
@@ -31,7 +32,10 @@ const SAVED = z.object({
   /** The hash of this builder's last save, to see if a person changed the file. */
   draftHash: z.string().nullable(),
   sessionId: z.string().nullable(),
-  transcriptPath: z.string().nullable()
+  transcriptPath: z.string().nullable(),
+  /** A session from an older Fleet has neither: the program defaults. Checked at start. */
+  model: z.string().optional(),
+  effort: z.string().optional()
 });
 
 type Saved = z.infer<typeof SAVED>;
@@ -104,13 +108,19 @@ export class WorkflowBuilder {
   }
 
   /** A new builder, or a refusal that a person can read. */
-  async start(project: string, program: WorkflowProgram): Promise<BuilderStart> {
-    const problem = await this.programProblem(program);
+  async start(
+    project: string,
+    program: WorkflowProgram,
+    choice: ModelChoice = {}
+  ): Promise<BuilderStart> {
+    const problem = modelChoiceProblem(program, choice) ?? (await this.programProblem(program));
     if (problem) return { ok: false, message: problem };
     const session: Saved = {
       id: randomUUID(),
       project,
       program,
+      model: choice.model,
+      effort: choice.effort,
       draftId: null,
       draftScope: 'project',
       draftHash: null,
@@ -191,7 +201,9 @@ export class WorkflowBuilder {
       message: null,
       resume,
       devExtension: session.program === 'pi' ? this.deps.devExtension : null,
-      talks: true
+      talks: true,
+      model: session.model,
+      effort: session.effort
     });
     this.panes.set(paneId, session.id);
     try {

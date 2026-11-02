@@ -105,12 +105,14 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
     answerPermission: (toolUseId, decision) => service.answerPermission(toolUseId, decision),
     check: (text) => catalog.problemIn(text),
     savedAgents: async (projectPath) => savedAgents(projectPath),
-    startBuilder: async (projectPath, program) => service.builder.start(projectPath, program),
+    startBuilder: async (projectPath, program, choice) =>
+      service.builder.start(projectPath, program, choice),
     reopenBuilder: async (projectPath, draftId, scope) =>
       service.builder.reopen(projectPath, draftId, scope),
     builderInfo: (id) => service.builder.info(id),
     draftsWithBuilder: (projectPath) => service.builder.draftsWithSession(projectPath),
     programs: async () => service.programs(),
+    models: async (program) => service.models(program),
     answerPlan: async (runId, agentId, answer) => runs.answerPlan(runId, agentId, answer),
     readPlan: (runId, version) => runs.readPlan(runId, version),
     retryPr: async (runId) => service.retryPr(runId),
