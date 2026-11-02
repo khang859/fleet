@@ -12,6 +12,7 @@ const ORIGIN_LABEL: Record<WorkflowRun['origin'], string> = {
 
 function RunRow({ run, onOpen }: { run: WorkflowRun; onOpen: () => void }): React.JSX.Element {
   const found = run.board.filter((item) => item.mergedInto === undefined).length;
+  const target = run.pr ?? run.issue;
   return (
     <button
       onClick={onOpen}
@@ -22,7 +23,7 @@ function RunRow({ run, onOpen }: { run: WorkflowRun; onOpen: () => void }): Reac
           {run.workflowName}
         </span>
         <span className="block truncate text-[11px] text-fleet-text-subtle">
-          {run.pr ? `#${run.pr.number} ${run.pr.title}` : run.target || formatAgo(run.createdAt)}
+          {target ? `#${target.number} ${target.title}` : run.target || formatAgo(run.createdAt)}
         </span>
       </span>
       <span className="w-20 text-[11px] text-fleet-text-muted">{ORIGIN_LABEL[run.origin]}</span>

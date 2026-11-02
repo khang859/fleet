@@ -3,6 +3,8 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
   agentChatHandle,
   agentsInStage,
+  postTarget,
+  trustsOnRerun,
   type BoardItem,
   type RunAgent,
   type WorkflowRun
@@ -204,15 +206,20 @@ function SharedBoard({ run }: { run: WorkflowRun }): React.JSX.Element {
 
 /** A person posts a finished report once. An incomplete one stays here. */
 function canPost(run: WorkflowRun): boolean {
-  const { pr, report } = run;
-  return pr !== null && report !== null && !report.incomplete && !report.posted;
+  const { report } = run;
+  return postTarget(run) !== null && report !== null && !report.incomplete && !report.posted;
+}
+
+function postsAtFinish(run: WorkflowRun): boolean {
+  const action = run.finish?.action;
+  return action === 'post-pr' || action === 'post-issue';
 }
 
 /** A report sits in a page section, so its headings stay small. */
 const REPORT_CLASS =
   'text-xs leading-relaxed [&_code]:text-[11px] [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs';
 
-function ReportSection({
+export function ReportSection({
   run,
   onSave,
   onPost
@@ -221,7 +228,7 @@ function ReportSection({
   onSave: () => void;
   onPost: () => void;
 }): React.JSX.Element | null {
-  const { report, finish } = run;
+  const { report } = run;
   if (!report) return null;
   return (
     <section>
@@ -229,13 +236,13 @@ function ReportSection({
         right={
           <div className="flex gap-1.5">
             <Button
-              tone={report.savedTo || finish?.action === 'post-pr' ? 'plain' : 'primary'}
+              tone={report.savedTo || postsAtFinish(run) ? 'plain' : 'primary'}
               onClick={onSave}
             >
               {report.savedTo ? 'Save again' : 'Save report'}
             </Button>
             {canPost(run) && (
-              <Button tone={finish?.action === 'post-pr' ? 'primary' : 'plain'} onClick={onPost}>
+              <Button tone={postsAtFinish(run) ? 'primary' : 'plain'} onClick={onPost}>
                 Post
               </Button>
             )}
@@ -253,7 +260,9 @@ function ReportSection({
         <p className="pb-2 text-[11px] text-fleet-text-subtle">Saved to {report.savedTo}</p>
       )}
       {report.posted && (
-        <p className="pb-2 text-[11px] text-fleet-text-subtle">Posted to PR #{run.pr?.number}</p>
+        <p className="pb-2 text-[11px] text-fleet-text-subtle">
+          Posted to {postTarget(run)?.label}
+        </p>
       )}
       <div className="rounded-md border border-fleet-border p-3">
         <AgentMarkdown streaming={false} className={REPORT_CLASS}>
@@ -319,7 +328,7 @@ function PostDialog({
   return (
     <ConfirmDialog
       open={open}
-      title={`Post the report to PR #${run.pr?.number ?? ''}?`}
+      title={`Post the report to ${postTarget(run)?.label ?? ''}?`}
       detail="Fleet posts this report as one comment, word for word."
       onClose={onClose}
       body={
@@ -376,7 +385,7 @@ function RunNotes({ run }: { run: WorkflowRun }): React.JSX.Element {
   );
 }
 
-function RunHeader({
+export function RunHeader({
   run,
   onBack,
   onClose
@@ -390,11 +399,12 @@ function RunHeader({
       projectPath: run.projectPath,
       workflowId: run.workflowId,
       inputs: run.inputs,
-      trustPr: !run.locked
+      trustPr: trustsOnRerun(run)
     });
     if (!reply.ok) useToastStore.getState().show(reply.message);
   };
   const active = isRunActive(run);
+  const link = run.pr ?? run.issue;
   return (
     <div className="flex items-center gap-2">
       <Button tone="quiet" aria-label="Back to Runs" onClick={onBack}>
@@ -403,12 +413,12 @@ function RunHeader({
       <h2 className="min-w-0 truncate text-sm font-medium text-fleet-text">{run.workflowName}</h2>
       <RunBadge state={run.state} />
       {run.locked && <Badge tone="amber">Locked</Badge>}
-      {run.pr && (
+      {link && (
         <button
           className="flex items-center gap-1 text-[11px] text-fleet-text-subtle hover:text-fleet-text"
-          onClick={() => window.open(run.pr?.url)}
+          onClick={() => window.open(link.url)}
         >
-          #{run.pr.number} <ExternalLink size={11} />
+          #{link.number} <ExternalLink size={11} />
         </button>
       )}
       {run.openedPr && (

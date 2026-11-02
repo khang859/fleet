@@ -17,7 +17,17 @@ import {
 import type { ApprovalStore } from './approval';
 import type { WorkflowCatalog } from './catalog';
 import { parseWorkflow, readWorkflowFile, slugOf, targetOf } from './config';
-import { fetchPr, ghStatus, parsePrInput, repoSlug, type Exec, type PrInfo } from './pr';
+import {
+  fetchIssue,
+  fetchPr,
+  ghStatus,
+  parseIssueInput,
+  parsePrInput,
+  repoSlug,
+  type Exec,
+  type IssueInfo,
+  type PrInfo
+} from './pr';
 import type { WorkflowRunManager } from './run-manager';
 
 export type StartDeps = {
@@ -49,6 +59,8 @@ function isRefusal<T extends object>(value: T | Refusal): value is Refusal {
 }
 
 type ResolvedPr = { pr: PrRef; team: boolean; open: boolean; number: number };
+
+type IssueForRun = { info: IssueInfo | null; locked: boolean };
 
 function programsIn(def: WorkflowDef): WorkflowProgram[] {
   return [...new Set(agentsOf(def).map((agent) => agent.program))];
@@ -86,9 +98,17 @@ function refOf(info: PrInfo): PrRef {
 export class WorkflowStarts {
   constructor(private readonly deps: StartDeps) {}
 
-  private prInput(def: WorkflowDef, inputs: Record<string, string>): string | null {
-    const input = def.inputs.find((candidate) => candidate.type === 'pr');
+  private inputOfType(
+    def: WorkflowDef,
+    type: 'pr' | 'issue',
+    inputs: Record<string, string>
+  ): string | null {
+    const input = def.inputs.find((candidate) => candidate.type === type);
     return input ? (inputs[input.name] ?? '') : null;
+  }
+
+  private namesIssue(def: WorkflowDef, inputs: Record<string, string>): boolean {
+    return (this.inputOfType(def, 'issue', inputs) ?? '').trim() !== '';
   }
 
   private missingInput(def: WorkflowDef, inputs: Record<string, string>): string | null {
@@ -98,30 +118,57 @@ export class WorkflowStarts {
     return missing ? missing.label : null;
   }
 
+  /** A refusal for a link to another repo. The run reads this repo's code. */
+  private async otherRepo(projectPath: string, repo: string | null): Promise<Refusal | null> {
+    if (!repo) return null;
+    const here = await repoSlug(this.deps.exec, projectPath);
+    if (here.toLowerCase() === repo.toLowerCase()) return null;
+    return refuse(
+      'other-repo',
+      `This link is for ${repo}, and this project is ${here}. Switch project.`
+    );
+  }
+
+  /** What `read` finds, after a check that a link names this repo. */
+  private async inThisRepo<T extends object>(
+    projectPath: string,
+    repo: string | null,
+    read: () => Promise<T | Refusal>,
+    missing: { code: string; what: string }
+  ): Promise<T | Refusal> {
+    try {
+      return (await this.otherRepo(projectPath, repo)) ?? (await read());
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err);
+      return refuse(missing.code, `${missing.what} was not found: ${why}`);
+    }
+  }
+
+  private async resolveIssue(projectPath: string, text: string): Promise<IssueInfo | Refusal> {
+    const parsed = parseIssueInput(text);
+    if (!parsed) return refuse('bad-issue', `${text} is not an issue number or link.`);
+    const { number, repo } = parsed;
+    const read = async (): Promise<IssueInfo | Refusal> => {
+      const info = await fetchIssue(this.deps.exec, projectPath, number);
+      return info.isPr ? refuse('is-pr', `#${number} is a pull request, not an issue.`) : info;
+    };
+    return this.inThisRepo(projectPath, repo, read, { code: 'no-issue', what: `Issue ${number}` });
+  }
+
   private async resolvePr(projectPath: string, text: string): Promise<ResolvedPr | Refusal> {
     const parsed = parsePrInput(text);
     if (!parsed) return refuse('bad-pr', `${text} is not a PR number or link.`);
-    const { exec } = this.deps;
-    try {
-      if (parsed.repo) {
-        const here = await repoSlug(exec, projectPath);
-        if (here.toLowerCase() !== parsed.repo.toLowerCase()) {
-          return refuse(
-            'other-repo',
-            `This link is for ${parsed.repo}, and this project is ${here}. Switch project.`
-          );
-        }
-      }
-      const info = await fetchPr(exec, projectPath, parsed.number);
+    const { number, repo } = parsed;
+    const read = async (): Promise<ResolvedPr> => {
+      const info = await fetchPr(this.deps.exec, projectPath, number);
       return {
         pr: refOf(info),
         team: info.team,
         open: info.state === 'open',
         number: info.number
       };
-    } catch (err) {
-      return refuse('no-pr', `PR ${parsed.number} was not found: ${String(err)}`);
-    }
+    };
+    return this.inThisRepo(projectPath, repo, read, { code: 'no-pr', what: `PR ${number}` });
   }
 
   private async programChecks(
@@ -178,7 +225,13 @@ export class WorkflowStarts {
   /** What the run sheet shows. Nothing here changes anything. */
   async preview(req: StartRunRequest): Promise<WorkflowPreview> {
     const entry = this.entryOrNull(req);
-    const empty: WorkflowPreview = { checks: [], pr: null, programNotes: [], duplicateRunId: null };
+    const empty: WorkflowPreview = {
+      checks: [],
+      pr: null,
+      issue: null,
+      programNotes: [],
+      duplicateRunId: null
+    };
     if (!entry?.def)
       return { ...empty, checks: [{ label: 'The workflow file is valid', ok: false }] };
 
@@ -186,15 +239,31 @@ export class WorkflowStarts {
     const { checks, notes } = await this.programChecks(def, req.programOverride);
     checks.push(this.bridgeCheck());
 
-    const text = this.prInput(def, req.inputs);
+    const text = this.inputOfType(def, 'pr', req.inputs);
+    const hasIssue = def.inputs.some((input) => input.type === 'issue');
     let pr: WorkflowPreview['pr'] = null;
-    if (text !== null || def.finish?.action === 'open-pr') {
+    if (text !== null || hasIssue || def.finish?.action === 'open-pr') {
       checks.push(await this.githubCheck(req.projectPath));
     }
     if (text !== null) pr = text.trim() === '' ? null : await this.previewPr(req, text, checks);
-    const target = targetOf(def, this.withNumber(def, req.inputs, pr?.number));
+    const issue = await this.previewIssue(req, def, checks);
+    const numbers = { pr: pr?.number, issue: issue?.number };
+    const target = targetOf(def, this.withNumbers(def, req.inputs, numbers));
     const duplicate = this.deps.runs.findActive(entry.path, target);
-    return { checks, pr, programNotes: notes, duplicateRunId: duplicate?.id ?? null };
+    return { checks, pr, issue, programNotes: notes, duplicateRunId: duplicate?.id ?? null };
+  }
+
+  private async previewIssue(
+    req: StartRunRequest,
+    def: WorkflowDef,
+    checks: WorkflowCheck[]
+  ): Promise<WorkflowPreview['issue']> {
+    const found = await this.issueForRun(req, def);
+    if (isRefusal(found)) {
+      checks.push({ label: 'The issue is ready', ok: false, detail: found.message });
+      return null;
+    }
+    return found.info ? { ...found.info.ref, locked: found.locked } : null;
   }
 
   private async previewPr(
@@ -225,15 +294,19 @@ export class WorkflowStarts {
     };
   }
 
-  /** The PR input as a plain number, so `123` and a link to 123 are one target. */
-  private withNumber(
+  /** Each input as a plain number, so `123` and a link to 123 are one target. */
+  private withNumbers(
     def: WorkflowDef,
     inputs: Record<string, string>,
-    number: number | undefined
+    numbers: { pr?: number; issue?: number }
   ): Record<string, string> {
-    const input = def.inputs.find((candidate) => candidate.type === 'pr');
-    if (!input || number === undefined) return inputs;
-    return { ...inputs, [input.name]: String(number) };
+    const plain = { ...inputs };
+    for (const type of ['pr', 'issue'] as const) {
+      const input = def.inputs.find((candidate) => candidate.type === type);
+      const number = numbers[type];
+      if (input && number !== undefined) plain[input.name] = String(number);
+    }
+    return plain;
   }
 
   /** The approved bytes of a file, read now, or why they cannot start. */
@@ -261,7 +334,9 @@ export class WorkflowStarts {
     if (!existsSync(req.projectPath)) return refuse('no-project', 'The project folder is gone.');
     const { checks } = await this.programChecks(def, req.programOverride);
     checks.push(this.bridgeCheck());
-    if (def.finish?.action === 'open-pr') checks.push(await this.githubCheck(req.projectPath));
+    if (def.finish?.action === 'open-pr' || this.namesIssue(def, req.inputs)) {
+      checks.push(await this.githubCheck(req.projectPath));
+    }
     const failed = checks.find((check) => !check.ok);
     return failed ? refuse('check-failed', failed.detail ?? failed.label) : null;
   }
@@ -270,7 +345,7 @@ export class WorkflowStarts {
     req: StartRunRequest,
     def: WorkflowDef
   ): Promise<{ resolved: ResolvedPr | null; locked: boolean } | Refusal> {
-    const text = this.prInput(def, req.inputs);
+    const text = this.inputOfType(def, 'pr', req.inputs);
     // Only an optional input can be blank here.
     if (text === null || text.trim() === '') return { resolved: null, locked: false };
     const resolved = await this.resolvePr(req.projectPath, text);
@@ -279,6 +354,17 @@ export class WorkflowStarts {
       return refuse('pr-closed', `PR ${resolved.number} is closed.`);
     }
     return { resolved, locked: !resolved.team && req.trustPr !== true };
+  }
+
+  private async issueForRun(
+    req: StartRunRequest,
+    def: WorkflowDef
+  ): Promise<IssueForRun | Refusal> {
+    const text = this.inputOfType(def, 'issue', req.inputs) ?? '';
+    if (text.trim() === '') return { info: null, locked: false };
+    const info = await this.resolveIssue(req.projectPath, text);
+    if (isRefusal(info)) return info;
+    return { info, locked: !info.team && req.trustPr !== true };
   }
 
   /** The one way to start a run, from a person, an agent or a rule. */
@@ -295,11 +381,16 @@ export class WorkflowStarts {
     if (failed) return failed;
     const pr = await this.prForRun(req, def);
     if (isRefusal(pr)) return pr;
-    if (pr.locked && hasPlanAgent(def)) {
+    const issue = await this.issueForRun(req, def);
+    if (isRefusal(issue)) return issue;
+    const locked = pr.locked || issue.locked;
+    if (locked && hasPlanAgent(def)) {
       return refuse('locked-plan', 'A locked run cannot change code, so it cannot build a plan.');
     }
 
-    const inputs = this.withNumber(def, req.inputs, pr.resolved?.number);
+    const issueRef = issue.info?.ref;
+    const numbers = { pr: pr.resolved?.number, issue: issueRef?.number };
+    const inputs = this.withNumbers(def, req.inputs, numbers);
     const target = targetOf(def, inputs);
     const duplicate = this.deps.runs.findActive(entry.path, target);
     if (duplicate && !req.force) {
@@ -319,8 +410,10 @@ export class WorkflowStarts {
       origin: options.origin,
       ruleId: options.ruleId,
       pr: pr.resolved?.pr ?? null,
-      locked: pr.locked,
-      teamPr: def.workspace === 'pr-worktree' && pr.resolved !== null && !pr.locked,
+      issue: issueRef,
+      issueText: issue.info?.text,
+      locked,
+      teamPr: def.workspace === 'pr-worktree' && pr.resolved !== null && !locked,
       focus: options.focus
     });
     return { ok: true, runId: run.id };

@@ -32,7 +32,7 @@ Top-level keys:
 
 - name: required, up to 64 characters. It starts with a-z, and then uses a-z, 0-9, _ and -. Do not use the name slug, because {{slug}} is taken.
 - label: required, up to 80 characters.
-- type: "text" is the default, or "pr".
+- type: "text" is the default, or "pr", or "issue". "issue" takes a number or a link to an issue in this repo. Fleet reads the issue with gh when the run starts, and it stops the run if it cannot. Each agent's brief then holds the title, the body and the comments. A file can have only one "issue" input.
 - required: true is the default.
 
 [[stages]], from 1 to 12. Stages run in order. A stage starts when each agent of the stage before it is done or skipped:
@@ -62,14 +62,14 @@ With a finish, the last stage must have one agent. Its summary is the report.
 
 [finish], optional. What happens at the end:
 
-- action: "save-report", "post-pr" or "open-pr". "post-pr" needs workspace = "pr-worktree". It makes Post the main button, and Post sends the report as one PR comment. "open-pr" needs workspace = "new-branch". It pushes the branch and opens a pull request, with the report as the body.
+- action: "save-report", "post-pr", "post-issue" or "open-pr". "post-pr" needs workspace = "pr-worktree". It makes Post the main button, and Post sends the report as one PR comment. "post-issue" needs one required input with type = "issue". It makes Post the main button, and Post sends the report as one issue comment. "open-pr" needs workspace = "new-branch". It pushes the branch and opens a pull request, with the report as the body.
 - path: where "save-report" writes, up to 400 characters. It is inside the project, and it must end in .md.
 
-No other key is allowed. A workflow cannot run a command.
+No other key is allowed. A workflow cannot run a command. So do not tell agents to use gh: use a "pr" or "issue" input, and a finish action.
 
 ## Placeholders
 
-Use {{name}} in shared, in a prompt, or in finish.path, with the name of an input. {{slug}} is also there: pr- and the PR number, or else the first text input, or else the workflow name, as a safe file name part. For the plain PR number, use the name of the pr input, such as {{pr}}. A placeholder with no matching input is refused.
+Use {{name}} in shared, in a prompt, or in finish.path, with the name of an input. {{slug}} is also there: pr- and the PR number, or issue- and the issue number, or else the first text input, or else the workflow name, as a safe file name part. For the plain number, use the name of the input, such as {{pr}} or {{issue}}. A placeholder with no matching input is refused.
 
 ## Prompts
 

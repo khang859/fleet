@@ -28,11 +28,15 @@ function agentOf(raw: Record<string, unknown>): WorkflowAgentDef {
   };
 }
 
+export function inputTypeOf(value: unknown): WorkflowInput['type'] {
+  return value === 'pr' || value === 'issue' ? value : 'text';
+}
+
 function inputOf(raw: Record<string, unknown>): WorkflowInput {
   return {
     name: textOf(raw.name),
     label: textOf(raw.label),
-    type: raw.type === 'pr' ? 'pr' : 'text',
+    type: inputTypeOf(raw.type),
     required: raw.required !== false
   };
 }
@@ -64,9 +68,11 @@ function stagesFrom(raw: unknown): WorkflowStageDef[] {
   return stages;
 }
 
+const FINISH_ACTIONS = ['post-pr', 'post-issue', 'open-pr'] as const;
+
 function finishOf(raw: Record<string, unknown> | undefined): WorkflowFinish | undefined {
   if (!raw) return undefined;
-  const action = raw.action === 'post-pr' || raw.action === 'open-pr' ? raw.action : 'save-report';
+  const action = FINISH_ACTIONS.find((known) => known === raw.action) ?? 'save-report';
   return { action, path: typeof raw.path === 'string' ? raw.path : undefined };
 }
 

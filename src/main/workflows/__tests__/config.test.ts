@@ -14,6 +14,7 @@ import {
   targetOf,
   WorkflowFileError
 } from '../config';
+import { agentsOf } from '../../../shared/workflows';
 import { STARTERS } from '../starters';
 import { makeDef } from './helpers';
 
@@ -451,4 +452,66 @@ describe('old starters', () => {
       expect(hashText(starter?.text ?? '')).toBe(hash);
     });
   }
+});
+
+const ISSUE_FILE = `name = "Issue review"
+
+[[inputs]]
+name = "issue"
+label = "Issue"
+type = "issue"
+
+[[agents]]
+role = "Reader"
+program = "pi"
+prompt = "Read it."
+
+[finish]
+action = "post-issue"
+`;
+
+describe('issue inputs', () => {
+  it('takes a required issue input with post-issue', () => {
+    const def = parseWorkflow(ISSUE_FILE);
+
+    expect(def.inputs[0].type).toBe('issue');
+    expect(def.finish?.action).toBe('post-issue');
+  });
+
+  it('refuses post-issue with no issue input', () => {
+    const text = ISSUE_FILE.replace('type = "issue"', 'type = "text"');
+
+    expect(() => parseWorkflow(text)).toThrow(
+      'action = "post-issue" needs one required input with type = "issue".'
+    );
+  });
+
+  it('refuses post-issue with an optional issue input', () => {
+    const text = ISSUE_FILE.replace('type = "issue"', 'type = "issue"\nrequired = false');
+
+    expect(() => parseWorkflow(text)).toThrow('post-issue');
+  });
+
+  it('refuses two issue inputs', () => {
+    const second = '[[inputs]]\nname = "other"\nlabel = "Other"\ntype = "issue"\n\n[[agents]]';
+    const text = ISSUE_FILE.replace('[[agents]]', second);
+
+    expect(() => parseWorkflow(text)).toThrow('only one input with type = "issue"');
+  });
+
+  it('uses the issue number for the slug and the target', () => {
+    const def = parseWorkflow(ISSUE_FILE);
+
+    expect(slugOf(def, { issue: '748' })).toBe('issue-748');
+    expect(targetOf(def, { issue: '748' })).toBe('issue:748');
+  });
+
+  it('runs every agent of the issue starter with no way to change code', () => {
+    const starter = STARTERS.find((candidate) => candidate.id === 'issue-review');
+    const def = parseWorkflow(starter?.text ?? '');
+
+    expect(agentsOf(def).map((agent) => agent.access)).toEqual(['read', 'read', 'read', 'read']);
+    expect(def.finish?.action).toBe('post-issue');
+    expect(starter?.text).not.toContain('gh ');
+  });
 });

@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { WorkflowNotice, WorkflowRun } from '../../../shared/workflows';
+import { parseWorkflow } from '../config';
 import {
   ADD_TIME_MS,
   buildReport,
@@ -12,6 +13,7 @@ import {
   SILENCE_MS,
   START_DEADLINE_MS
 } from '../run-manager';
+import { STARTERS } from '../starters';
 import {
   agentDef,
   flush,
@@ -20,6 +22,7 @@ import {
   makePlan,
   makeRun,
   paneOf,
+  SAMPLE_ISSUE,
   SAMPLE_PR,
   sessionsUp,
   START_TIME,
@@ -91,6 +94,38 @@ describe('WorkflowRunManager', () => {
 
       expect(existsSync(path)).toBe(true);
       expect(h.opened[0].line).toContain(path);
+    });
+
+    it('keeps the issue text in a new brief, for a retried agent', async () => {
+      const plan = makePlan(ONE_AGENT, { issue: SAMPLE_ISSUE, issueText: 'The real text.' });
+      const run = await startRun(h, plan);
+      const path = join(h.deps.store.folder(run.id), 'prompts', `${run.agents[0].id}.md`);
+      sessionsUp(h, run);
+      rmSync(path);
+
+      await h.manager.retry(run.id, run.agents[0].id);
+
+      expect(readFileSync(path, 'utf8')).toContain('The real text.');
+    });
+
+    it('writes no issue part in the brief of a run with no issue', async () => {
+      const run = await startRun(h, makePlan(ONE_AGENT));
+      const path = join(h.deps.store.folder(run.id), 'prompts', `${run.agents[0].id}.md`);
+
+      expect(readFileSync(path, 'utf8')).not.toContain('# The GitHub issue');
+    });
+
+    it('gives every agent of the issue starter read tools and no bash', async () => {
+      const starter = STARTERS.find((candidate) => candidate.id === 'issue-review');
+      const def = parseWorkflow(starter?.text ?? '');
+
+      await startRun(h, makePlan(def, { issue: SAMPLE_ISSUE, issueText: 'Text.' }));
+
+      expect(h.opened).toHaveLength(3);
+      for (const { line } of h.opened) {
+        expect(line).toContain('read,grep,find,ls,fleet_*');
+        expect(line).not.toContain('bash');
+      }
     });
 
     it('tells the bridge what each pane is', async () => {

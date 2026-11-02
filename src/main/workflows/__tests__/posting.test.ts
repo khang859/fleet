@@ -9,6 +9,7 @@ import {
   makeDef,
   makeHarness,
   makePlan,
+  SAMPLE_ISSUE,
   SAMPLE_PR,
   sessionsUp,
   startRun,
@@ -30,7 +31,7 @@ describe('WorkflowPosting', () => {
   let dir: string;
   let h: Harness;
   let run: WorkflowRun;
-  let comments: Array<{ number: string; body: string | undefined }>;
+  let comments: Array<{ command: string[]; number: string; body: string | undefined }>;
   let existing: string;
   let failing: boolean;
   let listFails: boolean;
@@ -42,7 +43,7 @@ describe('WorkflowPosting', () => {
       return listFails ? Promise.reject(new Error('no answer')) : Promise.resolve(existing);
     }
     if (failing) return Promise.reject(new Error('gh failed'));
-    comments.push({ number: args[2], body: input });
+    comments.push({ command: args.slice(0, 2), number: args[2], body: input });
     return Promise.resolve('');
   };
 
@@ -68,6 +69,7 @@ describe('WorkflowPosting', () => {
     await posting.post(run.id);
 
     expect(comments).toHaveLength(1);
+    expect(comments[0].command).toEqual(['pr', 'comment']);
     expect(comments[0].number).toBe('7');
     expect(comments[0].body).toContain('No problems left.');
     expect(comments[0].body).toContain(reportMarker(run.id));
@@ -156,5 +158,83 @@ describe('WorkflowPosting', () => {
 
   it('refuses a run that is gone', async () => {
     await expect(posting.post('gone')).rejects.toThrow('gone');
+  });
+});
+
+describe('WorkflowPosting on an issue', () => {
+  let dir: string;
+  let h: Harness;
+  let run: WorkflowRun;
+  let calls: Array<{ args: string[]; body: string | undefined }>;
+  let existing: string;
+  let posting: WorkflowPosting;
+
+  /** Plays `gh`: it records each call and lists what is on the issue. */
+  const exec: Exec = async (_command, args, _cwd, input) => {
+    calls.push({ args, body: input });
+    return Promise.resolve(args[0] === 'api' ? existing : '');
+  };
+
+  const posts = (): typeof calls => calls.filter((call) => call.args[0] !== 'api');
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'fleet-wf-posting-issue-'));
+    calls = [];
+    existing = '';
+    h = makeHarness(dir);
+    const def = makeDef({ finish: { action: 'post-issue' } });
+    run = await startRun(h, makePlan(def, { issue: SAMPLE_ISSUE, issueText: 'The body.' }));
+    sessionsUp(h, run);
+    run.report = makeReport();
+    posting = new WorkflowPosting({ runs: h.manager, exec });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('posts one issue comment on the right issue', async () => {
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0].args).toEqual(['issue', 'comment', '9', '--body-file', '-']);
+    expect(posts()[0].body).toContain('No problems left.');
+    expect(posts()[0].body).toContain(reportMarker(run.id));
+    expect(run.report?.posted).toBe(true);
+  });
+
+  it('posts on the issue when the run also has a PR', async () => {
+    const def = makeDef({ finish: { action: 'post-issue' } });
+    const plan = makePlan(def, { pr: SAMPLE_PR, issue: SAMPLE_ISSUE, issueText: 'The body.' });
+    const both = await startRun(h, plan);
+    sessionsUp(h, both);
+    both.report = makeReport();
+
+    await posting.post(both.id);
+
+    expect(posts()[0].args).toEqual(['issue', 'comment', '9', '--body-file', '-']);
+    expect(calls[0].args).toContain('repos/{owner}/{repo}/issues/9/comments');
+  });
+
+  it('reads the comments of the issue for the mark', async () => {
+    await posting.post(run.id);
+
+    expect(calls[0].args).toContain('repos/{owner}/{repo}/issues/9/comments');
+  });
+
+  it('never posts twice', async () => {
+    await posting.post(run.id);
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('marks a report that a lost answer hid, and posts nothing', async () => {
+    existing = `Looks good.\n${reportMarker(run.id)}\n`;
+
+    await posting.post(run.id);
+
+    expect(posts()).toHaveLength(0);
+    expect(run.report?.posted).toBe(true);
   });
 });

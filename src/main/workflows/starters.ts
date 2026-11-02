@@ -37,6 +37,51 @@ prompt = "Read the board, merge repeats, drop weak items, and write the review."
 action = "post-pr"
 `;
 
+const ISSUE_REVIEW = `name = "GitHub issue review"
+shared = """
+Review the GitHub issue in this brief, in the context of this repository.
+Do not change project files.
+Base each point on the issue and on evidence in the repository.
+Keep uncertain points apart from confirmed facts.
+"""
+board = true
+workspace = "current"
+
+[[inputs]]
+name = "issue"
+label = "GitHub issue number or URL"
+type = "issue"
+
+[[stages]]
+name = "Parallel review"
+
+[[stages.agents]]
+role = "Technical feasibility"
+program = "pi"
+prompt = "Assess technical feasibility, relevant architecture, dependencies and implementation risks. Cite repository paths."
+
+[[stages.agents]]
+role = "Requirements and edge cases"
+program = "pi"
+prompt = "Assess whether the requirements and acceptance criteria are clear and complete. Find ambiguities, edge cases and open questions."
+
+[[stages.agents]]
+role = "Testing"
+program = "pi"
+prompt = "Assess testability. Find the most important test scenarios, regressions and verification gaps. Cite existing tests where useful."
+
+[[stages]]
+name = "Judge"
+
+[[stages.agents]]
+role = "Judge"
+program = "pi"
+prompt = "Join the findings into one short, actionable issue review. Verify material claims, remove repeats and weak findings, and keep open questions apart from confirmed problems. A person posts your report as one issue comment, so write it for the issue."
+
+[finish]
+action = "post-issue"
+`;
+
 const RESEARCH = `name = "Research"
 shared = "Answer the question. Give a source for each note. Do not change code."
 board = true
@@ -157,6 +202,12 @@ export const STARTERS: WorkflowStarter[] = [
     label: 'PR review',
     description: 'Three agents review one pull request, and one writes the review.',
     text: PR_REVIEW
+  },
+  {
+    id: 'issue-review',
+    label: 'GitHub issue review',
+    description: 'Three agents review one GitHub issue, and one writes a comment to post.',
+    text: ISSUE_REVIEW
   },
   {
     id: 'research',
