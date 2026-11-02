@@ -20,10 +20,16 @@ type Choices = {
   force: boolean;
   allowClosedPr: boolean;
   trustPr: boolean;
+  trustIssue: boolean;
   programOverride?: WorkflowProgram;
 };
 
-const NO_CHOICES: Choices = { force: false, allowClosedPr: false, trustPr: false };
+const NO_CHOICES: Choices = {
+  force: false,
+  allowClosedPr: false,
+  trustPr: false,
+  trustIssue: false
+};
 
 const PREVIEW_DELAY_MS = 350;
 
@@ -101,6 +107,8 @@ function planLines(entry: WorkflowEntry): string[] {
   ];
 }
 
+const INPUT_HINTS = { text: '', pr: 'A PR number or link', issue: 'An issue number or link' };
+
 function Inputs({
   entry,
   values,
@@ -118,9 +126,9 @@ function Inputs({
         <Field key={input.name} label={input.label}>
           <textarea
             autoFocus={inputs[0] === input}
-            rows={input.type === 'pr' ? 1 : 3}
+            rows={input.type === 'text' ? 3 : 1}
             className={`${FIELD_CLASS} resize-none`}
-            placeholder={input.type === 'pr' ? 'A PR number or link' : ''}
+            placeholder={INPUT_HINTS[input.type]}
             value={values[input.name] ?? ''}
             onChange={(e) => onChange({ ...values, [input.name]: e.target.value })}
           />
@@ -130,30 +138,35 @@ function Inputs({
   );
 }
 
-function PrLine({
-  preview,
+export function TargetLine({
+  target,
+  noun,
+  from,
+  closed,
   trusted,
   onTrust
 }: {
-  preview: WorkflowPreview;
+  target: { number: number; title: string; locked: boolean };
+  noun: string;
+  from: string;
+  closed?: boolean;
   trusted: boolean;
   onTrust: () => void;
-}): React.JSX.Element | null {
-  const { pr } = preview;
-  if (!pr) return null;
+}): React.JSX.Element {
   return (
     <div className="rounded border border-fleet-border px-2.5 py-2 text-[11px]">
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-fleet-text-secondary">
-          #{pr.number} {pr.title}
+          #{target.number} {target.title}
         </span>
-        {pr.locked && <Badge tone="amber">Locked</Badge>}
+        {closed && <Badge tone="amber">Closed</Badge>}
+        {target.locked && <Badge tone="amber">Locked</Badge>}
         {trusted && <Badge tone="blue">Trusted</Badge>}
       </div>
-      {pr.locked && (
+      {target.locked && (
         <div className="mt-1.5 flex items-center justify-between gap-2 text-fleet-text-subtle">
-          <span>This PR comes from outside the team. Agents start with read-only tools.</span>
-          <Button onClick={onTrust}>Trust this PR</Button>
+          <span>{from} Agents start with read-only tools.</span>
+          <Button onClick={onTrust}>Trust this {noun}</Button>
         </div>
       )}
     </div>
@@ -217,22 +230,40 @@ function RunForm({
   values,
   onChange,
   preview,
-  trusted,
-  onTrust,
+  choices,
+  onChoose,
   onFix
 }: {
   entry: WorkflowEntry;
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
   preview: WorkflowPreview | null;
-  trusted: boolean;
-  onTrust: () => void;
+  choices: Choices;
+  onChoose: (choice: Partial<Choices>) => void;
   onFix: (fix: string) => void;
 }): React.JSX.Element {
   return (
     <>
       <Inputs entry={entry} values={values} onChange={onChange} />
-      {preview && <PrLine preview={preview} trusted={trusted} onTrust={onTrust} />}
+      {preview?.pr && (
+        <TargetLine
+          target={preview.pr}
+          noun="PR"
+          from="This PR comes from outside the team."
+          trusted={choices.trustPr}
+          onTrust={() => onChoose({ trustPr: true })}
+        />
+      )}
+      {preview?.issue && (
+        <TargetLine
+          target={preview.issue}
+          noun="issue"
+          from="People outside the team wrote some of this issue."
+          closed={preview.issue.state === 'closed'}
+          trusted={choices.trustIssue}
+          onTrust={() => onChoose({ trustIssue: true })}
+        />
+      )}
       <RunPlan entry={entry} />
       {preview && <CheckList preview={preview} onFix={onFix} />}
     </>
@@ -283,6 +314,25 @@ function fixChoice(fix: string): Partial<Choices> {
   if (fix === 'Use Pi for this run') return { programOverride: 'pi' };
   if (fix === 'Use Claude Code for this run') return { programOverride: 'claude' };
   return {};
+}
+
+/** Trust is for one PR or issue, so it ends when that input changes. */
+function trustAfterEdit(
+  entry: WorkflowEntry | null,
+  choices: Choices,
+  before: Record<string, string>,
+  after: Record<string, string>
+): Choices {
+  const changed = (type: 'pr' | 'issue'): boolean =>
+    (entry?.def?.inputs ?? []).some(
+      (input) => input.type === type && before[input.name] !== after[input.name]
+    );
+
+  return {
+    ...choices,
+    trustPr: choices.trustPr && !changed('pr'),
+    trustIssue: choices.trustIssue && !changed('issue')
+  };
 }
 
 function sheetTitle(entry: WorkflowEntry | null): string {
@@ -376,7 +426,13 @@ export function RunSheet({
   const missing = missingInput(entry, values);
   const { starting, start } = useStartRun(request, onClose, setProblem);
 
-  const applyFix = (fix: string): void => setChoices({ ...choices, ...fixChoice(fix) });
+  const choose = (choice: Partial<Choices>): void => setChoices({ ...choices, ...choice });
+  const applyFix = (fix: string): void => choose(fixChoice(fix));
+
+  const editValues = (next: Record<string, string>): void => {
+    setChoices(trustAfterEdit(entry, choices, values, next));
+    setValues(next);
+  };
 
   const approve = async (): Promise<void> => {
     if (!entry || readHash === null) return;
@@ -409,10 +465,10 @@ export function RunSheet({
           <RunForm
             entry={entry}
             values={values}
-            onChange={setValues}
+            onChange={editValues}
             preview={preview}
-            trusted={choices.trustPr}
-            onTrust={() => setChoices({ ...choices, trustPr: true })}
+            choices={choices}
+            onChoose={choose}
             onFix={applyFix}
           />
         )}
@@ -422,7 +478,7 @@ export function RunSheet({
               onClose();
               openRun(duplicate);
             }}
-            onForce={() => setChoices({ ...choices, force: true })}
+            onForce={() => choose({ force: true })}
           />
         )}
         <SheetProblems error={entry?.error} problem={problem} />

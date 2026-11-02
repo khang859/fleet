@@ -6,6 +6,7 @@ import {
   ACTIVE_RUN_STATES,
   stagesOf,
   type BoardItem,
+  type IssueRef,
   type PlanAnswer,
   type PlanBuildMode,
   type RunAgent,
@@ -108,6 +109,9 @@ export type RunPlan = {
   origin: RunOrigin;
   ruleId: string | null;
   pr: WorkflowRun['pr'];
+  issue?: IssueRef;
+  /** The issue body and comments, for the briefs. */
+  issueText?: string;
   locked: boolean;
   /** A team PR in a new worktree. Agents skip the trust question. */
   teamPr: boolean;
@@ -357,6 +361,7 @@ export class WorkflowRunManager {
   create(plan: RunPlan): WorkflowRun {
     const run = this.newRun(plan);
     this.deps.store.create(run.id, plan.bytes);
+    if (plan.issueText !== undefined) this.deps.store.writeIssue(run.id, plan.issueText);
     this.runs.set(run.id, run);
     this.boards.set(run.id, new Board());
     this.defs.set(run.id, plan.def);
@@ -386,6 +391,7 @@ export class WorkflowRunManager {
       cwd: plan.projectPath,
       worktreePath: null,
       pr: plan.pr,
+      ...(plan.issue ? { issue: plan.issue } : {}),
       locked: plan.locked,
       problem: null,
       usesBoard: def.board,
@@ -540,7 +546,7 @@ export class WorkflowRunManager {
         talks: agent.talks,
         plan: agent.plan && !agent.planApproved
       },
-      this.handoffOf(run, agent)
+      { ...this.handoffOf(run, agent), issueText: this.deps.store.readIssue(run.id) ?? undefined }
     );
   }
 

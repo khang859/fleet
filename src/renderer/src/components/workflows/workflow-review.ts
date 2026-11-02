@@ -72,11 +72,13 @@ export function whereText(def: WorkflowDef): string {
   return def.workspace === 'pr-worktree' ? 'A new worktree for the PR' : 'The project folder';
 }
 
+const INPUT_TYPE_LABELS = { text: 'text', pr: 'PR', issue: 'issue' };
+
 function inputsText(def: WorkflowDef): string {
   if (def.inputs.length === 0) return 'None';
   return def.inputs
     .map((input) => {
-      const type = input.type === 'pr' ? 'PR' : 'text';
+      const type = INPUT_TYPE_LABELS[input.type];
       const need = input.required ? 'required' : 'optional';
       return `${input.label} - {{${input.name}}} (${type}, ${need})`;
     })
@@ -86,6 +88,7 @@ function inputsText(def: WorkflowDef): string {
 function finishText(def: WorkflowDef): string {
   if (!def.finish) return 'Show the report in Fleet';
   if (def.finish.action === 'post-pr') return 'Offer to post the findings on the PR';
+  if (def.finish.action === 'post-issue') return 'Offer to post the report on the issue';
   if (def.finish.action === 'open-pr') return 'Push the branch and open a pull request';
   return def.finish.path ? `Save the report to ${def.finish.path}` : 'Save the report';
 }

@@ -114,6 +114,21 @@ describe('buildReview', () => {
     expect(reviewSummary(review)).toBe('Settings changed.');
   });
 
+  it('names an issue input and the post-issue finish', () => {
+    const inputs: WorkflowDef['inputs'] = [
+      { name: 'issue', label: 'Issue', type: 'issue', required: true }
+    ];
+    const def: WorkflowDef = { ...DEF, inputs, finish: { action: 'post-issue' } };
+    const settings = buildReview(def, null).settings;
+
+    expect(settings.find((row) => row.label === 'Inputs')?.value).toBe(
+      'Issue - {{issue}} (issue, required)'
+    );
+    expect(settings.find((row) => row.label === 'Finish')?.value).toBe(
+      'Offer to post the report on the issue'
+    );
+  });
+
   it('has no posting row without a PR input, and no mark for a new order', () => {
     const other = { role: 'Other', program: 'pi', prompt: 'Two.' } as const;
     const before: WorkflowDef = { ...DEF, agents: [READER, other] };

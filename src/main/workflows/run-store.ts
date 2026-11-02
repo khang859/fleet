@@ -78,8 +78,12 @@ export class RunStore {
   }
 
   readPlan(runId: string, version: number): string | null {
+    return this.readIfThere(join(this.folder(runId), 'plans', `${version}.md`));
+  }
+
+  private readIfThere(path: string): string | null {
     try {
-      return readFileSync(join(this.folder(runId), 'plans', `${version}.md`), 'utf8');
+      return readFileSync(path, 'utf8');
     } catch {
       return null;
     }
@@ -92,6 +96,15 @@ export class RunStore {
 
   diffPath(runId: string): string {
     return join(this.folder(runId), 'changes.diff');
+  }
+
+  /** The issue text of a run. Each brief reads it, so a retry gets the same words. */
+  writeIssue(runId: string, text: string): void {
+    writeFileSync(join(this.folder(runId), 'issue.md'), text, { mode: 0o600 });
+  }
+
+  readIssue(runId: string): string | null {
+    return this.readIfThere(join(this.folder(runId), 'issue.md'));
   }
 
   workflowBytes(runId: string): string {

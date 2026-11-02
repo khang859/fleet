@@ -135,6 +135,13 @@ export const SAMPLE_PR = {
   movedOn: false
 };
 
+export const SAMPLE_ISSUE = {
+  number: 9,
+  title: 'It breaks',
+  url: 'https://github.com/acme/app/issues/9',
+  state: 'open'
+};
+
 /** Where the fake clock starts. */
 export const START_TIME = 1_000_000;
 
