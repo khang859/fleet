@@ -13,9 +13,8 @@ type Props = {
  * **local** path to a viewer.
  *
  * This is the single seam that keeps remote browsing from leaking into the
- * viewers: `fleet-image://`, `fleet-pdf://` and `fs` all keep receiving ordinary
- * local paths, so `toFleetImageUrl` / `toFleetPdfUrl` / `protocol-paths.ts` need
- * no notion of SSH at all.
+ * viewers: `fleet-image://` and `fs` keep receiving ordinary local paths, so
+ * `toFleetImageUrl` and `protocol-paths.ts` need no notion of SSH at all.
  */
 export function RemoteFileGate({ host, remotePath, children }: Props): React.JSX.Element {
   const [fetched, setFetched] = useState<RemoteFetchResult | null>(null);

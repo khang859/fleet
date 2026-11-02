@@ -97,7 +97,7 @@
     "lucide-react": "^0.577.0",
     "mermaid": "^11.17.2",
     "node-pty": "^1.1.0",
-    "pdfjs-dist": "4.10.38",
+    "pdfjs-dist": "6.5.438",
     "pid-cwd": "^1.2.0",
     "react-markdown": "^10.1.0",
     "react-zoom-pan-pinch": "^4.0.4",

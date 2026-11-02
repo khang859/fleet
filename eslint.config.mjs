@@ -18,6 +18,7 @@ export default defineConfig(
       'resources/opencode-plugin/fleet.ts',
       'resources/claude-mod/**',
       'scripts/copy-pdfjs-assets.mjs',
+      'src/renderer/public/pdfjs/**',
       'eslint.config.mjs'
     ]
   },

@@ -48,7 +48,7 @@ export type RemoteListResult = { entries: RemoteDirEntry[]; resolvedPath: string
 
 /** A remote file materialized into the local cache, ready for a viewer pane. */
 export type RemoteFetchResult = {
-  /** Local cache path - safe to hand to fleet-image:// / fleet-pdf:// / fs. */
+  /** Local cache path - safe to hand to fleet-image:// / fs. */
   localPath: string;
   size: number;
   mtimeMs: number;

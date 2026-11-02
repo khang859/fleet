@@ -35,7 +35,6 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfText> {
     // Nothing here has a network or a DOM: this is a document being read for
     // its words, not one being drawn.
     useWorkerFetch: false,
-    isEvalSupported: false,
     useSystemFonts: false
   });
 
@@ -68,7 +67,7 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfText> {
       scanned: text.trim() === ''
     };
   } finally {
-    await doc.destroy();
+    await task.destroy();
   }
 }
 

@@ -62,14 +62,8 @@ describe('parseFleetUrl', () => {
   });
 
   describe('scheme + guards', () => {
-    it('honours the fleet-pdf scheme', () => {
-      expect(parseFleetUrl('fleet-pdf:///C%3A/docs/a.pdf', 'fleet-pdf')).toEqual({
-        kind: 'win',
-        path: 'C:\\docs\\a.pdf'
-      });
-    });
     it('returns null for a mismatched scheme', () => {
-      expect(parseFleetUrl('fleet-pdf:///C%3A/a.pdf', 'fleet-image')).toBeNull();
+      expect(parseFleetUrl('fleet-media:///C%3A/a.mp4', 'fleet-image')).toBeNull();
     });
     it('returns null for an empty path', () => {
       expect(parseFleetUrl('fleet-image://', 'fleet-image')).toBeNull();

@@ -17,9 +17,9 @@ const log = createLogger('remote-ssh:cache');
  * Local mirror of remote files.
  *
  * Its reason to exist is that Fleet's viewer panes reach binary content through
- * the `fleet-image://` / `fleet-pdf://` protocols, which resolve to a path the
- * main process can open with `fs`. By materializing a remote file into a local
- * cache first and handing the viewers that local path, those protocol handlers -
+ * `fleet-image://` and `file.readBinary`, which resolve to a path the main
+ * process can open with `fs`. By materializing a remote file into a local
+ * cache first and handing the viewers that local path, those handlers -
  * and all four viewer panes' rendering logic - stay completely unchanged.
  *
  * Freshness is a poll, not a subscription: SSH gives no change notification, so
@@ -49,8 +49,8 @@ function hostDir(host: RemoteHost): string {
 
 /**
  * Cache path for a remote file. The original extension is preserved because
- * downstream consumers key off it - the `fleet-pdf://` handler checks for a
- * `.pdf` suffix, and image MIME detection reads the extension.
+ * downstream consumers key off it - pane type and image MIME detection read
+ * the extension.
  */
 export function cachePathFor(host: RemoteHost, remotePath: string): string {
   const digest = createHash('sha256').update(remotePath).digest('hex').slice(0, 40);

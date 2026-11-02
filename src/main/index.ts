@@ -568,7 +568,6 @@ if (!gotTheLock) {
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
-  { scheme: 'fleet-pdf', privileges: { supportFetchAPI: true, stream: true } },
   {
     scheme: 'fleet-media',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
@@ -580,7 +579,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 void app.whenReady().then(async () => {
-  // Resolve a fleet-image/fleet-pdf/fleet-media request URL to a filesystem-accessible
+  // Resolve a fleet-image/fleet-media request URL to a filesystem-accessible
   // absolute path. The renderer's canonical builder puts the path in the URL path
   // position (empty authority); legacy call sites still emit backslash shapes that
   // make `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path is a
@@ -620,30 +619,6 @@ void app.whenReady().then(async () => {
         const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
         return new Response(new Uint8Array(data), {
           headers: { 'Content-Type': IMAGE_MIME[ext] ?? 'application/octet-stream' }
-        });
-      } catch {
-        return new Response('Not Found', { status: 404 });
-      }
-    }
-    return net.fetch(pathToFileURL(filePath).toString());
-  });
-
-  // Serve local PDFs to the bundled pdf.js viewer (fetch works through custom
-  // schemes even though Chromium's native PDF viewer does not on Electron 39).
-  protocol.handle('fleet-pdf', async (request) => {
-    const resolved = await resolveFleetPath(request.url, 'fleet-pdf');
-    if (!resolved) return new Response('Bad Request', { status: 400 });
-    // resolve() normalizes any `..` segments so the .pdf suffix check is a
-    // meaningful guard, not bypassable via traversal.
-    const filePath = resolve(resolved);
-    if (!filePath.toLowerCase().endsWith('.pdf')) {
-      return new Response('Forbidden', { status: 403 });
-    }
-    if (isUncPath(filePath)) {
-      try {
-        const data = await readFile(filePath);
-        return new Response(new Uint8Array(data), {
-          headers: { 'Content-Type': 'application/pdf' }
         });
       } catch {
         return new Response('Not Found', { status: 404 });

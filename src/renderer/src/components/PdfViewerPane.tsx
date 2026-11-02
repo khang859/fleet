@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RotateCw } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import type { PageViewport, PDFDocumentProxy, PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './pdf-text-layer.css';
-import { toFleetPdfUrl } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import { formatSize, getBasename } from '../lib/file-display';
@@ -20,10 +19,18 @@ const STANDARD_FONT_DATA_URL = new URL(
   `${import.meta.env.BASE_URL}pdfjs/standard_fonts/`,
   window.location.href
 ).href;
+const WASM_URL = new URL(`${import.meta.env.BASE_URL}pdfjs/wasm/`, window.location.href).href;
+const ICC_URL = new URL(`${import.meta.env.BASE_URL}pdfjs/iccs/`, window.location.href).href;
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
+const ROTATION_STEP = 90;
+
+/** A page can have its own rotation in the file, so the user's turn adds to it. */
+function rotatedViewport(page: PDFPageProxy, scale: number, rotation: number): PageViewport {
+  return page.getViewport({ scale, rotation: (page.rotate + rotation) % 360 });
+}
 
 type PdfViewerPaneProps = {
   filePath: string;
@@ -50,6 +57,7 @@ export function PdfViewerPane({
   const [numPages, setNumPages] = useState(0);
   const [pageNum, setPageNum] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const [fileSize, setFileSize] = useState<number | null>(null);
 
   const filename = getBasename(remote?.path ?? filePath);
@@ -63,6 +71,7 @@ export function PdfViewerPane({
     setNumPages(0);
     setPageNum(1);
     setZoom(1);
+    setRotation(0);
     setFileSize(null);
 
     let loadingTask: ReturnType<typeof pdfjs.getDocument> | null = null;
@@ -76,17 +85,22 @@ export function PdfViewerPane({
       }
       setFileSize(stat.data.size);
       try {
+        // Read over IPC, not by URL: pdf.js only fetches http(s), and Chromium
+        // blocks its XHR fallback on a custom scheme, from any origin.
+        const file = await window.fleet.file.readBinary(filePath, pathContext);
+        if (run.isCancelled()) return;
+        if (!file.success || !file.data) throw new Error(file.error);
         loadingTask = pdfjs.getDocument({
-          url: toFleetPdfUrl(filePath),
+          data: Uint8Array.from(atob(file.data.base64), (char) => char.charCodeAt(0)),
           cMapUrl: CMAP_URL,
           cMapPacked: true,
-          standardFontDataUrl: STANDARD_FONT_DATA_URL
+          standardFontDataUrl: STANDARD_FONT_DATA_URL,
+          wasmUrl: WASM_URL,
+          iccUrl: ICC_URL
         });
         const doc = await loadingTask.promise;
-        if (run.isCancelled()) {
-          void doc.destroy();
-          return;
-        }
+        // The effect cleanup has already destroyed the loading task.
+        if (run.isCancelled()) return;
         docRef.current = doc;
         setNumPages(doc.numPages);
         setLoading(false);
@@ -103,14 +117,12 @@ export function PdfViewerPane({
       renderTaskRef.current?.cancel();
       renderTaskRef.current = null;
       void loadingTask?.destroy();
-      const doc = docRef.current;
       docRef.current = null;
-      if (doc) void doc.destroy();
     };
   }, [filePath, pathContext]);
 
-  // Render the current page whenever page or zoom changes. Cancels any in-flight
-  // render first and snaps to the new page/scale with no transition.
+  // Render the current page whenever page, zoom or rotation changes. Cancels any in-flight
+  // render first and snaps to the new view with no transition.
   useEffect(() => {
     const doc = docRef.current;
     const canvas = canvasRef.current;
@@ -122,33 +134,33 @@ export function PdfViewerPane({
       const page = await doc.getPage(pageNum);
       try {
         if (run.isCancelled()) return;
-        const viewport = page.getViewport({ scale: zoom });
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        const viewport = rotatedViewport(page, zoom, rotation);
         const outputScale = window.devicePixelRatio || 1;
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
-        const task = page.render({ canvasContext: ctx, viewport, transform });
+        const task = page.render({ canvas, viewport, transform });
         renderTaskRef.current = task;
         try {
           await task.promise;
         } catch {
           // Render cancelled (page/zoom changed mid-render) — expected, ignore.
         }
-        if (run.isCancelled()) return;
+        // The load effect destroys the document on a file change, before this
+        // effect's own cleanup runs.
+        if (run.isCancelled() || docRef.current !== doc) return;
 
         // Overlay a transparent text layer so the page text is selectable and
-        // copyable. setLayerDimensions (inside TextLayer) sizes the container via
-        // calc(var(--scale-factor) * pageWidth), so --scale-factor must equal the
-        // CSS scale (zoom, not the HiDPI outputScale).
+        // copyable. TextLayer sizes the container and its text from
+        // --total-scale-factor, so that must equal the CSS scale (zoom and the
+        // page's UserUnit, not the HiDPI outputScale).
         const textLayerDiv = textLayerRef.current;
         if (textLayerDiv) {
           textLayerInstanceRef.current?.cancel();
           textLayerDiv.replaceChildren();
-          textLayerDiv.style.setProperty('--scale-factor', String(zoom));
+          textLayerDiv.style.setProperty('--total-scale-factor', String(zoom * page.userUnit));
           const textLayer = new pdfjs.TextLayer({
             textContentSource: page.streamTextContent(),
             container: textLayerDiv,
@@ -171,7 +183,7 @@ export function PdfViewerPane({
       run.cancel();
       textLayerInstanceRef.current?.cancel();
     };
-  }, [pageNum, zoom, loading, error, numPages]);
+  }, [pageNum, zoom, rotation, loading, error, numPages]);
 
   const adjustZoom = useCallback((delta: number) => {
     setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + delta)));
@@ -183,13 +195,17 @@ export function PdfViewerPane({
     if (!doc || !container) return;
     const page = await doc.getPage(pageNum);
     try {
-      const vp = page.getViewport({ scale: 1 });
+      const vp = rotatedViewport(page, 1, rotation);
       const avail = container.clientWidth - 32;
       setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, avail / vp.width)));
     } finally {
       page.cleanup();
     }
-  }, [pageNum]);
+  }, [pageNum, rotation]);
+
+  const rotate = useCallback(() => {
+    setRotation((prev) => (prev + ROTATION_STEP) % 360);
+  }, []);
 
   const goPrev = useCallback(() => setPageNum((n) => Math.max(1, n - 1)), []);
   const goNext = useCallback(() => setPageNum((n) => Math.min(numPages, n + 1)), [numPages]);
@@ -245,6 +261,10 @@ export function PdfViewerPane({
             <div className="w-px h-3.5 bg-neutral-700 mx-1" />
             <ToolbarButton onClick={() => void fitToWidth()} title="Fit Width">
               Fit
+            </ToolbarButton>
+            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
+            <ToolbarButton onClick={rotate} title="Rotate Clockwise">
+              <RotateCw size={12} />
             </ToolbarButton>
           </div>
         )}

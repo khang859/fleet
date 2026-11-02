@@ -12,7 +12,6 @@ import {
   toWindowsAccessiblePath,
   pathForPaneContext,
   toFleetImageUrl,
-  toFleetPdfUrl,
   toFleetMediaUrl,
   expandHome,
   resolveAgainstCwd
@@ -248,7 +247,7 @@ describe('pathForPaneContext', () => {
   });
 });
 
-describe('toFleetImageUrl / toFleetPdfUrl', () => {
+describe('toFleetImageUrl', () => {
   it('encodes a drive path with empty authority', () => {
     expect(toFleetImageUrl('C:\\Users\\khang\\My Pic.png')).toBe(
       'fleet-image:///C%3A/Users/khang/My%20Pic.png'
@@ -264,9 +263,6 @@ describe('toFleetImageUrl / toFleetPdfUrl', () => {
   });
   it('encodes Unicode, # and ? safely', () => {
     expect(toFleetImageUrl('C:\\a\\rés#?.png')).toBe('fleet-image:///C%3A/a/r%C3%A9s%23%3F.png');
-  });
-  it('uses the fleet-pdf scheme for pdfs', () => {
-    expect(toFleetPdfUrl('C:\\docs\\a.pdf')).toBe('fleet-pdf:///C%3A/docs/a.pdf');
   });
   it('puts a media path behind the fixed fleet-media host', () => {
     expect(toFleetMediaUrl('/home/khang/my clip #1.mp4')).toBe(

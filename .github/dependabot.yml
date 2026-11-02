@@ -1,0 +1,17 @@
+# Opens a PR when Electron or pdfjs-dist has a new version.
+# See "Dependency Rules" in CLAUDE.md for why these two are tracked.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: electron
+      - dependency-name: pdfjs-dist
+    commit-message:
+      prefix: fix
+      include: scope
+    labels:
+      - security

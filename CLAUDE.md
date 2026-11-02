@@ -82,6 +82,15 @@ Its panes reach the checkout's own Claude Code hook and `fleet` CLI through `FLE
 
 Selectors are Playwright `page.locator()` syntax: `role=button[name="Chat"]`, `text=Settings`, CSS, `testid=<id>`, or a snapshot ref. It attaches over CDP to the dev window (dev-only, enabled in `src/main/index.ts` behind `IS_FLEET_DEV`) - no macOS Screen Recording permission needed, since capture goes through Chromium's compositor, not the OS. This is the correct way to visually verify UI changes yourself. Full details: `scripts/drive/README.md`.
 
+## Dependency Rules
+
+- **Electron:** Stay on one of the latest three stable Electron majors, which are the only ones that get Chromium security fixes.
+  A new major ships every 8 weeks, so upgrade before the current major drops out of that window.
+  Check https://releases.electronjs.org/schedule for the dates.
+- **pdfjs-dist:** Keep it on the latest version, because it parses PDF files that can come from anyone.
+- Dependabot (`.github/dependabot.yml`) opens a PR for new versions of both.
+  Run the app on that PR before you merge it: see `docs/learnings/2026-10-31-electron-45-upgrade.md` and `docs/learnings/2026-11-01-pdfjs-6-upgrade.md`.
+
 ## Release Notes
 
 Before creating a release tag, always add a `## vX.Y.Z` entry to `CHANGELOG.md` and push it to main. The CI release workflow runs `scripts/extract-release-notes.ts` on checkout of the tag - if the changelog entry is missing the build fails. The tag must point to a commit that already includes the changelog entry; if the tag is created before the changelog commit, delete and re-create the tag at the correct commit:
