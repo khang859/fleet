@@ -85,6 +85,40 @@ describe('agentCommandLine', () => {
     expect(line).toContain(`'--strict-mcp-config'`);
   });
 
+  describe('research', () => {
+    it('gives Claude Code every tool but the edit tools', () => {
+      const line = agentCommandLine(command({ program: 'claude', mode: 'research' }), 'linux');
+
+      expect(line).toContain(`'--disallowedTools' 'Edit' 'Write' 'NotebookEdit' '--append`);
+      expect(line).not.toContain(`'--tools'`);
+      expect(line).not.toContain(`'--strict-mcp-config'`);
+      expect(line).not.toContain(`'--setting-sources'`);
+    });
+
+    it('never lets the edit tool list take the message', () => {
+      const cmd = command({ program: 'claude', mode: 'research', addDir: '/runs/one' });
+      const line = agentCommandLine(cmd, 'linux');
+
+      expect(line).toMatch(/'NotebookEdit' '--append-system-prompt-file'/);
+      expect(line.endsWith(`'Start now.'`)).toBe(true);
+    });
+
+    it('gives Pi the shell, extensions and MCP, with no edit tools', () => {
+      const line = agentCommandLine(command({ mode: 'research' }), 'linux');
+
+      expect(line).toContain(
+        `'--no-approve' '--tools' '+bash,+grep,+find,+ls' '--exclude-tools' 'edit,write'`
+      );
+      expect(line).not.toContain('mcp__');
+    });
+
+    it('names the tools on a Pi resume, so the old read-only list does not come back', () => {
+      const line = agentCommandLine(command({ mode: 'research', resume: '/t/a.jsonl' }), 'linux');
+
+      expect(line).toContain(`'--tools' '+bash,+grep,+find,+ls'`);
+    });
+  });
+
   it('never passes the dev extension when a program has none', () => {
     const line = agentCommandLine(command({ program: 'claude', devExtension: '/x' }), 'linux');
 

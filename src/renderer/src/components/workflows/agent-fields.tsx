@@ -91,7 +91,7 @@ export function AgentAccessFields({
           value={agent.access ?? 'read'}
           onChange={(e) => setAccess(e.target.value === 'write' ? 'write' : 'read')}
         >
-          <option value="read">Read only</option>
+          <option value="read">Read and research</option>
           <option value="write">Change code</option>
         </select>
       </Field>

@@ -216,9 +216,10 @@ Stage logic goes in a new `stages.ts` as plain functions, because `run-manager.t
 ### 4. Access per agent (`locked`)
 
 `AgentMode` is computed per agent, not per run, and a run-level lock always wins.
-Read only uses the existing `locked` flags for each program, with `AskUserQuestion` added for a talking Claude Code agent.
+Read access uses the `research` flags: no edit tools, but the shell, web tools and the person's MCP servers stay, so a reader can research.
+A locked run and a Pi plan agent before approval use the `locked` flags, with only read tools.
 Section 14 lists the flags.
-Read-only agents have no Bash on either program, so they cannot run `git diff`.
+Agents with the `locked` flags have no Bash on either program, so they cannot run `git diff`.
 Section 7 covers this.
 
 ### 5. Talking agents (`author's call`)
@@ -331,16 +332,17 @@ The Copilot notice opens this page.
 
 Checked against Claude Code 2.1.316 and Pi 1.4.0.
 
-| Job                  | Claude Code                                                             | Pi                                                                      |
-| -------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Give the brief       | `--append-system-prompt-file <brief>`                                   | `--append-system-prompt <brief>`                                        |
-| Go on with a session | `--resume <id>`                                                         | `--session <id>`                                                        |
-| Read only            | `--tools Read,Grep,Glob --setting-sources user --strict-mcp-config`     | `--no-approve --tools read,grep,find,ls,fleet_* --exclude-tools mcp__*` |
-| Change code          | No flag                                                                 | `--no-approve`, or `--approve` for `team-pr`                            |
-| Read the run folder  | `--add-dir <run folder>`, before another flag                           | No flag needed                                                          |
-| Talk with a person   | Add `AskUserQuestion` to `--tools`                                      | No flag. The agent asks in plain text                                   |
-| Plan first           | `--permission-mode plan`                                                | The read-only flags, then `--no-approve --tools +edit,+write,+bash`     |
-| Builder pane         | `--tools Read,Grep,Glob,AskUserQuestion` plus the other read-only flags | The read-only flags                                                     |
+| Job                  | Claude Code                                                         | Pi                                                                      |
+| -------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Give the brief       | `--append-system-prompt-file <brief>`                               | `--append-system-prompt <brief>`                                        |
+| Go on with a session | `--resume <id>`                                                     | `--session <id>`                                                        |
+| Read only (`locked`) | `--tools Read,Grep,Glob --setting-sources user --strict-mcp-config` | `--no-approve --tools read,grep,find,ls,fleet_* --exclude-tools mcp__*` |
+| Research             | `--disallowedTools Edit Write NotebookEdit`, before another flag    | `--no-approve --tools +bash,+grep,+find,+ls --exclude-tools edit,write` |
+| Change code          | No flag                                                             | `--no-approve`, or `--approve` for `team-pr`                            |
+| Read the run folder  | `--add-dir <run folder>`, before another flag                       | No flag needed                                                          |
+| Talk with a person   | Add `AskUserQuestion` to `--tools`                                  | No flag. The agent asks in plain text                                   |
+| Plan first           | `--permission-mode plan`                                            | The read-only flags, then `--no-approve --tools +edit,+write,+bash`     |
+| Builder pane         | The research flags                                                  | The research flags                                                      |
 
 Pi has no `--permission-mode`, no `--add-dir`, and no built-in question tool.
 `--no-approve` ignores project `.pi` files, but `AGENTS.md` and `CLAUDE.md` still load, so a reviewer keeps the project rules.

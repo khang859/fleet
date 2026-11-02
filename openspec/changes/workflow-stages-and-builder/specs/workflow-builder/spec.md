@@ -13,17 +13,23 @@ Fleet SHALL NOT use a Fleet chat window, the Agent SDK or `claude -p` for this w
 #### Scenario: A person starts the builder with Pi
 
 - **WHEN** a person starts the builder with Pi
-- **THEN** a terminal pane runs the `pi` app with the read-only flags, the agent asks in plain text, and it can save the draft
+- **THEN** a terminal pane runs the `pi` app with the research flags, the agent asks in plain text, and it can save the draft
 
 ### Requirement: The builder agent knows its job
 
 Fleet SHALL start the builder agent with a brief that names its only job and includes the workflow guide.
-Fleet SHALL mark the pane as a builder pane, so that the agent has only the tools for this job.
+Fleet SHALL mark the pane as a builder pane, so that the agent has only the Fleet tools for this job.
+The builder agent SHALL have no edit tools, and SHALL keep the shell, web tools and the person's MCP servers, so that it can research how to make the workflow.
 
 #### Scenario: The person asks for something else
 
 - **WHEN** a person asks the builder agent to change code
-- **THEN** the agent has no tool to do it and says that this pane only makes workflows
+- **THEN** the agent has no edit tool, and it says that this pane only makes workflows
+
+#### Scenario: The person asks for research
+
+- **WHEN** a person asks the builder agent to research best practices for a workflow
+- **THEN** the agent can search the web and use the person's MCP tools
 
 #### Scenario: The agent calls a run tool
 

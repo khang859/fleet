@@ -64,8 +64,9 @@ export function BuilderStart({
     >
       <h3 className="text-xs font-medium text-fleet-text">Make a workflow with an agent</h3>
       <p className="mt-1 text-[11px] leading-relaxed text-fleet-text-subtle">
-        Tell the agent how you work. It asks questions and writes the workflow. It cannot change
-        your code in this pane. You see each draft beside it, and you approve the file.
+        Tell the agent how you work. It asks questions, can research on the web and with your MCP
+        tools, and writes the workflow. It does not change your code in this pane. You see each
+        draft beside it, and you approve the file.
       </p>
       <div className="mt-3 space-y-1.5" role="radiogroup" aria-label="Program">
         {CHOICES.map((option) => {

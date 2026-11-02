@@ -140,8 +140,14 @@ describe('agentMode', () => {
     expect(agentMode({ ...makeRun(), locked: true }, DEF, writer)).toBe('locked');
   });
 
-  it('locks a reader', () => {
-    expect(agentMode(makeRun(), DEF, { ...writer, access: 'read' })).toBe('locked');
+  it('lets a reader research but not edit', () => {
+    expect(agentMode(makeRun(), DEF, { ...writer, access: 'read' })).toBe('research');
+  });
+
+  it('locks a reader in a locked run', () => {
+    const reader = { ...writer, access: 'read' as const };
+
+    expect(agentMode({ ...makeRun(), locked: true }, DEF, reader)).toBe('locked');
   });
 
   it('lets a writer write', () => {

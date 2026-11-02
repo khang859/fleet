@@ -45,7 +45,7 @@ Top-level keys:
 - role: required, up to 60 characters. Each role must be different, but an agent with resume = its own role can use it again.
 - program: "claude" or "pi". If the person does not say which, ask them. An agent with resume takes the program of the named agent.
 - prompt: required, up to 20000 characters.
-- access: "read" is the default, and the agent cannot change files. "write" lets it change code. Do not let two agents with "write" work at the same time in one folder.
+- access: "read" is the default. The agent has no edit tools, and it is told not to change files, but it can search the web, use MCP tools and run shell commands, so it can research. "write" lets it change code. Do not let two agents with "write" work at the same time in one folder.
 - talks: true means that the agent talks with a person, and Fleet waits for that person. Such a file cannot run from an automatic rule.
 - plan: true means that the agent must get its plan approved before it changes code. It needs access = "write", and the file cannot run from an automatic rule.
 - resume: the role of an agent in an earlier stage. This agent goes on with that agent's session, and it remembers that talk. It keeps the access of that agent, unless you set access.

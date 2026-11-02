@@ -64,13 +64,20 @@ describe('WorkflowBuilder', () => {
     return join(project, '.fleet', 'workflows', `${id}.toml`);
   }
 
-  it('starts a locked pane with no first message', async () => {
+  it('starts a research pane with no edit tools and no first message', async () => {
     await builder.start(project, 'claude');
 
     expect(opened[0].cwd).toBe(project);
-    expect(opened[0].line).toContain('--tools');
-    expect(opened[0].line).not.toContain('Bash');
+    expect(opened[0].line).toContain(`'--disallowedTools' 'Edit' 'Write' 'NotebookEdit'`);
+    expect(opened[0].line).not.toContain('--strict-mcp-config');
     expect(opened[0].line).not.toContain('Start now');
+  });
+
+  it('lets a Pi builder research, with no edit tools', async () => {
+    await builder.start(project, 'pi');
+
+    expect(opened[0].line).toContain(`'--exclude-tools' 'edit,write'`);
+    expect(opened[0].line).not.toContain('mcp__');
   });
 
   it('opens a tab for the pane', async () => {

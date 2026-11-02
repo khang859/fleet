@@ -89,7 +89,7 @@ export class RunStore {
     }
   }
 
-  /** The change so far, for agents with no shell to run `git diff`. */
+  /** The change so far, so a read agent needs no `git diff`. A locked agent has no shell. */
   writeDiff(runId: string, text: string): void {
     writeFileSync(this.diffPath(runId), text, { mode: 0o600 });
   }

@@ -77,7 +77,7 @@ export type RunDeps = {
   removeWorktree: (run: WorkflowRun) => Promise<void>;
   /** Make the worktree of a `new-branch` run, or open it again on the run's branch. */
   makeBranch: (run: WorkflowRun) => Promise<{ path: string; branch: RunBranch }>;
-  /** The change so far, for read-only agents. */
+  /** The change so far, for read agents. */
   diffOf: (run: WorkflowRun) => Promise<string>;
   /** Answer a held Claude Code request with a mode or a reason. */
   answerRequest: (
@@ -481,7 +481,7 @@ export class WorkflowRunManager {
     }
   }
 
-  /** Read-only agents have no shell, so Fleet writes the change where they can read it. */
+  /** Fleet writes the change where read agents can read it. In a locked run they have no shell. */
   private async writeHandoff(run: WorkflowRun, stage: number): Promise<void> {
     const readers = agentsIn(run, stage).some((agent) => agent.access === 'read');
     if (stage === 0 || !readers) return;
