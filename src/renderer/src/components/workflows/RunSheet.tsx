@@ -15,6 +15,8 @@ import { useToastStore } from '../../store/toast-store';
 import { Overlay } from '../Overlay';
 import { Badge, Button, Field, FIELD_CLASS } from './parts';
 import { ChangeView } from './ChangeView';
+import { RunModels, type ModelChoices } from './RunModels';
+import { MODEL_PATTERN } from '../../../../shared/workflow-models';
 
 type Choices = {
   force: boolean;
@@ -232,7 +234,9 @@ function RunForm({
   preview,
   choices,
   onChoose,
-  onFix
+  onFix,
+  models,
+  onModels
 }: {
   entry: WorkflowEntry;
   values: Record<string, string>;
@@ -241,6 +245,8 @@ function RunForm({
   choices: Choices;
   onChoose: (choice: Partial<Choices>) => void;
   onFix: (fix: string) => void;
+  models: ModelChoices;
+  onModels: (models: ModelChoices) => void;
 }): React.JSX.Element {
   return (
     <>
@@ -265,6 +271,14 @@ function RunForm({
         />
       )}
       <RunPlan entry={entry} />
+      {entry.def && (
+        <RunModels
+          def={entry.def}
+          programOverride={choices.programOverride}
+          value={models}
+          onChange={onModels}
+        />
+      )}
       {preview && <CheckList preview={preview} onFix={onFix} />}
     </>
   );
@@ -399,6 +413,7 @@ export function RunSheet({
   const openRun = useWorkflowsStore((s) => s.openRun);
   const [values, setValues] = useState<Record<string, string>>({});
   const [choices, setChoices] = useState<Choices>(NO_CHOICES);
+  const [models, setModels] = useState<ModelChoices>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [readHash, setReadHash] = useState<string | null>(null);
   const entryId = entry?.id;
@@ -407,6 +422,7 @@ export function RunSheet({
   useEffect(() => {
     setValues(initialInputs ?? {});
     setChoices(NO_CHOICES);
+    setModels({});
     setProblem(null);
     setReadHash(null);
   }, [entryId, initialInputs]);
@@ -420,13 +436,25 @@ export function RunSheet({
   const request: StartRunRequest | null = entry
     ? { projectPath, workflowId: entry.id, inputs: values, ...choices }
     : null;
+  // Models do not change what the preview checks, so they go only to the start.
   const preview = usePreview(needsApproval ? null : request);
   const failed = preview?.checks.some((check) => !check.ok) ?? false;
   const broken = entry?.def === null;
   const missing = missingInput(entry, values);
-  const { starting, start } = useStartRun(request, onClose, setProblem);
+  const badModel = Object.values(models).some(
+    (choice) => choice.model !== undefined && !MODEL_PATTERN.test(choice.model)
+  );
+  const startRequest =
+    request && Object.keys(models).length > 0 ? { ...request, modelChoices: models } : request;
+  const { starting, start } = useStartRun(startRequest, onClose, setProblem);
 
-  const choose = (choice: Partial<Choices>): void => setChoices({ ...choices, ...choice });
+  const choose = (choice: Partial<Choices>): void => {
+    // A model is for one program, so a new program starts again from the file.
+    if (choice.programOverride !== choices.programOverride && 'programOverride' in choice) {
+      setModels({});
+    }
+    setChoices({ ...choices, ...choice });
+  };
   const applyFix = (fix: string): void => choose(fixChoice(fix));
 
   const editValues = (next: Record<string, string>): void => {
@@ -470,6 +498,8 @@ export function RunSheet({
             choices={choices}
             onChoose={choose}
             onFix={applyFix}
+            models={models}
+            onModels={setModels}
           />
         )}
         {duplicate && !choices.force && (
@@ -486,7 +516,7 @@ export function RunSheet({
       <SheetFooter
         needsApproval={needsApproval}
         starting={starting}
-        disabled={starting || missing || failed || blocked || broken}
+        disabled={starting || missing || failed || blocked || broken || badModel}
         approveDisabled={broken || readHash !== entry?.hash}
         onCancel={onClose}
         onApprove={approve}

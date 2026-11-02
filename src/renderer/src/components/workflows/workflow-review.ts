@@ -7,12 +7,18 @@ import {
   type WorkflowEntry,
   type WorkflowProgram
 } from '../../../../shared/workflows';
+import { modelChoiceText } from '../../../../shared/workflow-models';
 import { parseToForm } from './workflow-toml';
 
 export const PROGRAM_LABELS: Record<WorkflowProgram, string> = {
   pi: 'Pi',
   claude: 'Claude Code'
 };
+
+/** The program with the model and effort the file sets, such as `Claude Code · opus · high`. */
+export function programText(agent: WorkflowAgentDef): string {
+  return [PROGRAM_LABELS[agent.program], modelChoiceText(agent)].filter(Boolean).join(' · ');
+}
 
 export type ReviewLine = { sign: '+' | '-' | ' '; text: string };
 
@@ -38,6 +44,10 @@ export type ReviewAgent = {
   program: WorkflowProgram;
   /** The approved program, when it is not the same. */
   wasProgram?: WorkflowProgram;
+  /** The model and effort the file sets, as words. Empty for the program defaults. */
+  choice: string;
+  /** The approved model and effort, when they are not the same. */
+  wasChoice?: string;
   last: boolean;
   status: ReviewStatus;
   lines: ReviewLine[];
@@ -157,12 +167,17 @@ function ruleFields(agent: RosterAgent): Pick<ReviewAgent, RuleKeys> {
 function reviewAgent(agent: RosterAgent, old: RosterAgent | undefined): ReviewAgent {
   const lines = lineDiff(old?.prompt ?? '', agent.prompt);
   const movedProgram = old !== undefined && old.program !== agent.program;
+  const choice = modelChoiceText(agent);
+  const movedChoice = old !== undefined && modelChoiceText(old) !== choice;
   const movedRule = old !== undefined && movedRules(agent, old);
-  const changed = hasChange(lines) || movedProgram || movedRule || old?.last !== agent.last;
+  const changed =
+    hasChange(lines) || movedProgram || movedChoice || movedRule || old?.last !== agent.last;
   return {
     ...ruleFields(agent),
     program: agent.program,
     wasProgram: movedProgram ? old.program : undefined,
+    choice,
+    wasChoice: movedChoice ? modelChoiceText(old) : undefined,
     last: agent.last,
     status: old === undefined ? 'new' : changed ? 'changed' : 'same',
     lines
@@ -173,6 +188,7 @@ function removedAgent(agent: RosterAgent): ReviewAgent {
   return {
     ...ruleFields(agent),
     program: agent.program,
+    choice: modelChoiceText(agent),
     last: agent.last,
     status: 'removed',
     lines: lineDiff(agent.prompt, '')

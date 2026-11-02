@@ -14,6 +14,7 @@ import {
   type WorkflowPreview,
   type WorkflowProgram
 } from '../../shared/workflows';
+import { modelChoiceProblem, switchProgram } from '../../shared/workflow-models';
 import type { ApprovalStore } from './approval';
 import type { WorkflowCatalog } from './catalog';
 import { parseWorkflow, readWorkflowFile, slugOf, targetOf } from './config';
@@ -72,16 +73,42 @@ function hasPlanAgent(def: WorkflowDef): boolean {
 
 const NO_PERSON_AT_RULE = 'This workflow talks with a person, so a rule cannot start it.';
 
-function withProgram(def: WorkflowDef, program: WorkflowProgram | undefined): WorkflowDef {
-  if (!program) return def;
-  const swap = (agent: WorkflowAgentDef): WorkflowAgentDef => ({ ...agent, program });
+/** The file with each agent changed, in the shape it came in. */
+function mapAgents(
+  def: WorkflowDef,
+  change: (agent: WorkflowAgentDef) => WorkflowAgentDef
+): WorkflowDef {
   return {
     ...def,
-    agents: def.agents.map(swap),
-    judge: def.judge ? swap(def.judge) : undefined,
+    agents: def.agents.map(change),
+    judge: def.judge ? change(def.judge) : undefined,
     stages:
-      def.stages && stagesOf(def).map((stage) => ({ ...stage, agents: stage.agents.map(swap) }))
+      def.stages && stagesOf(def).map((stage) => ({ ...stage, agents: stage.agents.map(change) }))
   };
+}
+
+/** Every agent on one program, for this run. A swap drops a model that does not fit. */
+function withProgram(def: WorkflowDef, program: WorkflowProgram | undefined): WorkflowDef {
+  if (!program) return def;
+  return mapAgents(def, (agent) => switchProgram(agent, program));
+}
+
+/** The model and effort a person chose for this run. They replace the file's, by role. */
+function withModelChoices(def: WorkflowDef, choices: StartRunRequest['modelChoices']): WorkflowDef {
+  if (!choices) return def;
+  return mapAgents(def, (agent) => {
+    const choice = Object.hasOwn(choices, agent.role) ? choices[agent.role] : undefined;
+    return choice ? { ...agent, model: choice.model, effort: choice.effort } : agent;
+  });
+}
+
+/** What is wrong with the choices a person made, as a refusal message. */
+function modelChoicesProblem(def: WorkflowDef): string | null {
+  for (const agent of agentsOf(def)) {
+    const problem = modelChoiceProblem(agent.program, agent);
+    if (problem) return `${agent.role}: ${problem}`;
+  }
+  return null;
 }
 
 function refOf(info: PrInfo): PrRef {
@@ -372,7 +399,12 @@ export class WorkflowStarts {
     const approved = this.approved(req);
     if (isRefusal(approved)) return approved;
     const { entry, text } = approved;
-    const def = withProgram(parseWorkflow(text), req.programOverride);
+    const def = withModelChoices(
+      withProgram(parseWorkflow(text), req.programOverride),
+      req.modelChoices
+    );
+    const badChoice = modelChoicesProblem(def);
+    if (badChoice) return refuse('bad-model', badChoice);
 
     if (options.origin === 'automatic' && needsPersonAtRun(def)) {
       return refuse('needs-person', NO_PERSON_AT_RULE);

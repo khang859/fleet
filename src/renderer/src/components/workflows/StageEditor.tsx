@@ -7,13 +7,14 @@ import {
   type WorkflowInput,
   type WorkflowStageDef
 } from '../../../../shared/workflows';
+import { switchProgram } from '../../../../shared/workflow-models';
 import { AddAgentDialog } from './AddAgentDialog';
-import { AgentAccessFields, ProgramField } from './agent-fields';
+import { AgentAccessFields, ModelFields, ProgramField } from './agent-fields';
 import { finishNote } from './stage-notes';
 import { usePrograms } from './use-programs';
 import { Button, Field, FIELD_CLASS, SectionTitle } from './parts';
 import { AgentChips, StageColumns, type MapColumn } from './StageMap';
-import { PROGRAM_LABELS, whereText } from './workflow-review';
+import { programText, whereText } from './workflow-review';
 import { inputTypeOf, workspaceOf } from './workflow-toml';
 import {
   addAgent,
@@ -213,7 +214,7 @@ function ResumeField({
   const pick = (role: string): void => {
     const target = resumeTarget(stages, at.stage, role);
     if (!target) onChange({ ...agent, resume: undefined });
-    else onChange({ ...agent, resume: role, program: target.program });
+    else onChange({ ...switchProgram(agent, target.program), resume: role });
   };
   return (
     <Field label="Goes on from" hint="It keeps that agent's session and remembers its talk.">
@@ -264,7 +265,14 @@ function AgentPanel({
           value={agent.program}
           disabled={agent.resume !== undefined}
           hint={agent.resume ? `It uses the program of ${agent.resume}.` : undefined}
-          onChange={(program) => change({ ...agent, program })}
+          onChange={(program) => change(switchProgram(agent, program))}
+        />
+        <ModelFields
+          key={`${at.stage}:${at.agent}`}
+          program={agent.program}
+          value={{ model: agent.model, effort: agent.effort }}
+          inheritsFrom={agent.resume}
+          onChange={(choice) => change({ ...agent, ...choice })}
         />
         <AgentAccessFields agent={agent} onChange={change} />
         <ResumeField stages={stages} at={at} agent={agent} onChange={change} />
@@ -323,8 +331,8 @@ function AgentCard({
       <span className="block truncate text-xs font-medium text-fleet-text">
         {agent.role || 'No name yet'}
       </span>
-      <span className="block text-[11px] text-fleet-text-subtle">
-        {PROGRAM_LABELS[agent.program]}
+      <span className="block truncate text-[11px] text-fleet-text-subtle">
+        {programText(agent)}
       </span>
       <AgentChips agent={agent} />
     </button>

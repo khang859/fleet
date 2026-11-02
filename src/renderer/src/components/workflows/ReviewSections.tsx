@@ -84,6 +84,18 @@ function ProgramBadge({ agent }: { agent: ReviewAgent }): React.JSX.Element {
   );
 }
 
+/** Unset means the program default, so a change from or to it still has words. */
+function ModelBadge({ agent }: { agent: ReviewAgent }): React.JSX.Element | null {
+  if (agent.wasChoice === undefined) {
+    return agent.choice ? <Badge tone="gray">{agent.choice}</Badge> : null;
+  }
+  return (
+    <Badge tone="amber">
+      {agent.wasChoice || 'Default model'} to {agent.choice || 'default model'}
+    </Badge>
+  );
+}
+
 function AgentCard({ agent }: { agent: ReviewAgent }): React.JSX.Element {
   const status = STATUS_BADGES[agent.status];
   return (
@@ -95,6 +107,7 @@ function AgentCard({ agent }: { agent: ReviewAgent }): React.JSX.Element {
           {agent.stage && <Badge tone="gray">{agent.stage}</Badge>}
           {agent.last && <Badge tone="blue">Goes last</Badge>}
           <ProgramBadge agent={agent} />
+          <ModelBadge agent={agent} />
           {agent.stage && agent.access === 'write' && <Badge tone="amber">Changes code</Badge>}
           {agent.talks && <Badge tone="blue">Talks with you</Badge>}
           {agent.plan && <Badge tone="blue">Plan approval</Badge>}

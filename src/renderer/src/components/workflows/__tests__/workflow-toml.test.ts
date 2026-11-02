@@ -238,6 +238,18 @@ describe('stage files', () => {
     expect(formToToml(parseToForm(STAGE_FILE)).trim()).toBe(STAGE_FILE.trim());
   });
 
+  it('keeps model and effort as written, after the access keys', () => {
+    const text = STAGE_FILE.replace(
+      'plan = true\nprompt = "Plan."',
+      'plan = true\nmodel = "opus"\neffort = "high"\nprompt = "Plan."'
+    ).replace('resume = "Lead"\nprompt', 'resume = "Lead"\neffort = "low"\nprompt');
+    const def = parseToForm(text);
+
+    expect(def.stages?.[0].agents[0]).toMatchObject({ model: 'opus', effort: 'high' });
+    expect(def.stages?.[1].agents[0]).toMatchObject({ model: undefined, effort: 'low' });
+    expect(formToToml(def).trim()).toBe(text.trim());
+  });
+
   it('keeps the old shape for an old file', () => {
     expect(formToToml(FULL)).toContain('[[agents]]');
     expect(formToToml(FULL)).not.toContain('stages');

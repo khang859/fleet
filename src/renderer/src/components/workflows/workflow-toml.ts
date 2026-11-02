@@ -41,7 +41,10 @@ function inputOf(raw: Record<string, unknown>): WorkflowInput {
   };
 }
 
-/** As in main: `resume` gives an agent the program and access of the named agent. */
+/**
+ * As in main: `resume` gives an agent the program and access of the named agent.
+ * Model and effort stay as written, so an unset one still follows that agent.
+ */
 function stageAgentOf(raw: Record<string, unknown>, earlier: WorkflowStageDef[]): WorkflowAgentDef {
   const resume = typeof raw.resume === 'string' ? raw.resume : undefined;
   const target = resume === undefined ? undefined : latestWithRole(earlier, resume);
@@ -52,7 +55,9 @@ function stageAgentOf(raw: Record<string, unknown>, earlier: WorkflowStageDef[])
     access: access ?? target?.access ?? 'read',
     talks: raw.talks === true ? true : undefined,
     plan: raw.plan === true ? true : undefined,
-    resume
+    resume,
+    model: typeof raw.model === 'string' ? raw.model : undefined,
+    effort: typeof raw.effort === 'string' ? raw.effort : undefined
   };
 }
 
@@ -104,9 +109,9 @@ function clean<T extends object>(value: T): Record<string, unknown> {
 
 /** A returning agent takes its program from its session, so the file does not repeat it. */
 function stageAgentToml(agent: WorkflowAgentDef): Record<string, unknown> {
-  const { role, program, access, talks, plan, resume, prompt } = agent;
+  const { role, program, access, talks, plan, resume, model, effort, prompt } = agent;
   const shown = resume === undefined ? program : undefined;
-  return clean({ role, program: shown, access, talks, plan, resume, prompt });
+  return clean({ role, program: shown, access, talks, plan, resume, model, effort, prompt });
 }
 
 function stageToml(stage: WorkflowStageDef): Record<string, unknown> {

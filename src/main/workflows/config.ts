@@ -11,6 +11,7 @@ import {
   type WorkflowScope,
   type WorkflowStageDef
 } from '../../shared/workflows';
+import { EFFORT_LEVELS, isEffortOf, MODEL_PATTERN } from '../../shared/workflow-models';
 
 /** Where a project keeps its workflows, from its root. */
 export const PROJECT_WORKFLOWS_DIR = join('.fleet', 'workflows');
@@ -48,7 +49,9 @@ const StageAgent = z.strictObject({
   access: z.enum(['read', 'write']).optional(),
   talks: z.boolean().optional(),
   plan: z.boolean().optional(),
-  resume: z.string().min(1).max(60).optional()
+  resume: z.string().min(1).max(60).optional(),
+  model: z.string().regex(MODEL_PATTERN, 'must be a model name, such as "opus"').optional(),
+  effort: z.string().min(1).max(20).optional()
 });
 
 const Stage = z.strictObject({
@@ -207,6 +210,10 @@ function resolveAgent(
   }
   const program = target?.program ?? agent.program;
   if (!program) problems.push(`${agent.role} needs a program.`);
+  if (program && agent.effort !== undefined && !isEffortOf(program, agent.effort)) {
+    const levels = EFFORT_LEVELS[program].join(', ');
+    problems.push(`${agent.role} has effort = "${agent.effort}", but ${program} takes ${levels}.`);
+  }
   const { access, ...rest } = agent;
   return { ...rest, program: program ?? 'pi', access: access ?? target?.access ?? 'read' };
 }

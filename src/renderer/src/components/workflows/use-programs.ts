@@ -17,3 +17,36 @@ export function usePrograms(open = true): Programs {
 
   return programs;
 }
+
+/** One ask per program for each app start. Pi reads its providers, so it is not free. */
+const modelLists = new Map<WorkflowProgram, Promise<string[]>>();
+
+async function modelsOf(program: WorkflowProgram): Promise<string[]> {
+  let list = modelLists.get(program);
+  if (!list) {
+    list = callWorkflows('models', program);
+    // A failed ask can be asked again.
+    list.catch(() => modelLists.delete(program));
+    modelLists.set(program, list);
+  }
+  return list;
+}
+
+/** The models to offer for a program, or null until the answer comes. */
+export function useModels(program: WorkflowProgram): string[] | null {
+  const [models, setModels] = useState<{ program: WorkflowProgram; list: string[] } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    modelsOf(program)
+      .then((list) => {
+        if (live) setModels({ program, list });
+      })
+      .catch(showWorkflowError);
+    return () => {
+      live = false;
+    };
+  }, [program]);
+
+  return models?.program === program ? models.list : null;
+}

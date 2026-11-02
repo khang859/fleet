@@ -1,5 +1,7 @@
 // The shapes shared by the main process and the renderer for Fleet Workflows.
 
+import type { ModelChoice } from './workflow-models';
+
 export type WorkflowProgram = 'pi' | 'claude';
 
 export type WorkflowInput = {
@@ -24,6 +26,10 @@ export type WorkflowAgentDef = {
   plan?: boolean;
   /** The role of an earlier agent whose session this agent goes on with. */
   resume?: string;
+  /** Only in a stage file. Unset uses the program default, or the `resume` agent's. */
+  model?: string;
+  /** Only in a stage file. A level from `EFFORT_LEVELS` for this program. */
+  effort?: string;
 };
 
 /** Agents in one stage run at the same time. The next stage waits for all of them. */
@@ -176,6 +182,10 @@ export type RunAgent = {
   buildMode?: PlanBuildMode;
   /** The role of the agent whose session this agent goes on with. */
   resumes?: string;
+  /** The model it starts with. Unset uses the program default. */
+  model?: string;
+  /** The effort level it starts with. Unset uses the program default. */
+  effort?: string;
 };
 
 export type PlanVersion = { version: number; path: string; at: number };
@@ -462,6 +472,8 @@ export type StartRunRequest = {
   trustIssue?: boolean;
   /** Program to use per agent role, when a program is not usable here. */
   programOverride?: WorkflowProgram;
+  /** Model and effort per agent role, for this run only. They replace the file's. */
+  modelChoices?: Record<string, ModelChoice>;
 };
 
 export type StartRunResult =
@@ -540,11 +552,17 @@ export type WorkflowsApi = {
   /** What is wrong in a file, in the words that Save would use. */
   check: (text: string) => string | null;
   savedAgents: (projectPath: string) => Promise<SavedAgent[]>;
-  startBuilder: (projectPath: string, program: WorkflowProgram) => Promise<BuilderStart>;
+  startBuilder: (
+    projectPath: string,
+    program: WorkflowProgram,
+    choice?: ModelChoice
+  ) => Promise<BuilderStart>;
   reopenBuilder: (projectPath: string, draftId: string) => Promise<BuilderStart>;
   builderInfo: (id: string) => BuilderInfo | null;
   draftsWithBuilder: (projectPath: string) => string[];
   programs: () => Promise<Record<WorkflowProgram, boolean>>;
+  /** The models to offer for a program. A person can also type any other. */
+  models: (program: WorkflowProgram) => Promise<string[]>;
   answerPlan: (runId: string, agentId: string, answer: PlanAnswer) => Promise<boolean>;
   readPlan: (runId: string, version: number) => string | null;
   retryPr: (runId: string) => Promise<void>;

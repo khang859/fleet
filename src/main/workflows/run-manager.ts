@@ -21,6 +21,7 @@ import {
   type WorkflowRun,
   type WorkflowStageDef
 } from '../../shared/workflows';
+import { effectiveChoices, type ModelChoice } from '../../shared/workflow-models';
 import { createLogger } from '../logger';
 import { agentCommandLine } from './agent-command';
 import { Board, boardText, type NewItem } from './board';
@@ -186,17 +187,28 @@ function newAgent(role: string, program: WorkflowProgram, isLast: boolean): RunA
   };
 }
 
-function stageAgent(def: WorkflowAgentDef, stage: number, isLast: boolean): RunAgent {
+function stageAgent(
+  def: WorkflowAgentDef,
+  choice: ModelChoice,
+  stage: number,
+  isLast: boolean
+): RunAgent {
   const agent: RunAgent = { ...newAgent(def.role, def.program, isLast), stage, access: def.access };
   if (def.talks) agent.talks = true;
   if (def.plan) agent.plan = true;
   if (def.resume) agent.resumes = def.resume;
+  if (choice.model) agent.model = choice.model;
+  if (choice.effort) agent.effort = choice.effort;
   return agent;
 }
 
 function runAgents(def: WorkflowDef): RunAgent[] {
-  return stagesOf(def).flatMap((stage, index) =>
-    stage.agents.map((agent) => stageAgent(agent, index, runsLast(def, index)))
+  const stages = stagesOf(def);
+  const choices = effectiveChoices(stages);
+  return stages.flatMap((stage, index) =>
+    stage.agents.map((agent, at) =>
+      stageAgent(agent, choices[index][at], index, runsLast(def, index))
+    )
   );
 }
 
@@ -610,7 +622,9 @@ export class WorkflowRunManager {
       addDir:
         inStageFile && agent.program === 'claude' ? this.deps.store.folder(run.id) : undefined,
       talks: agent.talks,
-      permissionMode: inStageFile ? permissionModeOf(run, agent) : undefined
+      permissionMode: inStageFile ? permissionModeOf(run, agent) : undefined,
+      model: agent.model,
+      effort: agent.effort
     });
   }
 

@@ -220,6 +220,27 @@ describe('WorkflowBuilder', () => {
     expect(opened[1].line).toContain('--append-system-prompt-file');
   });
 
+  it('starts with the chosen model and effort, and keeps them after a restart', async () => {
+    await builder.start(project, 'claude', { model: 'opus', effort: 'max' });
+    const { paneId } = opened[0];
+    builder.onSession(paneId, { id: 'chat-1', transcriptPath: null });
+    builder.saveDraft(paneId, FIRST);
+    builder.onPaneClosed(paneId);
+
+    await new WorkflowBuilder(deps).reopen(project, 'my-flow');
+
+    expect(opened[0].line).toContain(`'--model' 'opus' '--effort' 'max'`);
+    expect(opened[1].line).toContain(`'--model' 'opus' '--effort' 'max'`);
+  });
+
+  it('refuses a level the program does not take', async () => {
+    expect(await builder.start(project, 'claude', { effort: 'off' })).toEqual({
+      ok: false,
+      message: 'effort must be one of low, medium, high, xhigh, max.'
+    });
+    expect(opened).toEqual([]);
+  });
+
   it('shows the open pane when the draft is open already', async () => {
     await builder.start(project, 'pi');
     builder.saveDraft(opened[0].paneId, FIRST);

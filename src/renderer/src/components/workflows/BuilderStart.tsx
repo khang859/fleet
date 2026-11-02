@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import type { ModelChoice } from '../../../../shared/workflow-models';
 import type { WorkflowProgram } from '../../../../shared/workflows';
 import { callWorkflows } from '../../store/workflows-store';
 import { Overlay } from '../Overlay';
+import { ModelFields } from './agent-fields';
 import { usePrograms } from './use-programs';
 import { Button } from './parts';
 
@@ -27,7 +29,7 @@ function whyNot(program: WorkflowProgram, installed: boolean): string | null {
   return installed ? null : 'It is not installed.';
 }
 
-/** The program is a start choice, because a running pane cannot change it. */
+/** Program, model and effort are start choices, because a running pane cannot change them. */
 export function BuilderStart({
   open,
   projectPath,
@@ -39,10 +41,17 @@ export function BuilderStart({
 }): React.JSX.Element {
   const programs = usePrograms(open);
   const [program, setProgram] = useState<WorkflowProgram>(IS_WINDOWS ? 'pi' : 'claude');
+  const [choice, setChoice] = useState<ModelChoice>({});
   const [problem, setProblem] = useState<string | null>(null);
 
+  const pickProgram = (next: WorkflowProgram): void => {
+    // Each program has its own models, so a new program starts from its defaults.
+    if (next !== program) setChoice({});
+    setProgram(next);
+  };
+
   const start = async (): Promise<void> => {
-    const reply = await callWorkflows('startBuilder', projectPath, program);
+    const reply = await callWorkflows('startBuilder', projectPath, program, choice);
     if (reply.ok) onClose();
     else setProblem(reply.message);
   };
@@ -59,13 +68,13 @@ export function BuilderStart({
         your code in this pane. You see each draft beside it, and you approve the file.
       </p>
       <div className="mt-3 space-y-1.5" role="radiogroup" aria-label="Program">
-        {CHOICES.map((choice) => {
-          const blocked = whyNot(choice.program, programs[choice.program]);
+        {CHOICES.map((option) => {
+          const blocked = whyNot(option.program, programs[option.program]);
           return (
             <label
-              key={choice.program}
+              key={option.program}
               className={`flex items-start gap-2 rounded-md border p-2 ${
-                program === choice.program ? 'border-[var(--fleet-accent)]' : 'border-fleet-border'
+                program === option.program ? 'border-[var(--fleet-accent)]' : 'border-fleet-border'
               } ${blocked ? 'opacity-60' : ''}`}
             >
               <input
@@ -73,18 +82,21 @@ export function BuilderStart({
                 name="builder-program"
                 className="mt-0.5"
                 disabled={blocked !== null}
-                checked={program === choice.program}
-                onChange={() => setProgram(choice.program)}
+                checked={program === option.program}
+                onChange={() => pickProgram(option.program)}
               />
               <span>
-                <span className="block text-xs text-fleet-text">{choice.label}</span>
+                <span className="block text-xs text-fleet-text">{option.label}</span>
                 <span className="block text-[11px] text-fleet-text-subtle">
-                  {blocked ?? choice.detail}
+                  {blocked ?? option.detail}
                 </span>
               </span>
             </label>
           );
         })}
+      </div>
+      <div className="mt-3">
+        <ModelFields program={program} value={choice} onChange={setChoice} />
       </div>
       {IS_WINDOWS && (
         <p className="mt-2 text-[11px] text-fleet-text-subtle">
