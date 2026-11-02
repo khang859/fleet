@@ -1,5 +1,9 @@
 import { createLogger } from '../logger';
-import type { PermissionSuggestion } from '../../shared/claude-sessions';
+import {
+  sessionKey,
+  type PermissionSuggestion,
+  type SessionRef
+} from '../../shared/claude-sessions';
 
 const log = createLogger('claude-sessions:permission-broker');
 
@@ -30,7 +34,7 @@ export type HeldRequest = {
   onGone(cb: () => void): void;
 };
 
-type Held = { sessionId: string; request: HeldRequest };
+type Held = { session: SessionRef; request: HeldRequest };
 
 /**
  * Keeps the permission requests waiting on an answer from Fleet, and delivers
@@ -45,19 +49,19 @@ export class PermissionBroker {
 
   constructor(
     private readonly onReleased: (
-      sessionId: string,
+      session: SessionRef,
       toolUseId: string,
       answer: PermissionAnswer | null
     ) => void
   ) {}
 
-  hold(sessionId: string, toolUseId: string, request: HeldRequest): void {
+  hold(session: SessionRef, toolUseId: string, request: HeldRequest): void {
     // A request already held under the id is one Fleet can no longer answer.
     this.held.get(toolUseId)?.request.discard();
-    this.held.set(toolUseId, { sessionId, request });
+    this.held.set(toolUseId, { session, request });
     request.onGone(() => {
       if (this.held.get(toolUseId)?.request !== request) return;
-      log.info('permission asker went away', { toolUseId, sessionId });
+      log.info('permission asker went away', { toolUseId, sessionId: session.sessionId });
       this.release(toolUseId, null);
     });
     log.debug('holding permission', { toolUseId });
@@ -68,8 +72,8 @@ export class PermissionBroker {
   }
 
   /** Every request held now. */
-  list(): Array<{ sessionId: string; toolUseId: string }> {
-    return [...this.held].map(([toolUseId, h]) => ({ sessionId: h.sessionId, toolUseId }));
+  list(): Array<{ session: SessionRef; toolUseId: string }> {
+    return [...this.held].map(([toolUseId, h]) => ({ session: h.session, toolUseId }));
   }
 
   /** Stop holding one request without an answer, so the runtime's own prompt takes it. */
@@ -110,9 +114,10 @@ export class PermissionBroker {
    * the event stream already said they are settled (the tool ran, or the turn
    * ended), typically because the user answered in the terminal.
    */
-  retainOnly(sessionId: string, toolUseIds: ReadonlySet<string>): void {
+  retainOnly(session: SessionRef, toolUseIds: ReadonlySet<string>): void {
+    const key = sessionKey(session);
     for (const [toolUseId, pending] of this.held) {
-      if (pending.sessionId !== sessionId || toolUseIds.has(toolUseId)) continue;
+      if (sessionKey(pending.session) !== key || toolUseIds.has(toolUseId)) continue;
       this.held.delete(toolUseId);
       pending.request.discard();
     }
@@ -132,6 +137,6 @@ export class PermissionBroker {
     const pending = this.held.get(toolUseId);
     if (!pending) return;
     this.held.delete(toolUseId);
-    this.onReleased(pending.sessionId, toolUseId, answer);
+    this.onReleased(pending.session, toolUseId, answer);
   }
 }

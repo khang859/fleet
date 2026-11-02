@@ -12,9 +12,10 @@ import { GoToTerminalButton } from './GoToTerminalButton';
 import { ModeLabel } from './ModeLabel';
 import { sessionStatus, statusLabel } from '../lib/sessions';
 import { RUNTIMES } from '../../../../shared/session-runtimes';
+import { sessionKey } from '../../../../shared/claude-sessions';
 
 export function SessionDetail(): React.JSX.Element | null {
-  const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
+  const selected = useCopilotStore((s) => s.selected);
   const sessions = useCopilotStore((s) => s.sessions);
   const backToList = useCopilotStore((s) => s.backToList);
   const chatMessages = useCopilotStore((s) => s.chatMessages);
@@ -27,7 +28,7 @@ export function SessionDetail(): React.JSX.Element | null {
   // Follow new messages only while the end is in view, so reading back is not interrupted.
   const atBottomRef = useRef(true);
 
-  const session = sessions.find((s) => s.sessionId === selectedSessionId);
+  const session = selected && sessions.find((s) => sessionKey(s) === sessionKey(selected));
   // Depend on the identity fields, not the object: `sessions` is rebuilt on every store
   // update, so keying the effect on `session` itself would refetch the history constantly.
   const sessionId = session?.sessionId;
@@ -59,7 +60,7 @@ export function SessionDetail(): React.JSX.Element | null {
     if (!text || !session) return;
     setInputText('');
     // Refused while the user has text in the terminal or is typing there: keep it.
-    if (!(await sendMessage(session.sessionId, text))) setInputText(text);
+    if (!(await sendMessage(session, text))) setInputText(text);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -116,7 +117,7 @@ export function SessionDetail(): React.JSX.Element | null {
           </div>
           <ModeLabel mode={session.permissionMode} />
           <span className="text-xs text-neutral-500 shrink-0">{label}</span>
-          <GoToTerminalButton sessionId={session.sessionId} />
+          <GoToTerminalButton session={session} />
         </div>
 
         {/* Pending permissions */}
@@ -125,11 +126,7 @@ export function SessionDetail(): React.JSX.Element | null {
             <div className="text-xs font-medium text-amber-400 mb-1.5">Needs permission</div>
             <div className="flex flex-col gap-3">
               {session.pendingPermissions.map((perm) => (
-                <PermissionRequest
-                  key={perm.toolUseId}
-                  sessionId={session.sessionId}
-                  permission={perm}
-                />
+                <PermissionRequest key={perm.toolUseId} session={session} permission={perm} />
               ))}
             </div>
           </div>

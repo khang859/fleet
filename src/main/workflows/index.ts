@@ -78,7 +78,8 @@ export type WorkflowsDeps = {
   openFolders: () => string[];
   tokenOf: (paneId: string) => string | undefined;
   lastOutputAt: (paneId: string) => number;
-  sendPrompt: (sessionId: string, text: string) => Promise<boolean>;
+  /** `paneId` picks the pane when the conversation runs in more than one. */
+  sendPrompt: (sessionId: string, text: string, paneId?: string) => Promise<boolean>;
   /** Claims permission requests, until the returned function is called. */
   addPermissionAnswerer: () => () => void;
   answerPermission: (
@@ -392,7 +393,7 @@ export class WorkflowsService implements BridgeHandler {
   private remindClaude(paneId: string, sessionId: string): void {
     const reminder = this.runs.onTurnEnd(paneId);
     if (!reminder) return;
-    void this.deps.sendPrompt(sessionId, reminder).catch((err: unknown) => {
+    void this.deps.sendPrompt(sessionId, reminder, paneId).catch((err: unknown) => {
       log.warn('a reminder was not sent', { error: String(err) });
     });
   }

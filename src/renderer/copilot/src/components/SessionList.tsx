@@ -10,7 +10,7 @@ import { PermissionRequest } from './PermissionRequest';
 import { GoToTerminalButton } from './GoToTerminalButton';
 import { ModeLabel } from './ModeLabel';
 import { sessionStatus, sortSessions, statusLabel } from '../lib/sessions';
-import { formatAge } from '../../../../shared/claude-sessions';
+import { formatAge, sessionKey } from '../../../../shared/claude-sessions';
 import { useNow } from '../lib/use-now';
 
 export function SessionList(): React.JSX.Element {
@@ -107,18 +107,18 @@ export function SessionList(): React.JSX.Element {
               const waited = formatAge(now - session.phaseSince);
               return (
                 <div
-                  key={session.sessionId}
+                  key={sessionKey(session)}
                   role="button"
                   tabIndex={0}
                   className="flex flex-col px-3 border-b border-neutral-800 cursor-pointer hover:bg-neutral-800/50 transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset"
                   style={{ minHeight: 44 }}
-                  onClick={() => selectSession(session.sessionId)}
+                  onClick={() => selectSession(session)}
                   onKeyDown={(e) => {
                     // Keys on the buttons inside the row are theirs, and must still reach the panel's Y / N / Escape.
                     if (e.target !== e.currentTarget) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      selectSession(session.sessionId);
+                      selectSession(session);
                     }
                   }}
                 >
@@ -157,13 +157,13 @@ export function SessionList(): React.JSX.Element {
                           {label} for {waited}
                         </TooltipContent>
                       </Tooltip>
-                      <GoToTerminalButton sessionId={session.sessionId} />
+                      <GoToTerminalButton session={session} />
                     </div>
                   </div>
 
                   {session.pendingPermissions.map((perm) => (
                     <div key={perm.toolUseId} className="pb-2">
-                      <PermissionRequest sessionId={session.sessionId} permission={perm} compact />
+                      <PermissionRequest session={session} permission={perm} compact />
                     </div>
                   ))}
                 </div>

@@ -51,7 +51,7 @@ function ToolUseBlock({
 }
 
 function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): React.JSX.Element {
-  const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
+  const selected = useCopilotStore((s) => s.selected);
   const sendMessage = useCopilotStore((s) => s.sendMessage);
   const rawQuestion = input['question'];
   const question = typeof rawQuestion === 'string' ? rawQuestion : 'Claude needs your input';
@@ -64,13 +64,13 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
     : [];
 
   const handleSelect = (index: number): void => {
-    if (!selectedSessionId) return;
-    void sendMessage(selectedSessionId, String(index + 1));
+    if (!selected) return;
+    void sendMessage(selected, String(index + 1));
   };
 
   const handleGoToTerminal = (): void => {
-    if (selectedSessionId) {
-      void window.copilot.focusTerminal(selectedSessionId);
+    if (selected) {
+      void window.copilot.focusTerminal(selected);
     }
   };
 

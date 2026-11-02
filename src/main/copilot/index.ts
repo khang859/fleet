@@ -120,7 +120,8 @@ async function startCopilotServices(): Promise<void> {
     // Only the session that changed can have new chat; the rest were read already.
     if (!conversationReader?.getWatchedSessionIds().includes(sessionId)) return;
     if (session) conversationReader.refresh(sessionId);
-    else conversationReader.unwatch(sessionId);
+    // Another pane may still run the conversation, and its chat is still read.
+    else if (!registry.get(sessionId)) conversationReader.unwatch(sessionId);
   });
   unsubscribe = () => {
     stopSessionPush();

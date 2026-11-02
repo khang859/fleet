@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
 import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
 import type { CopilotApi } from '../../../../preload/copilot';
-import type { PlanApprovalMode } from '../../../../shared/claude-sessions';
+import {
+  sessionKey,
+  type PlanApprovalMode,
+  type SessionRef
+} from '../../../../shared/claude-sessions';
 import { firstOpenPermission, sortSessions, turnFinished } from '../lib/sessions';
 
 const log = createLogger('store');
@@ -25,7 +29,8 @@ let celebrateTimer = 0;
 type CopilotStoreState = {
   expanded: boolean;
   view: CopilotView;
-  selectedSessionId: string | null;
+  /** The session the detail view shows. */
+  selected: SessionRef | null;
 
   sessions: CopilotSession[];
   settings: CopilotSettings | null;
@@ -47,7 +52,7 @@ type CopilotStoreState = {
   setExpanded: (expanded: boolean) => void;
   toggleExpanded: () => void;
   setView: (view: CopilotView) => void;
-  selectSession: (sessionId: string) => void;
+  selectSession: (session: SessionRef) => void;
   backToList: () => void;
 
   setSessions: (sessions: CopilotSession[]) => void;
@@ -75,13 +80,13 @@ type CopilotStoreState = {
 
   loadChatHistory: (sessionId: string, cwd: string) => Promise<void>;
   setChatMessages: (sessionId: string, messages: CopilotChatMessage[]) => void;
-  sendMessage: (sessionId: string, message: string) => Promise<boolean>;
+  sendMessage: (session: SessionRef, message: string) => Promise<boolean>;
 };
 
 export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   expanded: false,
   view: 'sessions',
-  selectedSessionId: null,
+  selected: null,
 
   sessions: [],
   settings: null,
@@ -110,12 +115,12 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
 
   setView: (view) => set({ view }),
 
-  selectSession: (sessionId) => {
-    log.debug('selectSession', { sessionId });
-    set({ selectedSessionId: sessionId, view: 'detail' });
+  selectSession: ({ sessionId, paneId }) => {
+    log.debug('selectSession', { sessionId, paneId });
+    set({ selected: { sessionId, paneId }, view: 'detail' });
   },
 
-  backToList: () => set({ view: 'sessions', selectedSessionId: null, chatMessages: [] }),
+  backToList: () => set({ view: 'sessions', selected: null, chatMessages: [] }),
 
   setSessions: (sessions) => {
     const { sessions: previous, permissionStatus } = get();
@@ -146,10 +151,10 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   },
 
   topPermissionId: () => {
-    const { view, selectedSessionId, sessions, permissionStatus } = get();
+    const { view, selected, sessions, permissionStatus } = get();
     const candidates =
       view === 'detail'
-        ? sessions.filter((s) => s.sessionId === selectedSessionId)
+        ? sessions.filter((s) => selected && sessionKey(s) === sessionKey(selected))
         : view === 'sessions'
           ? [...get().filteredSessions()].sort(sortSessions)
           : [];
@@ -217,7 +222,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   loadChatHistory: async (sessionId, cwd) => {
     set({ chatLoading: true });
     const messages = await window.copilot.getChatHistory(sessionId, cwd);
-    if (get().selectedSessionId === sessionId) {
+    if (get().selected?.sessionId === sessionId) {
       set({ chatMessages: messages, chatLoading: false });
     } else {
       set({ chatLoading: false });
@@ -225,12 +230,12 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   },
 
   setChatMessages: (sessionId, messages) => {
-    if (get().selectedSessionId === sessionId) {
+    if (get().selected?.sessionId === sessionId) {
       set({ chatMessages: messages });
     }
   },
 
-  sendMessage: async (sessionId, message) => {
-    return window.copilot.sendMessage(sessionId, message);
+  sendMessage: async (session, message) => {
+    return window.copilot.sendMessage(session, message);
   }
 }));

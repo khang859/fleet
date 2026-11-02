@@ -47,11 +47,14 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     socketPath = join(dir, 'hook.sock');
     received = [];
     released = [];
-    broker = new PermissionBroker((sessionId, toolUseId) => released.push([sessionId, toolUseId]));
+    broker = new PermissionBroker((session, toolUseId) =>
+      released.push([session.sessionId, toolUseId])
+    );
     server = new HookServer((event: HookEvent, client: Socket) => {
       received.push(event);
       if (event.status !== 'waiting_for_approval' || !event.toolUseId) return false;
-      broker.hold(event.sessionId, event.toolUseId, new SocketHold(client, 200));
+      const session = { sessionId: event.sessionId, paneId: 'pane-1' };
+      broker.hold(session, event.toolUseId, new SocketHold(client, 200));
       return true;
     }, socketPath);
     await server.start();
@@ -171,9 +174,12 @@ describe.skipIf(process.platform === 'win32')('HookServer', () => {
     const reply = sendEvent(socketPath, permission);
     await vi.waitFor(() => expect(broker.has('tu-1')).toBe(true));
 
-    broker.retainOnly('other-session', new Set());
+    broker.retainOnly({ sessionId: 'other-session', paneId: 'pane-1' }, new Set());
     expect(broker.has('tu-1')).toBe(true);
-    broker.retainOnly('s1', new Set());
+    // The same conversation resumed in another pane is another session.
+    broker.retainOnly({ sessionId: 's1', paneId: 'pane-2' }, new Set());
+    expect(broker.has('tu-1')).toBe(true);
+    broker.retainOnly({ sessionId: 's1', paneId: 'pane-1' }, new Set());
     expect(broker.has('tu-1')).toBe(false);
     await expect(reply).resolves.toBe('');
     expect(released).toEqual([]);

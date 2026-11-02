@@ -259,6 +259,9 @@ describe.skipIf(process.platform === 'win32')('PermissionBridge', () => {
     expect(bridge.asked(goHook('s1', { content: 'x', file_path: '/repo/a' }))).toBe(true);
     expect(bridge.asked(goHook('s1', { content: 'y', file_path: '/repo/a' }))).toBe(false);
     expect(bridge.asked(goHook('s2', { content: 'x', file_path: '/repo/a' }))).toBe(false);
+    // The same conversation resumed in another pane is another Claude, asking on its own.
+    const otherPane = { ...goHook('s1', { content: 'x', file_path: '/repo/a' }), paneId: 'pane-9' };
+    expect(bridge.asked(otherPane)).toBe(false);
     held().letGo();
     expect((await reply).status).toBe(409);
   });

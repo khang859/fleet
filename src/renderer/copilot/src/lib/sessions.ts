@@ -1,5 +1,5 @@
 import type { CopilotSession } from '../../../../shared/types';
-import { needsUser } from '../../../../shared/claude-sessions';
+import { needsUser, sessionKey } from '../../../../shared/claude-sessions';
 
 export type SessionStatus = 'idle' | 'running' | 'permission' | 'complete';
 
@@ -63,9 +63,9 @@ export function firstOpenPermission(
 
 /** True when a session that was working is now back at its prompt. */
 export function turnFinished(prev: CopilotSession[], next: CopilotSession[]): boolean {
-  const before = new Map(prev.map((s) => [s.sessionId, s]));
+  const before = new Map(prev.map((s) => [sessionKey(s), s]));
   return next.some((s) => {
-    const old = before.get(s.sessionId);
+    const old = before.get(sessionKey(s));
     return (
       old !== undefined &&
       isWorking(old) &&

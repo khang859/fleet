@@ -81,6 +81,11 @@ export type ClaudePendingPermission = {
 /** The program a tracked session runs; `RUNTIMES` says how each differs. */
 export type SessionRuntime = 'claude' | 'eva' | 'pi';
 
+/**
+ * One tracked session: a conversation running in one pane. The same
+ * conversation resumed in two panes runs as two Claude processes, so it is two
+ * sessions with one `sessionId`; their pane tells them apart.
+ */
 export type ClaudeSession = {
   sessionId: string;
   runtime: SessionRuntime;
@@ -155,6 +160,7 @@ export type HookFolderStatus =
  */
 export type ClaudeSessionChange = {
   sessionId: string;
+  paneId: string;
   session: ClaudeSession | null;
   event: ClaudeSessionEvent | null;
 };
@@ -213,6 +219,14 @@ export type ClaudeSessionsSnapshot = {
   /** One per pane: a session run by a tool inside a pane is left out. */
   sessions: ClaudeSessionView[];
 };
+
+/** Which tracked session: its conversation and the pane it runs in. */
+export type SessionRef = Pick<ClaudeSession, 'sessionId' | 'paneId'>;
+
+/** What tells one tracked session from every other, as a string. */
+export function sessionKey(session: SessionRef): string {
+  return `${session.paneId}:${session.sessionId}`;
+}
 
 /** Whether the session is held up on the user: a permission or a question. */
 export function needsUser(session: ClaudeSession): boolean {

@@ -15,7 +15,11 @@ function ask(toolName: string, toolInput: Record<string, unknown>): CopilotPendi
 
 function render(permission: CopilotPendingPermission, compact = false): string {
   return renderToStaticMarkup(
-    createElement(PermissionRequest, { sessionId: 's1', permission, compact })
+    createElement(PermissionRequest, {
+      session: { sessionId: 's1', paneId: 'pane-1' },
+      permission,
+      compact
+    })
   );
 }
 

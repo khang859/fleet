@@ -27,8 +27,9 @@ function session(overrides: Partial<ClaudeSession> = {}): ClaudeSession {
   };
 }
 
-const change = (s: ClaudeSession | null, sessionId = s?.sessionId ?? 'session-1') => ({
-  sessionId,
+const change = (s: ClaudeSession | null) => ({
+  sessionId: s?.sessionId ?? 'session-1',
+  paneId: s?.paneId ?? 'pane-1',
   session: s,
   event: null
 });
@@ -81,12 +82,15 @@ describe('PaneActivityBridge', () => {
     expect(setHookState).not.toHaveBeenCalled();
   });
 
-  it('follows a session that moved to another pane', () => {
+  it('keeps a pane when the same conversation ends in another pane', () => {
     const { bridge, setHookState } = setup();
     bridge.apply(change(session()));
-    bridge.apply(change(session({ paneId: 'pane-2' })));
-    expect(setHookState).toHaveBeenCalledWith('pane-1', null);
-    expect(setHookState).toHaveBeenLastCalledWith('pane-2', 'working', 4242);
+    bridge.apply(change(session({ paneId: 'pane-2', pid: 5000 })));
+    setHookState.mockClear();
+
+    bridge.apply(change(session({ paneId: 'pane-2', phase: 'ended' })));
+
+    expect(setHookState.mock.calls).toEqual([['pane-2', null]]);
   });
 
   it('releases every pane on clear', () => {

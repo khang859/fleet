@@ -1,4 +1,8 @@
-import type { ClaudeSession, ClaudeSessionChange } from '../../shared/claude-sessions';
+import {
+  sessionKey,
+  type ClaudeSession,
+  type ClaudeSessionChange
+} from '../../shared/claude-sessions';
 import { RUNTIMES } from '../../shared/session-runtimes';
 import type { PromptBridge } from './prompt-bridge';
 import { hashPrompt } from './registry';
@@ -52,7 +56,8 @@ export type SendResult =
   | { ok: false; reason: string };
 
 export type PromptInputDeps = {
-  session(sessionId: string): ClaudeSession | undefined;
+  /** The session in a pane, or without one the session `registry.get` picks. */
+  session(sessionId: string, paneId?: string): ClaudeSession | undefined;
   subscribe(listener: (change: ClaudeSessionChange) => void): () => void;
   write(paneId: string, data: string): void;
   /** The fleet-bridge mod's end, which takes a prompt for a session whose mod is waiting. */
@@ -145,7 +150,7 @@ function busyReason(session: ClaudeSession): string | null {
 /** The single way Fleet types a prompt into a Claude Code session: the copilot's chat. */
 export class PromptInput {
   private readonly drafts = new Map<string, Draft>();
-  /** Sessions a prompt is being typed into right now. */
+  /** Sessions a prompt is being typed into right now, by `sessionKey`. */
   private readonly sending = new Set<string>();
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -181,12 +186,12 @@ export class PromptInput {
    * Type `text` into the session and submit it, or refuse without writing
    * anything. `text` is sent as given, after cleaning.
    */
-  async send(sessionId: string, text: string): Promise<SendResult> {
-    const clean = cleanPrompt(text);
-    const reason = this.refusal(sessionId) ?? promptProblem(clean);
-    if (reason !== null) return { ok: false, reason };
-    const session = this.deps.session(sessionId);
+  async send(sessionId: string, text: string, paneId?: string): Promise<SendResult> {
+    const session = this.deps.session(sessionId, paneId);
     if (!session) return { ok: false, reason: 'That session is not running in a Fleet pane.' };
+    const clean = cleanPrompt(text);
+    const reason = this.refusal(session) ?? promptProblem(clean);
+    if (reason !== null) return { ok: false, reason };
     const { label, maxPromptBytes, promptDelivery } = RUNTIMES[session.runtime];
     if (maxPromptBytes !== undefined && Buffer.byteLength(clean) > maxPromptBytes) {
       return {
@@ -195,11 +200,12 @@ export class PromptInput {
       };
     }
 
-    this.sending.add(sessionId);
-    const ack = this.watchAck(sessionId, hashPrompt(clean));
+    const key = sessionKey(session);
+    this.sending.add(key);
+    const ack = this.watchAck(session, hashPrompt(clean));
     try {
       // In the same tick as `refusal`, so a mod that let the draft through is still waiting.
-      if (!this.deps.bridge?.deliver(sessionId, clean)) {
+      if (!this.deps.bridge?.deliver(session, clean)) {
         if (promptDelivery === 'paste') {
           this.deps.write(session.paneId, `${PASTE_START}${clean}${PASTE_END}`);
         } else await this.type(session.paneId, clean);
@@ -211,7 +217,7 @@ export class PromptInput {
       return { ok: true, confirmed: heard === 'match', text: clean };
     } finally {
       ack.stop();
-      this.sending.delete(sessionId);
+      this.sending.delete(key);
     }
   }
 
@@ -219,18 +225,16 @@ export class PromptInput {
    * Why a prompt could not be typed into the session right now, or `null` when
    * it could.
    */
-  private refusal(sessionId: string): string | null {
-    const session = this.deps.session(sessionId);
-    if (!session) return 'That session is not running in a Fleet pane.';
+  private refusal(session: ClaudeSession): string | null {
     const busy = busyReason(session);
     if (busy) return `Not sent: ${busy}.`;
     // The mod submits a prompt of its own and leaves the draft in the box alone.
-    if (!this.deps.bridge?.has(sessionId)) {
+    if (!this.deps.bridge?.has(session)) {
       const draft = this.draft(session.paneId);
       if (draft.dirty) return 'Not sent: the user has typed text in that pane and not sent it yet.';
       if (this.now() - draft.keyAt < QUIET_MS) return 'Not sent: the user is typing in that pane.';
     }
-    if (this.sending.has(sessionId)) {
+    if (this.sending.has(sessionKey(session))) {
       return 'Not sent: another prompt is being typed into that session.';
     }
     return null;
@@ -257,14 +261,15 @@ export class PromptInput {
    * and its `UserPromptSubmit` acknowledges as before.
    */
   private watchAck(
-    sessionId: string,
+    session: ClaudeSession,
     hash: string
   ): { wait: () => Promise<Heard>; stop: () => void } {
+    const key = sessionKey(session);
     let matched = false;
     let mismatched = false;
     let wake: (() => void) | null = null;
     const stop = this.deps.subscribe((change) => {
-      if (change.sessionId !== sessionId || change.event?.event !== 'UserPromptSubmit') return;
+      if (sessionKey(change) !== key || change.event?.event !== 'UserPromptSubmit') return;
       const got = change.event.promptHash;
       if (got !== undefined && got !== hash) {
         mismatched = true;

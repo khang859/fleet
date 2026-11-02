@@ -38,6 +38,7 @@ describe('PromptInput', () => {
   let current: ClaudeSession | undefined;
   let now: number;
   let writes: string[];
+  let writtenPanes: Set<string>;
   let sleeps: number[];
   let listeners: Set<(change: ClaudeSessionChange) => void>;
   let ackOnSubmit: boolean;
@@ -52,6 +53,7 @@ describe('PromptInput', () => {
     for (const l of [...listeners]) {
       l({
         sessionId: s?.sessionId ?? 's1',
+        paneId: s?.paneId ?? 'pane-1',
         session: s ?? null,
         event: {
           seq: 1,
@@ -71,6 +73,7 @@ describe('PromptInput', () => {
     current = session();
     now = 100_000;
     writes = [];
+    writtenPanes = new Set();
     sleeps = [];
     listeners = new Set();
     ackOnSubmit = true;
@@ -79,12 +82,16 @@ describe('PromptInput', () => {
     delivered = [];
     let typed = '';
     input = new PromptInput({
-      session: (id) => (current?.sessionId === id ? current : undefined),
+      session: (id, pane) =>
+        current?.sessionId === id && (pane === undefined || pane === current.paneId)
+          ? current
+          : undefined,
       subscribe: (l) => {
         listeners.add(l);
         return () => listeners.delete(l);
       },
-      write: (_pane, data) => {
+      write: (pane, data) => {
+        writtenPanes.add(pane);
         writes.push(data);
         if (data !== '\r') {
           typed += data;
@@ -95,9 +102,9 @@ describe('PromptInput', () => {
         typed = '';
       },
       bridge: {
-        has: (id) => waiting.has(id),
-        deliver: (id, text) => {
-          if (!waiting.delete(id)) return false;
+        has: (s) => waiting.has(s.sessionId),
+        deliver: (s, text) => {
+          if (!waiting.delete(s.sessionId)) return false;
           delivered.push(text);
           // The mod submits it, and Claude Code acknowledges as for a typed one.
           if (ackOnSubmit) emit('UserPromptSubmit', current, submitHash(text));
@@ -254,6 +261,19 @@ describe('PromptInput', () => {
       ok: false,
       reason: expect.stringContaining('not running in a Fleet pane')
     });
+  });
+
+  it('sends to the pane it is told, when the conversation runs in more than one', async () => {
+    current = session({ paneId: 'pane-2' });
+
+    expect(await input.send('s1', 'hello', 'pane-1')).toEqual({
+      ok: false,
+      reason: expect.stringContaining('not running in a Fleet pane')
+    });
+    expect(writes).toEqual([]);
+
+    expect(await input.send('s1', 'hello', 'pane-2')).toMatchObject({ ok: true });
+    expect([...writtenPanes]).toEqual(['pane-2']);
   });
 
   it('refuses while the user has unsent text in the pane, until it is sent or cleared', async () => {

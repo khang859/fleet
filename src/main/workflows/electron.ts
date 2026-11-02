@@ -59,7 +59,8 @@ export function createWorkflows(host: WorkflowsHost): WorkflowsService {
     openFolders: () => ptyManager.paneIds().flatMap((paneId) => ptyManager.getCwd(paneId) ?? []),
     tokenOf: (paneId) => ptyManager.tokenOf(paneId),
     lastOutputAt: (paneId) => activityTracker.lastOutputAt(paneId),
-    sendPrompt: async (sessionId, text) => (await claudeSessions.sendPrompt(sessionId, text)).ok,
+    sendPrompt: async (sessionId, text, paneId) =>
+      (await claudeSessions.sendPrompt(sessionId, text, paneId)).ok,
     addPermissionAnswerer: () => claudeSessions.addPermissionAnswerer(),
     answerPermission: (toolUseId, decision, reason, mode) =>
       claudeSessions.respondToPermission(toolUseId, decision, reason, undefined, mode),

@@ -30,9 +30,10 @@ async function ask($: EngineInterface, loop: Loop, socketPath: string): Promise<
     if (session === loop.ending) return SWITCH_MS;
     // Only the id that just ended is stale: a resume may come back to an older one.
     loop.ending = undefined;
-    const res = await $.http.fetch(`http://fleet/prompt?session=${encodeURIComponent(session)}`, {
-      socketPath
-    });
+    // By pane too: the same conversation resumed in another pane has a mod of its own there.
+    const pane = await $.env.get('FLEET_PANE_ID');
+    const query = new URLSearchParams({ session, ...(pane && { pane }) });
+    const res = await $.http.fetch(`http://fleet/prompt?${query}`, { socketPath });
     if (res.status === 200) {
       const { text } = JSON.parse(res.text) as { text: string };
       await $.prompt.submit({ text, asUser: true });
