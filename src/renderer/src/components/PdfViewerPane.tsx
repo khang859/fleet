@@ -8,6 +8,7 @@ import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import { formatSize, getBasename } from '../lib/file-display';
 import { createCancellation } from '../lib/cancellation';
+import { PdfRangeTransport } from '../lib/pdf-range-transport';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -87,11 +88,16 @@ export function PdfViewerPane({
       try {
         // Read over IPC, not by URL: pdf.js only fetches http(s), and Chromium
         // blocks its XHR fallback on a custom scheme, from any origin.
-        const file = await window.fleet.file.readBinary(filePath, pathContext);
-        if (run.isCancelled()) return;
-        if (!file.success || !file.data) throw new Error(file.error);
+        const range = new PdfRangeTransport(stat.data.size, filePath, pathContext, () => {
+          if (run.isCancelled()) return;
+          setError('Failed to read PDF');
+          setLoading(false);
+        });
         loadingTask = pdfjs.getDocument({
-          data: Uint8Array.from(atob(file.data.base64), (char) => char.charCodeAt(0)),
+          range,
+          // Read only what the open page needs, not the rest in the background.
+          disableAutoFetch: true,
+          disableStream: true,
           cMapUrl: CMAP_URL,
           cMapPacked: true,
           standardFontDataUrl: STANDARD_FONT_DATA_URL,
@@ -244,7 +250,7 @@ export function PdfViewerPane({
             <ToolbarButton onClick={goPrev} title="Previous Page" disabled={pageNum <= 1}>
               ‹
             </ToolbarButton>
-            <span className="font-mono w-12 text-center text-neutral-400">
+            <span className="font-mono min-w-12 px-1 text-center whitespace-nowrap text-neutral-400">
               {pageNum} / {numPages}
             </span>
             <ToolbarButton onClick={goNext} title="Next Page" disabled={pageNum >= numPages}>

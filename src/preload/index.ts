@@ -409,6 +409,14 @@ const fleetApi = {
       pathContext?: PathContext
     ): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
       typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath, pathContext),
+    /** Bytes `begin` to `end` (not included) of a file. Rejects if the read fails. */
+    readRange: async (
+      filePath: string,
+      begin: number,
+      end: number,
+      pathContext?: PathContext
+    ): Promise<Uint8Array> =>
+      typedInvoke(IPC_CHANNELS.FILE_READ_RANGE, filePath, begin, end, pathContext),
     stat: async (
       filePath: string,
       pathContext?: PathContext

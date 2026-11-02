@@ -56,6 +56,7 @@ export const IPC_CHANNELS = {
   FILE_SAVE_DIALOG: 'file:save-dialog',
   FILE_LIST: 'file:list',
   FILE_READ_BINARY: 'file:read-binary',
+  FILE_READ_RANGE: 'file:read-range',
   FILE_OPEN_IN_TAB: 'file:open-in-tab',
   FILE_SEARCH: 'file:search',
   FILE_GREP: 'file:grep',
