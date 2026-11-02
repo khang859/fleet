@@ -8,6 +8,7 @@ import type { PathContext } from '../../../shared/shell-profiles';
 import type { RemoteFileRef } from '../../../shared/remote-ssh-types';
 import { formatSize, getBasename } from '../lib/file-display';
 import { createCancellation } from '../lib/cancellation';
+import { PdfRangeTransport, type PdfReadError } from '../lib/pdf-range-transport';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -26,6 +27,11 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 const ROTATION_STEP = 90;
+
+const READ_ERROR_TEXT: Record<PdfReadError, string> = {
+  changed: 'The file changed on disk.',
+  failed: 'Failed to read PDF'
+};
 
 /** A page can have its own rotation in the file, so the user's turn adds to it. */
 function rotatedViewport(page: PDFPageProxy, scale: number, rotation: number): PageViewport {
@@ -59,6 +65,8 @@ export function PdfViewerPane({
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  // Bumped by the Reload button so the load effect runs again on the same file.
+  const [loadCount, setLoadCount] = useState(0);
 
   const filename = getBasename(remote?.path ?? filePath);
 
@@ -87,11 +95,21 @@ export function PdfViewerPane({
       try {
         // Read over IPC, not by URL: pdf.js only fetches http(s), and Chromium
         // blocks its XHR fallback on a custom scheme, from any origin.
-        const file = await window.fleet.file.readBinary(filePath, pathContext);
-        if (run.isCancelled()) return;
-        if (!file.success || !file.data) throw new Error(file.error);
+        const source = {
+          path: filePath,
+          pathContext,
+          version: { size: stat.data.size, modifiedAt: stat.data.modifiedAt }
+        };
+        const range = new PdfRangeTransport(source, (readError) => {
+          if (run.isCancelled()) return;
+          setError(READ_ERROR_TEXT[readError]);
+          setLoading(false);
+        });
         loadingTask = pdfjs.getDocument({
-          data: Uint8Array.from(atob(file.data.base64), (char) => char.charCodeAt(0)),
+          range,
+          // Read only what the open page needs, not the rest in the background.
+          disableAutoFetch: true,
+          disableStream: true,
           cMapUrl: CMAP_URL,
           cMapPacked: true,
           standardFontDataUrl: STANDARD_FONT_DATA_URL,
@@ -119,7 +137,7 @@ export function PdfViewerPane({
       void loadingTask?.destroy();
       docRef.current = null;
     };
-  }, [filePath, pathContext]);
+  }, [filePath, pathContext, loadCount]);
 
   // Render the current page whenever page, zoom or rotation changes. Cancels any in-flight
   // render first and snaps to the new view with no transition.
@@ -131,7 +149,10 @@ export function PdfViewerPane({
 
     const render = async (): Promise<void> => {
       renderTaskRef.current?.cancel();
-      const page = await doc.getPage(pageNum);
+      // getPage fails when the document is destroyed or a read fails, and the
+      // load effect already handles both.
+      const page = await doc.getPage(pageNum).catch(() => null);
+      if (!page) return;
       try {
         if (run.isCancelled()) return;
         const viewport = rotatedViewport(page, zoom, rotation);
@@ -193,7 +214,8 @@ export function PdfViewerPane({
     const doc = docRef.current;
     const container = containerRef.current;
     if (!doc || !container) return;
-    const page = await doc.getPage(pageNum);
+    const page = await doc.getPage(pageNum).catch(() => null);
+    if (!page) return;
     try {
       const vp = rotatedViewport(page, 1, rotation);
       const avail = container.clientWidth - 32;
@@ -216,11 +238,7 @@ export function PdfViewerPane({
     <div className="flex flex-col h-full w-full bg-neutral-900">
       {/* Document viewport */}
       <div ref={containerRef} className="flex-1 overflow-auto relative flex justify-center">
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center text-neutral-400 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <PdfErrorView message={error} onReload={() => setLoadCount((n) => n + 1)} />}
         {!error && loading && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 text-neutral-400 text-sm">
             <Loader2 className="animate-spin" size={16} />
@@ -244,7 +262,7 @@ export function PdfViewerPane({
             <ToolbarButton onClick={goPrev} title="Previous Page" disabled={pageNum <= 1}>
               ‹
             </ToolbarButton>
-            <span className="font-mono w-12 text-center text-neutral-400">
+            <span className="font-mono min-w-12 px-1 text-center whitespace-nowrap text-neutral-400">
               {pageNum} / {numPages}
             </span>
             <ToolbarButton onClick={goNext} title="Next Page" disabled={pageNum >= numPages}>
@@ -269,6 +287,26 @@ export function PdfViewerPane({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PdfErrorView({
+  message,
+  onReload
+}: {
+  message: string;
+  onReload: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-neutral-400 text-sm">
+      {message}
+      <button
+        className="text-neutral-200 text-xs px-3 py-1 rounded border border-neutral-700 hover:bg-white/10 hover:text-white transition-colors active:scale-[0.97]"
+        onClick={onReload}
+      >
+        Reload
+      </button>
     </div>
   );
 }

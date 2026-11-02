@@ -409,6 +409,19 @@ const fleetApi = {
       pathContext?: PathContext
     ): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
       typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath, pathContext),
+    /**
+     * Bytes `begin` to `end` (not included) of a file. Resolves to null when the
+     * file is gone or no longer has the `version` that `stat` gave. Rejects if
+     * the read fails.
+     */
+    readRange: async (
+      filePath: string,
+      begin: number,
+      end: number,
+      version: { size: number; modifiedAt: number },
+      pathContext?: PathContext
+    ): Promise<Uint8Array | null> =>
+      typedInvoke(IPC_CHANNELS.FILE_READ_RANGE, filePath, begin, end, version, pathContext),
     stat: async (
       filePath: string,
       pathContext?: PathContext

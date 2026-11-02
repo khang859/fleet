@@ -17,9 +17,30 @@ Cross origin requests are only supported for protocol schemes: chrome, chrome-ex
 
 `corsEnabled` plus `Access-Control-Allow-Origin` was not used, because any page in any Electron web content could then read a local PDF.
 
-The pane now reads the file with `window.fleet.file.readBinary` and passes `data` to `getDocument`.
+The pane now reads the file over IPC, not by URL (see the next section for how).
 That call also honors `pathContext`, so it works for WSL paths.
 The `fleet-pdf` scheme had no other user, so it was removed.
+
+## A large PDF crashed the app when it was read whole
+
+A 377 MB PDF crashed Fleet after 64 s with `OOM error in V8: invalid array length`.
+`readBinary` made a base64 string of the whole file, and the pane decoded it again, so the file was in memory 3 to 4 times.
+
+The pane now gives pdf.js a `PDFDataRangeTransport` (`src/renderer/src/lib/pdf-range-transport.ts`).
+pdf.js asks for byte ranges, and `file.readRange` reads only those from disk.
+Set `disableAutoFetch: true` and `disableStream: true`, or pdf.js reads the rest of the file in the background.
+The same file now shows its first page in 0.16 s.
+
+pdf.js keeps each range that it read, so a viewer that goes through every page still holds the file once.
+Firefox works the same way.
+
+The transport must ignore a range that arrives after `abort()`, because pdf.js throws on a chunk that it did not ask for.
+
+Each range opens the file again, so the open view has no fixed copy.
+A rewrite (a build) or a delete (remote cache eviction) would mix bytes from two versions.
+The pane sends the size and change time from `stat` with each read, and `readFileRange` returns null when they changed.
+The pane then shows "The file changed on disk." with a Reload button.
+`fleet open` on the same file only focuses the open pane, so a "reopen it" message would not help.
 
 ## The text layer needs CSS that a type check cannot see
 
