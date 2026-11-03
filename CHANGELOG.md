@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.150.1
+
+- **A Claude session open in two panes keeps both sidebar rows.**
+  When you ran `claude --continue` in a copied tab, the two panes shared one session.
+  Quitting one pane removed the sidebar row of the other pane.
+  Fleet now tracks each pane on its own, so the other row stays (#763).
+
 ## v2.150.0
 
 - **Move a workflow between Project and Personal.**
