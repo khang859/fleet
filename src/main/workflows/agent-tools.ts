@@ -20,7 +20,8 @@ export type AgentToolDeps = {
   /** The folder of each open pane. */
   openFolders: () => string[];
   notify: (notice: Omit<WorkflowNotice, 'id'>) => void;
-  /** Save the draft of a builder pane. */
+  /** Read and save the draft of a builder pane. */
+  readDraft: (paneId: string) => unknown;
   saveDraft: (paneId: string, toml: string) => unknown;
 };
 
@@ -57,6 +58,8 @@ export class WorkflowAgentTools {
         return this.create(paneId, TOOLS[tool].args.parse(args));
       case 'fleet_plan_submit':
         return this.submitPlan(this.inRun(identity), TOOLS[tool].args.parse(args));
+      case 'fleet_draft_read':
+        return this.deps.readDraft(paneId);
       case 'fleet_draft_save':
         return this.deps.saveDraft(paneId, TOOLS[tool].args.parse(args).toml);
     }

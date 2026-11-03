@@ -45,6 +45,7 @@ describe('toolsFor', () => {
     expect(names('builder')).toEqual([
       'fleet_workflow_list',
       'fleet_workflow_guide',
+      'fleet_draft_read',
       'fleet_draft_save'
     ]);
   });

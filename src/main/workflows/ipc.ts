@@ -109,6 +109,7 @@ function apiOf(service: WorkflowsService, dialogs: Dialogs): WorkflowsApi {
       service.builder.start(projectPath, program, choice),
     reopenBuilder: async (projectPath, draftId, scope) =>
       service.builder.reopen(projectPath, draftId, scope),
+    closeBuilder: (id) => service.builder.close(id),
     builderInfo: (id) => service.builder.info(id),
     draftsWithBuilder: (projectPath) => service.builder.draftsWithSession(projectPath),
     programs: async () => service.programs(),
