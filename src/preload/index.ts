@@ -49,6 +49,7 @@ import type {
 import type { TerminalMenuAction } from '../shared/ipc-api';
 import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { ReleaseNote } from '../shared/release-notes';
+import type { WindowControlAction } from '../shared/window-controls';
 import type {
   ClaudeSessionsSnapshot,
   CopilotServiceStatus,
@@ -287,6 +288,13 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.APP_QUIT_ASK, callback),
     decide: (requestId: string, proceed: boolean): void =>
       ipcRenderer.send(IPC_CHANNELS.APP_QUIT_DECIDE, { requestId, proceed })
+  },
+  windowControls: {
+    run: (action: WindowControlAction): void =>
+      ipcRenderer.send(IPC_CHANNELS.WINDOW_CONTROL, action),
+    isMaximized: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+    onMaximizedChange: (callback: (maximized: boolean) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.WINDOW_MAXIMIZED_CHANGED, callback)
   },
   ai: {
     summarizePane: async (paneId: string, tailText: string): Promise<string> =>
