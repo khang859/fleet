@@ -77,6 +77,8 @@ export type Tab = {
   parentTabId?: string;
   /** The workflow run whose panes this tab shows. Main owns these tabs, so none is saved. */
   workflowRunId?: string;
+  /** The workflow builder whose agent this tab shows. Closing the tab ends that agent. */
+  builderId?: string;
   /** ShellProfile id used when this tab was created. Optional for legacy persisted tabs. */
   shellProfileId?: string;
   /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */

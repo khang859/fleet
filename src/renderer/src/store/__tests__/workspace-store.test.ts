@@ -914,6 +914,79 @@ describe('closePane — worktree tab last pane', () => {
   });
 });
 
+describe('closing a workflow builder', () => {
+  const call = vi.fn(async () => Promise.resolve());
+  const tabOf = (): Tab | undefined =>
+    useWorkspaceStore.getState().workspace.tabs.find((t) => t.workflowRunId === 'builder-b1');
+
+  beforeEach(() => {
+    call.mockClear();
+    window.fleet.workflows = { call } as unknown as typeof window.fleet.workflows;
+    useWorkspaceStore.setState({ workspace: WS_A, activeTabId: 'tab-a1', activePaneId: 'pane-a1' });
+    useWorkspaceStore.getState().syncRunTab(
+      {
+        runId: 'builder-b1',
+        label: 'New workflow',
+        cwd: '/repo',
+        projectPath: '/repo',
+        paneIds: ['pane-agent'],
+        focus: true,
+        builderId: 'b1'
+      },
+      true
+    );
+  });
+
+  it('ends the agent when its tab closes', () => {
+    useWorkspaceStore.getState().closeTab(tabOf()?.id ?? '');
+
+    expect(call).toHaveBeenCalledWith('closeBuilder', 'b1');
+  });
+
+  it('ends the agent when its pane closes', () => {
+    useWorkspaceStore.getState().closePane('pane-agent');
+
+    expect(call).toHaveBeenCalledWith('closeBuilder', 'b1');
+  });
+
+  it('keeps the agent when only the draft panel closes', () => {
+    useWorkspaceStore.getState().closePane('draft-b1');
+
+    expect(call).not.toHaveBeenCalled();
+    expect(tabOf()).toBeDefined();
+  });
+
+  it('takes the name of the draft once the agent saves it', () => {
+    useWorkspaceStore.getState().syncRunTab(
+      {
+        runId: 'builder-b1',
+        label: 'greet-test',
+        cwd: '/repo',
+        projectPath: '/repo',
+        paneIds: ['pane-agent'],
+        focus: false,
+        builderId: 'b1'
+      },
+      false
+    );
+
+    expect(tabOf()?.label).toBe('greet-test');
+  });
+
+  it('keeps the tab when the saved layout loads after it', () => {
+    useWorkspaceStore.getState().loadWorkspace(WS_B);
+
+    expect(useWorkspaceStore.getState().workspace.id).toBe('ws-b');
+    expect(tabOf()?.builderId).toBe('b1');
+  });
+
+  it('leaves other tabs alone', () => {
+    useWorkspaceStore.getState().closeTab('tab-a1');
+
+    expect(call).not.toHaveBeenCalled();
+  });
+});
+
 describe('splitPane — live CWD', () => {
   it('uses the live CWD from cwd-store for the new pane', () => {
     // Prime cwd-store with a different CWD than what's in the tab

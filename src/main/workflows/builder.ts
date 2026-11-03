@@ -48,6 +48,7 @@ export type BuilderDeps = {
   devExtension: string | null;
   hasProgram: (program: WorkflowProgram) => Promise<boolean>;
   openPane: (pane: { paneId: string; cwd: string; line: string }) => Promise<void>;
+  killPane: (paneId: string) => void;
   onTab: (tab: RunTab) => void;
   notify: (notice: Omit<WorkflowNotice, 'id'>) => void;
   /** A draft changed, so a draft pane on show must read it again. */
@@ -57,6 +58,7 @@ export type BuilderDeps = {
 /** The agent's whole job. Fleet writes it, so the person need not explain the pane. */
 export function builderBrief(program: WorkflowProgram): string {
   const save = toolNameFor(program, 'fleet_draft_save');
+  const read = toolNameFor(program, 'fleet_draft_read');
   const list = toolNameFor(program, 'fleet_workflow_list');
   const ask =
     program === 'claude'
@@ -72,11 +74,12 @@ export function builderBrief(program: WorkflowProgram): string {
 - Ask what the workflow must do, then which steps run in order and which run at the same time. ${ask}
 - Ask which program each agent uses, if the person did not say.
 - Use ${list} to see the workflows this project has.
+- Before you change a draft, read it with ${read}. A person can change it in the editor, so start from what it says now.
 - Save the draft with ${save}. Send the whole file each time. The person sees each save beside this pane.
 - A bad file is refused, and the reply says why. Fix it and save again.
-- A save is refused when a person changed the draft. Follow the reply, and do not make a second file.
+- A save is refused when a person changed the draft after you read it. Follow the reply, and do not make a second file.
 - When the draft is ready, tell the person to press Review in the draft panel. A person must approve the file before it can run. You cannot approve it.
-- Use ${save}, and not fleet_workflow_create. This pane has only ${save}.
+- Use ${save}, and not fleet_workflow_create. This pane can save only with ${save}.
 
 ${workflowGuide()}`;
 }
@@ -145,7 +148,6 @@ export class WorkflowBuilder {
   async reopen(project: string, draftId: string, scope: WorkflowScope): Promise<BuilderStart> {
     const session = this.sessionFor(project, draftId, scope);
     if (!session) return { ok: false, message: 'No builder session made this draft.' };
-    this.acceptFile(session);
     const open = this.paneOf(session.id);
     if (open) {
       this.emitTab(session, open, true);
@@ -153,14 +155,6 @@ export class WorkflowBuilder {
     }
     const handle = session.program === 'pi' ? session.transcriptPath : session.sessionId;
     return this.open(session, handle);
-  }
-
-  /** A person gave the draft back to the agent, so its next save can replace this file. */
-  private acceptFile(session: Saved): void {
-    if (!session.draftId) return;
-    const { project, draftId, draftScope } = session;
-    session.draftHash = this.deps.catalog.find(project, draftId, draftScope)?.hash ?? null;
-    this.persist();
   }
 
   private sessionFor(project: string, draftId: string, scope: WorkflowScope): Saved | undefined {
@@ -253,11 +247,43 @@ export class WorkflowBuilder {
     this.persist();
   }
 
+  /**
+   * A person closed the builder's tab. The agent has no other way back to the
+   * screen, so it ends, and a reopen goes on with its talk in a new pane.
+   */
+  close(id: string): void {
+    const paneId = this.paneOf(id);
+    if (paneId) this.deps.killPane(paneId);
+  }
+
   onPaneClosed(paneId: string): void {
     const session = this.sessionOf(paneId);
     if (!session) return;
     this.panes.delete(paneId);
     this.emitTab(session, null, false);
+  }
+
+  /**
+   * The draft as it is now. The agent has read a person's change, so its next
+   * save may replace that file. A removed draft stays removed.
+   */
+  readDraft(paneId: string): { id: string | null; toml: string | null; note?: string } {
+    const session = this.sessionOf(paneId);
+    if (!session) throw new ToolRefused('refused', 'This pane is not a builder pane.');
+    const { project, draftId, draftScope } = session;
+    if (!draftId) return { id: null, toml: null, note: 'No draft yet. Your first save makes it.' };
+    const entry = this.deps.catalog.find(project, draftId, draftScope);
+    if (!entry) {
+      return {
+        id: draftId,
+        toml: null,
+        note: 'A person removed this draft. Do not save it again.'
+      };
+    }
+    const toml = this.deps.catalog.readText(entry.path);
+    session.draftHash = hashText(toml);
+    this.persist();
+    return { id: draftId, toml };
   }
 
   /** The first save names the file, and a later save replaces only this pane's draft. */

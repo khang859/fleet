@@ -86,6 +86,12 @@ export const TOOLS = {
       plan: z.string().min(1).max(400_000).describe('The whole plan, as Markdown.')
     })
   },
+  fleet_draft_read: {
+    panes: ['builder'],
+    description:
+      'Read the workflow draft of this pane as it is now. A person can change it in the editor, so read it before you change it.',
+    args: noArgs
+  },
   fleet_draft_save: {
     panes: ['builder'],
     description:

@@ -226,6 +226,7 @@ export class WorkflowsService implements BridgeHandler {
       devExtension: deps.devExtension,
       hasProgram: deps.hasProgram,
       openPane: deps.openPane,
+      killPane: deps.killPane,
       onTab: (tab) => this.onTab(tab),
       notify: (notice) => this.notify(notice),
       onDraftSaved: (projectPath) => {
@@ -241,6 +242,7 @@ export class WorkflowsService implements BridgeHandler {
       paneCwd: deps.paneCwd,
       openFolders: deps.openFolders,
       notify: (notice) => this.notify(notice),
+      readDraft: (paneId) => this.builder.readDraft(paneId),
       saveDraft: (paneId, toml) => this.builder.saveDraft(paneId, toml)
     });
     this.power = new WorkflowPower(deps.power, {

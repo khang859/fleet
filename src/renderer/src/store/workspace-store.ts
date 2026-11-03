@@ -586,14 +586,21 @@ function withRunTab(tabs: Tab[], run: RunTab): Tab[] {
   const current = tabs.find((t) => t.workflowRunId === run.runId);
   const root = runTabRoot(current?.splitRoot ?? null, run);
   if (!root) return tabs.filter((t) => t !== current);
-  if (current) return tabs.map((t) => (t === current ? { ...t, splitRoot: root } : t));
+  // A builder's first save names its draft, and its tab takes that name.
+  const relabel = (t: Tab): Tab => ({
+    ...t,
+    splitRoot: root,
+    label: run.builderId ? run.label : t.label
+  });
+  if (current) return tabs.map((t) => (t === current ? relabel(t) : t));
   const tab: Tab = {
     id: generateId(),
     label: run.label,
     labelIsCustom: true,
     cwd: run.cwd,
     splitRoot: root,
-    workflowRunId: run.runId
+    workflowRunId: run.runId,
+    builderId: run.builderId
   };
   return [...tabs, tab];
 }
@@ -741,6 +748,18 @@ export function registerPaneDisposer(dispose: (paneId: string) => void): void {
   disposePaneElsewhere = dispose;
 }
 
+/**
+ * A builder's agent has no way back to the screen once its tab is gone, so
+ * closing the tab, or the agent's own pane, ends it. The draft panel can go alone.
+ */
+function endBuilder(tab: Tab | undefined, paneId?: string): void {
+  if (!tab?.builderId) return;
+  if (paneId && findLeaf(tab.splitRoot, paneId)?.paneType === 'workflow-draft') return;
+  window.fleet.workflows.call('closeBuilder', tab.builderId).catch((err: unknown) => {
+    logTabs.warn('the builder did not close', { error: String(err) });
+  });
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspace: { id: 'default', label: 'Default', tabs: [] },
   backgroundWorkspaces: new Map(),
@@ -835,6 +854,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       logTabs.debug('closeTab refused: pinned tab', { tabId });
       return;
     }
+    endBuilder(closing);
     // Cancel any in-flight Agent turns for panes in this tab and drop their state.
     if (closing) {
       for (const pid of collectPaneIds(closing.splitRoot)) {
@@ -1321,6 +1341,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // parked on a permission question is waiting on a click from the pane being
     // closed, and nothing else would ever end it.
     disposePaneElsewhere(paneId);
+    endBuilder(owner, paneId);
     set((state) => {
       // Closing a worktree tab's last pane would otherwise drop the tab silently,
       // skipping the confirmation dialog and the on-disk worktree cleanup. Route it
@@ -1480,10 +1501,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       tabCount: workspace.tabs.length
     });
     const migratedTabs = restoreTabs(workspace.tabs);
+    // Main's run tabs are never saved, and at startup they can arrive before the layout does.
+    const runTabs = get().workspace.tabs.filter((t) => t.workflowRunId);
     const migrated = applyToolVisibility(
       {
         ...workspace,
-        tabs: migratedTabs,
+        tabs: [...migratedTabs, ...runTabs],
         userGroups: liveUserGroups(workspace.userGroups, migratedTabs)
       },
       currentToolVisibility()

@@ -605,6 +605,8 @@ export type WorkflowsApi = {
     draftId: string,
     scope: WorkflowScope
   ) => Promise<BuilderStart>;
+  /** A person closed a builder's tab, so its agent ends. */
+  closeBuilder: (id: string) => void;
   builderInfo: (id: string) => BuilderInfo | null;
   /** The paths of the drafts whose builder a person can go back to. */
   draftsWithBuilder: (projectPath: string) => string[];

@@ -24,9 +24,12 @@ import {
 } from './config';
 import { unsafeTarget } from './report';
 
-const DRAFT_MOVED =
-  'A person changed this draft or removed it, so this save did nothing. Do not save again. ' +
-  'Tell the person. To go on, they press Edit with the agent. Then read the file and start from it.';
+const DRAFT_CHANGED =
+  'A person changed this draft after you read it, so this save did nothing. ' +
+  'Read it again with fleet_draft_read, make your change on what it says now, and save again.';
+
+const DRAFT_REMOVED =
+  'A person removed this draft, so this save did nothing. Do not save again. Tell the person.';
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -219,9 +222,9 @@ export class WorkflowCatalog {
   ): void {
     const path = this.pathOf(projectPath, scope, id);
     this.refuseBadFile(projectPath, scope, path, text);
-    if (this.find(projectPath, id, scope)?.hash !== ownHash) {
-      throw new WorkflowFileError(DRAFT_MOVED);
-    }
+    const current = this.find(projectPath, id, scope);
+    if (!current) throw new WorkflowFileError(DRAFT_REMOVED);
+    if (current.hash !== ownHash) throw new WorkflowFileError(DRAFT_CHANGED);
     this.write(path, text);
     this.onChange();
   }

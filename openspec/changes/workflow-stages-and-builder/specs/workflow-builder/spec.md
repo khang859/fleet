@@ -43,11 +43,18 @@ The first save SHALL NOT replace a file that exists.
 Later saves from that pane SHALL replace only that draft.
 Fleet SHALL refuse a bad file and tell the agent why.
 Only a builder pane SHALL be able to call `fleet_draft_save`.
+A builder pane SHALL be able to read its draft as it is now through `fleet_draft_read`.
+A save SHALL NOT replace a change that a person made after the agent last read or saved the draft.
 
 #### Scenario: A second save
 
 - **WHEN** the agent saves again from the same pane
 - **THEN** the draft changes and the draft pane shows the new version
+
+#### Scenario: A person changed the draft
+
+- **WHEN** a person edits the draft and the agent then saves without reading it
+- **THEN** Fleet refuses the save, the person's change stays, and the reply tells the agent to read the draft again
 
 #### Scenario: A name that exists
 
@@ -72,6 +79,16 @@ A person SHALL be able to reopen a draft with the same session and brief.
 
 - **WHEN** a person opens a draft with its builder session
 - **THEN** the agent has its earlier talk and can save the same draft
+
+#### Scenario: Edit with the agent after a person's change
+
+- **WHEN** a person changed the draft and then opens it with its builder session
+- **THEN** the agent reads the draft as the person left it before it changes it
+
+#### Scenario: A person closes the builder tab
+
+- **WHEN** a person closes a builder tab
+- **THEN** its agent ends, and Edit with the agent later goes on with the same talk in a new pane
 
 ### Requirement: Stage Map editor
 

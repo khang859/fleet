@@ -23,6 +23,7 @@ describe('WorkflowBuilder', () => {
   let project: string;
   let catalog: WorkflowCatalog;
   let opened: Array<{ paneId: string; cwd: string; line: string }>;
+  let killed: string[];
   let tabs: RunTab[];
   let deps: BuilderDeps;
   let builder: WorkflowBuilder;
@@ -38,6 +39,7 @@ describe('WorkflowBuilder', () => {
       join(dir, 'home')
     );
     opened = [];
+    killed = [];
     tabs = [];
     deps = {
       dir: join(dir, 'builders'),
@@ -49,6 +51,7 @@ describe('WorkflowBuilder', () => {
         opened.push(pane);
         return Promise.resolve();
       },
+      killPane: (paneId) => killed.push(paneId),
       onTab: (tab) => tabs.push(tab),
       notify: () => undefined,
       onDraftSaved: () => undefined
@@ -110,6 +113,7 @@ describe('WorkflowBuilder', () => {
     const brief = builderBrief('claude');
 
     expect(brief).toContain('mcp__fleet-bridge__fleet_draft_save');
+    expect(brief).toContain('mcp__fleet-bridge__fleet_draft_read');
     expect(brief).toContain('press Review');
     expect(brief).toContain('## Format');
   });
@@ -157,7 +161,7 @@ describe('WorkflowBuilder', () => {
     const theirs = FIRST.replace('Do it.', 'Theirs.');
     writeFileSync(draftPath('my-flow'), theirs);
 
-    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person changed this draft');
+    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('Read it again with fleet_draft_read');
 
     expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(theirs);
   });
@@ -168,22 +172,50 @@ describe('WorkflowBuilder', () => {
     builder.saveDraft(paneId, FIRST);
     rmSync(draftPath('my-flow'));
 
-    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person changed this draft');
+    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person removed this draft');
 
     expect(existsSync(draftPath('my-flow'))).toBe(false);
   });
 
-  it('saves over a change after a person gives the draft back', async () => {
+  it('reads the draft as a person left it, and may then save over it', async () => {
     await builder.start(project, 'pi');
     const { paneId } = opened[0];
     builder.saveDraft(paneId, FIRST);
-    writeFileSync(draftPath('my-flow'), FIRST.replace('Do it.', 'Theirs.'));
+    const theirs = FIRST.replace('Do it.', 'Theirs.');
+    writeFileSync(draftPath('my-flow'), theirs);
     const next = FIRST.replace('Do it.', 'Both.');
 
-    await builder.reopen(project, 'my-flow', 'project');
+    expect(builder.readDraft(paneId)).toEqual({ id: 'my-flow', toml: theirs });
     builder.saveDraft(paneId, next);
 
     expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(next);
+  });
+
+  it('keeps a change through a reopen until the agent reads it', async () => {
+    await builder.start(project, 'pi');
+    const { paneId } = opened[0];
+    builder.saveDraft(paneId, FIRST);
+    builder.onPaneClosed(paneId);
+    const theirs = FIRST.replace('Do it.', 'Theirs.');
+    writeFileSync(draftPath('my-flow'), theirs);
+
+    await builder.reopen(project, 'my-flow', 'project');
+
+    expect(() => builder.saveDraft(opened[1].paneId, FIRST)).toThrow('fleet_draft_read');
+    expect(readFileSync(draftPath('my-flow'), 'utf8')).toBe(theirs);
+  });
+
+  it('says when there is no draft to read', async () => {
+    await builder.start(project, 'pi');
+    const { paneId } = opened[0];
+
+    expect(builder.readDraft(paneId)).toMatchObject({ id: null, toml: null });
+
+    builder.saveDraft(paneId, FIRST);
+    rmSync(draftPath('my-flow'));
+
+    expect(builder.readDraft(paneId)).toMatchObject({ id: 'my-flow', toml: null });
+    expect(() => builder.saveDraft(paneId, FIRST)).toThrow('A person removed this draft');
   });
 
   it('refuses a bad file, and says why', async () => {
@@ -260,6 +292,38 @@ describe('WorkflowBuilder', () => {
 
     expect(opened).toHaveLength(1);
     expect(tabs.at(-1)?.focus).toBe(true);
+  });
+
+  it('ends the agent when a person closes its tab', async () => {
+    const { id } = (await builder.start(project, 'claude')) as { id: string };
+
+    builder.close(id);
+
+    expect(killed).toEqual([opened[0].paneId]);
+  });
+
+  it('goes on with the talk in a new pane after its tab closed', async () => {
+    const { id } = (await builder.start(project, 'claude')) as { id: string };
+    const { paneId } = opened[0];
+    builder.onSession(paneId, { id: 'chat-1', transcriptPath: null });
+    builder.saveDraft(paneId, FIRST);
+    builder.close(id);
+    builder.onPaneClosed(paneId);
+
+    await builder.reopen(project, 'my-flow', 'project');
+
+    expect(opened).toHaveLength(2);
+    expect(opened[1].line).toContain("'--resume' 'chat-1'");
+  });
+
+  it('kills nothing for a builder with no open pane', async () => {
+    const { id } = (await builder.start(project, 'claude')) as { id: string };
+    builder.onPaneClosed(opened[0].paneId);
+
+    builder.close(id);
+    builder.close('unknown');
+
+    expect(killed).toEqual([]);
   });
 
   it('forgets a closed pane', async () => {
