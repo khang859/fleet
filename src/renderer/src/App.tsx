@@ -967,9 +967,11 @@ export function App(): React.JSX.Element {
           one edge, so there is no text for the picture to fight.
           Height is set by the traffic lights, not by content: they are placed at
           y=10 and are 12px tall, so 24px leaves them the same 10px underneath
-          they have above. The cards' own 8px gutter then starts at 32. */}
+          they have above. The cards' own 8px gutter then starts at 32.
+          It stacks above the row below because the Linux window controls hang
+          into that gutter and must stay clickable there. */}
       <div
-        className="relative z-10 h-6 shrink-0 flex items-center"
+        className="relative z-20 h-6 shrink-0 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
         <TitleStripButtons />

@@ -47,6 +47,7 @@ import { deriveDebugPort, sessionFilePath, type DriveSession } from '../shared/d
 import { SocketSupervisor } from './socket-supervisor';
 import { QuitGuard } from './quit-guard';
 import { QuitDecideSchema, type QuitWorkItem } from '../shared/quit-confirm';
+import { drawsOwnWindowControls, WindowControlActionSchema } from '../shared/window-controls';
 import { mainWorkItems } from './quit-work';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile, installOpencodePlugin } from './install-fleet-cli';
@@ -275,6 +276,24 @@ ipcMain.handle(
   })
 );
 
+// The window controls the renderer draws itself (see `drawsOwnWindowControls`).
+// `close` goes through `win.close()`, so it meets the same running-work check as
+// any other way of closing the window.
+ipcMain.on(IPC_CHANNELS.WINDOW_CONTROL, (event, payload: unknown) => {
+  const parsed = WindowControlActionSchema.safeParse(payload);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!parsed.success || !win) return;
+  if (parsed.data === 'minimize') win.minimize();
+  else if (parsed.data === 'close') win.close();
+  else if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
+
+ipcMain.handle(
+  IPC_CHANNELS.WINDOW_IS_MAXIMIZED,
+  (event): boolean => BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
+);
+
 ipcMain.on(IPC_CHANNELS.APP_QUIT_DECIDE, (_event, payload: unknown) => {
   const parsed = QuitDecideSchema.safeParse(payload);
   if (!parsed.success) return;
@@ -393,8 +412,19 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: { x: 12, y: 10 } }
-      : { titleBarOverlay: { color: '#090a0d', symbolColor: '#a1a3a7', height: 36 } })
+      : drawsOwnWindowControls(getHostPlatform())
+        ? {}
+        : { titleBarOverlay: { color: '#090a0d', symbolColor: '#a1a3a7', height: 36 } })
   });
+
+  // The maximize button the renderer draws swaps to a restore icon, and the
+  // window can be maximized without it: a double-click on the title strip, a
+  // keyboard shortcut, dragging to the screen edge.
+  const sendMaximized = (): void => {
+    mainWindow?.webContents.send(IPC_CHANNELS.WINDOW_MAXIMIZED_CHANGED, mainWindow.isMaximized());
+  };
+  mainWindow.on('maximize', sendMaximized);
+  mainWindow.on('unmaximize', sendMaximized);
 
   // Log renderer console messages and errors to main process stdout.
   // Skip messages from the renderer logger (tag format [xxx:yyy]) — those are
