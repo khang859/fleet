@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.151.0
+
+- **Window controls that match Fleet on Linux.**
+  The minimize, maximize and close buttons no longer sit on a solid dark block over your background.
+  Fleet draws them as a small glass pill in the theme colors, and the maximize icon switches to restore when the window is maximized (#764).
+- **Closing a workflow builder ends its agent.**
+  Closing the builder tab used to leave its Claude Code running out of sight, so the sidebar showed an extra session.
+  Now the agent ends with the tab, and Edit with the agent goes on with the same conversation in a new pane.
+  Builder tabs also stay open when the window reloads, and a builder tab takes the draft's name after its first save (#765).
+- **The workflow builder reads your edits to the draft.**
+  The builder agent reads the draft as it is now before it changes it, so it starts from your edits.
+  It can no longer save over your edits without reading them first (#765).
+
 ## v2.150.1
 
 - **A Claude session open in two panes keeps both sidebar rows.**
