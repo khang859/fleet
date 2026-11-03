@@ -111,16 +111,12 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
     expect((await first.reply).status).toBe(200);
   });
 
-  it('takes a request from a mod that names no pane', async () => {
-    const { reply } = ask(socketPath, '/prompt?session=s1');
-    await until(() => bridge.has(s1));
-    expect(bridge.deliver(s1, 'hello')).toBe(true);
-    expect((await reply).status).toBe(200);
-  });
-
-  it.each(['/prompt', '/other?session=s1'])('answers %s with 404', async (path) => {
-    expect((await ask(socketPath, path).reply).status).toBe(404);
-  });
+  it.each(['/prompt', '/prompt?session=s1', '/prompt?pane=pane-1', '/other?session=s1'])(
+    'answers %s with 404',
+    async (path) => {
+      expect((await ask(socketPath, path).reply).status).toBe(404);
+    }
+  );
 
   it('answers open requests and removes its socket when it stops', async () => {
     const { reply } = ask(socketPath, '/prompt?session=s1&pane=pane-1');

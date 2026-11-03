@@ -23,8 +23,8 @@ They are only dropped when no entry for that id is left.
 `registry.get(sessionId)` with no pane returns the live entry that was active last.
 Code that knows the pane must pass it, or it can act on the wrong process.
 
-The fleet-bridge mod now sends `pane` (from `FLEET_PANE_ID`) on its prompt poll.
-A poll without it is still keyed by the bare session id, so older mods keep working.
+The fleet-bridge mod now sends `pane` (from `FLEET_PANE_ID`) on its prompt poll, and Fleet answers a poll without it with 404.
+No older mod can still be asking: Fleet copies the mod in when it starts, and its panes do not outlive it.
 
 ## Rule
 

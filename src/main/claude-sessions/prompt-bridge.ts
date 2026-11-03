@@ -16,11 +16,10 @@ type Poll = { res: ServerResponse; timer: ReturnType<typeof setTimeout> };
  * between two requests, eva) gets its prompt typed as before.
  *
  * Requests are told apart by pane as well as session, so one conversation
- * resumed in two panes has a mod waiting in each. A mod that predates `pane`
- * asks by session alone.
+ * resumed in two panes has a mod waiting in each.
  */
 export class PromptBridge implements BridgeRoute {
-  /** The request each session's mod has open, newest only, by `sessionKey` or a bare session id. */
+  /** The request each session's mod has open, newest only, by `sessionKey`. */
   private readonly polls = new Map<string, Poll>();
 
   constructor(private readonly holdMs: number = POLL_HOLD_MS) {}
@@ -31,23 +30,22 @@ export class PromptBridge implements BridgeRoute {
 
   /** Whether the session's mod is waiting for a prompt now, so `deliver` would take one. */
   has(session: SessionRef): boolean {
-    return this.keyOf(session) !== null;
+    return this.polls.has(sessionKey(session));
   }
 
   /** Hand the prompt to the session's mod; false when its mod is not waiting for one. */
   deliver(session: SessionRef, text: string): boolean {
-    const key = this.keyOf(session);
-    return key !== null && this.answer(key, 200, JSON.stringify({ text }));
+    return this.answer(sessionKey(session), 200, JSON.stringify({ text }));
   }
 
   handle(_req: IncomingMessage, res: ServerResponse, url: URL): void {
     const sessionId = url.searchParams.get('session');
-    if (!sessionId) {
+    const paneId = url.searchParams.get('pane');
+    if (!sessionId || !paneId) {
       res.writeHead(404).end();
       return;
     }
-    const paneId = url.searchParams.get('pane');
-    const key = paneId ? sessionKey({ sessionId, paneId }) : sessionId;
+    const key = sessionKey({ sessionId, paneId });
     // A newer request takes the older one's place: a reloaded mod's, or a second mod's.
     this.answer(key, NOT_ANSWERED);
     const poll: Poll = { res, timer: setTimeout(() => this.answer(key, 204), this.holdMs) };
@@ -57,13 +55,6 @@ export class PromptBridge implements BridgeRoute {
       clearTimeout(poll.timer);
       this.polls.delete(key);
     });
-  }
-
-  /** The key the session's mod asked under, or null when it is not asking. */
-  private keyOf(session: SessionRef): string | null {
-    const key = sessionKey(session);
-    if (this.polls.has(key)) return key;
-    return this.polls.has(session.sessionId) ? session.sessionId : null;
   }
 
   private answer(key: string, status: number, body?: string): boolean {
