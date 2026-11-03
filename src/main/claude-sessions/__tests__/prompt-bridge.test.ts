@@ -28,6 +28,8 @@ function ask(socketPath: string, path: string): { reply: Promise<Reply>; abort: 
   return { reply, abort };
 }
 
+const s1 = { sessionId: 's1', paneId: 'pane-1' };
+
 const until = async (check: () => boolean): Promise<void> =>
   vi.waitFor(() => expect(check()).toBe(true));
 
@@ -57,52 +59,68 @@ describe.skipIf(process.platform === 'win32')('PromptBridge', () => {
   });
 
   it('holds a request for a prompt and answers it with the one delivered', async () => {
-    expect(bridge.deliver('s1', 'early')).toBe(false);
-    const { reply } = ask(socketPath, '/prompt?session=s1');
-    await until(() => bridge.has('s1'));
-    expect(bridge.has('s2')).toBe(false);
+    expect(bridge.deliver(s1, 'early')).toBe(false);
+    const { reply } = ask(socketPath, '/prompt?session=s1&pane=pane-1');
+    await until(() => bridge.has(s1));
+    expect(bridge.has({ sessionId: 's2', paneId: 'pane-1' })).toBe(false);
 
-    expect(bridge.deliver('s1', 'Run the tests\nthen report')).toBe(true);
+    expect(bridge.deliver(s1, 'Run the tests\nthen report')).toBe(true);
     expect(await reply).toEqual({
       status: 200,
       body: JSON.stringify({ text: 'Run the tests\nthen report' })
     });
-    expect(bridge.has('s1')).toBe(false);
-    expect(bridge.deliver('s1', 'again')).toBe(false);
+    expect(bridge.has(s1)).toBe(false);
+    expect(bridge.deliver(s1, 'again')).toBe(false);
   });
 
   it('answers with no prompt once the hold runs out', async () => {
-    const { reply } = ask(socketPath, '/prompt?session=s1');
+    const { reply } = ask(socketPath, '/prompt?session=s1&pane=pane-1');
     expect(await reply).toEqual({ status: 204, body: '' });
-    expect(bridge.has('s1')).toBe(false);
+    expect(bridge.has(s1)).toBe(false);
   });
 
   it('answers an older request with 409 when a newer one for its session comes', async () => {
-    const first = ask(socketPath, '/prompt?session=s1');
-    await until(() => bridge.has('s1'));
-    const second = ask(socketPath, '/prompt?session=s1');
+    const first = ask(socketPath, '/prompt?session=s1&pane=pane-1');
+    await until(() => bridge.has(s1));
+    const second = ask(socketPath, '/prompt?session=s1&pane=pane-1');
     expect((await first.reply).status).toBe(409);
 
-    expect(bridge.deliver('s1', 'hello')).toBe(true);
+    expect(bridge.deliver(s1, 'hello')).toBe(true);
     expect((await second.reply).status).toBe(200);
   });
 
   it('forgets a request whose mod went away', async () => {
-    const { reply, abort } = ask(socketPath, '/prompt?session=s1');
-    await until(() => bridge.has('s1'));
+    const { reply, abort } = ask(socketPath, '/prompt?session=s1&pane=pane-1');
+    await until(() => bridge.has(s1));
     abort();
     await expect(reply).rejects.toThrow();
-    await until(() => !bridge.has('s1'));
-    expect(bridge.deliver('s1', 'hello')).toBe(false);
+    await until(() => !bridge.has(s1));
+    expect(bridge.deliver(s1, 'hello')).toBe(false);
   });
 
-  it.each(['/prompt', '/other?session=s1'])('answers %s with 404', async (path) => {
-    expect((await ask(socketPath, path).reply).status).toBe(404);
+  it('keeps a request open in each pane running the same conversation', async () => {
+    const inPane2 = { sessionId: 's1', paneId: 'pane-2' };
+    const first = ask(socketPath, '/prompt?session=s1&pane=pane-1');
+    const second = ask(socketPath, '/prompt?session=s1&pane=pane-2');
+    await until(() => bridge.has(s1) && bridge.has(inPane2));
+
+    expect(bridge.deliver(inPane2, 'hello')).toBe(true);
+    expect(await second.reply).toEqual({ status: 200, body: JSON.stringify({ text: 'hello' }) });
+    expect(bridge.has(s1)).toBe(true);
+    expect(bridge.deliver(s1, 'hi')).toBe(true);
+    expect((await first.reply).status).toBe(200);
   });
+
+  it.each(['/prompt', '/prompt?session=s1', '/prompt?pane=pane-1', '/other?session=s1'])(
+    'answers %s with 404',
+    async (path) => {
+      expect((await ask(socketPath, path).reply).status).toBe(404);
+    }
+  );
 
   it('answers open requests and removes its socket when it stops', async () => {
-    const { reply } = ask(socketPath, '/prompt?session=s1');
-    await until(() => bridge.has('s1'));
+    const { reply } = ask(socketPath, '/prompt?session=s1&pane=pane-1');
+    await until(() => bridge.has(s1));
     await server.stop();
     expect((await reply).status).toBe(204);
     expect(() => statSync(socketPath)).toThrow();

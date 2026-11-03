@@ -1,5 +1,9 @@
 import type { ActivityState } from '../../shared/types';
-import type { ClaudeSession, ClaudeSessionChange } from '../../shared/claude-sessions';
+import {
+  sessionKey,
+  type ClaudeSession,
+  type ClaudeSessionChange
+} from '../../shared/claude-sessions';
 
 /** Sets the hook-derived state for a pane, or clears it when given null. */
 export type SetHookState = (paneId: string, state: ActivityState | null, pid?: number) => void;
@@ -37,22 +41,21 @@ export function phaseToActivityState(
  * inferring it from terminal output. Runs whether or not the copilot does.
  */
 export class PaneActivityBridge {
+  /** Each live session's pane, by `sessionKey`. */
   private readonly paneBySession = new Map<string, string>();
 
   constructor(private readonly setHookState: SetHookState) {}
 
   apply(change: ClaudeSessionChange): void {
-    const { sessionId, session } = change;
-    const previous = this.paneBySession.get(sessionId);
+    const key = sessionKey(change);
+    const { session } = change;
 
     if (!session || session.phase === 'ended') {
-      this.paneBySession.delete(sessionId);
-      if (previous) this.releaseIfUnclaimed(previous);
+      if (this.paneBySession.delete(key)) this.releaseIfUnclaimed(change.paneId);
       return;
     }
 
-    this.paneBySession.set(sessionId, session.paneId);
-    if (previous && previous !== session.paneId) this.releaseIfUnclaimed(previous);
+    this.paneBySession.set(key, session.paneId);
     this.setHookState(session.paneId, phaseToActivityState(session), session.pid);
   }
 

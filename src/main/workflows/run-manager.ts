@@ -72,7 +72,8 @@ export type RunDeps = {
   killPane: (paneId: string) => void;
   lastOutputAt: (paneId: string) => number;
   /** Answers false when the text did not reach the session. */
-  sendPrompt: (sessionId: string, text: string) => Promise<boolean>;
+  /** `paneId` picks the pane when the conversation runs in more than one. */
+  sendPrompt: (sessionId: string, text: string, paneId?: string) => Promise<boolean>;
   makeWorktree: (run: WorkflowRun, pinnedSha?: string) => Promise<{ path: string; sha: string }>;
   removeWorktree: (run: WorkflowRun) => Promise<void>;
   /** Make the worktree of a `new-branch` run, or open it again on the run's branch. */
@@ -894,7 +895,11 @@ export class WorkflowRunManager {
     if (!agent.sessionId) return false;
     // Cleared first, so a second click during the send cannot send it twice.
     agent.pendingPlan = null;
-    const sent = await this.deps.sendPrompt(agent.sessionId, answer.text);
+    const sent = await this.deps.sendPrompt(
+      agent.sessionId,
+      answer.text,
+      agent.paneId ?? undefined
+    );
     if (sent) this.backToWork(agent);
     else agent.pendingPlan = plan;
     this.settle(run);

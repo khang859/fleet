@@ -376,9 +376,9 @@ describe('stage runs', () => {
     });
 
     it('sends a change request to the same process', async () => {
-      const sent: string[] = [];
-      h.deps.sendPrompt = async (_, text) => {
-        sent.push(text);
+      const sent: Array<[string, string | undefined]> = [];
+      h.deps.sendPrompt = async (_, text, paneId) => {
+        sent.push([text, paneId]);
         return Promise.resolve(true);
       };
       const run = await started(def);
@@ -388,7 +388,7 @@ describe('stage runs', () => {
 
       await h.manager.answerPlan(run.id, lead.id, { kind: 'change', text: 'Smaller.' });
 
-      expect(sent).toEqual(['Smaller.']);
+      expect(sent).toEqual([['Smaller.', paneOf(run, 0)]]);
       expect(h.opened).toHaveLength(1);
     });
 

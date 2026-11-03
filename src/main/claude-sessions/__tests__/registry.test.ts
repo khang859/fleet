@@ -259,7 +259,7 @@ describe('ClaudeSessionRegistry', () => {
         pane
       );
       clock.advance(10);
-      registry.resolvePermission('s1', 'tu-1');
+      registry.resolvePermission({ sessionId: 's1', paneId: 'pane-1' }, 'tu-1');
       expect(registry.get('s1')).toMatchObject({
         phase: 'processing',
         pendingPermissions: [],
@@ -299,6 +299,18 @@ describe('ClaudeSessionRegistry', () => {
       registry.releasePane('pane-1');
       registry.settle('s1', 'turnStopped');
       expect(registry.get('s1')?.phase).toBe('ended');
+    });
+
+    it('settles nothing when the conversation runs in two panes', () => {
+      alive.add(5000);
+      registry.ingest(ev(), pane);
+      registry.ingest(ev({ pid: 5000 }), { paneId: 'pane-2' });
+
+      // The shared transcript cannot say which pane stopped.
+      registry.settle('s1', 'turnStopped');
+
+      expect(registry.getByPane('pane-1')?.phase).toBe('processing');
+      expect(registry.getByPane('pane-2')?.phase).toBe('processing');
     });
   });
 
@@ -363,6 +375,30 @@ describe('ClaudeSessionRegistry', () => {
       expect(registry.getByPane('pane-1')?.sessionId).toBe('s2');
     });
 
+    it('tracks one conversation resumed in a second pane as a session of its own', () => {
+      alive.add(5000);
+      const otherPane = { paneId: 'pane-2' };
+      const resumed = (overrides: Partial<HookEvent>): HookEvent => ev({ pid: 5000, ...overrides });
+
+      registry.ingest(ev(), pane);
+      registry.ingest(
+        resumed({ event: 'SessionStart', status: 'waiting_for_input', source: 'resume' }),
+        otherPane
+      );
+
+      expect(registry.getByPane('pane-1')).toMatchObject({ sessionId: 's1', pid: 4242 });
+      expect(registry.getByPane('pane-2')).toMatchObject({ sessionId: 's1', pid: 5000 });
+      expect(registry.list()).toHaveLength(2);
+
+      // Ending the second one leaves the first running.
+      registry.ingest(resumed({ event: 'SessionEnd', status: 'ended' }), otherPane);
+      registry.ingest(ev({ event: 'Stop', status: 'waiting_for_input' }), pane);
+
+      expect(registry.getByPane('pane-2')).toBeUndefined();
+      expect(registry.getByPane('pane-1')).toMatchObject({ phase: 'waitingForInput', pid: 4242 });
+      expect(registry.list().map((s) => s.paneId)).toEqual(['pane-1']);
+    });
+
     it('revives a session that is resumed before it is dropped', () => {
       registry.ingest(ev({ event: 'SessionEnd', status: 'ended' }), pane);
       registry.ingest(
@@ -387,7 +423,12 @@ describe('ClaudeSessionRegistry', () => {
 
       clock.advance(30_000);
       expect(registry.get('s1')).toBeUndefined();
-      expect(changes.at(-1)).toEqual({ sessionId: 's1', session: null, event: null });
+      expect(changes.at(-1)).toEqual({
+        sessionId: 's1',
+        paneId: 'pane-1',
+        session: null,
+        event: null
+      });
     });
 
     it('ends a session whose process exited without an end event', () => {

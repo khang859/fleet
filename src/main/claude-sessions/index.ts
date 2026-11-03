@@ -139,15 +139,15 @@ export class ClaudeSessionsService {
       deps.bridgeSocketPath
     );
     this.input = new PromptInput({
-      session: (sessionId) => this.registry.get(sessionId),
+      session: (sessionId, paneId) => this.registry.get(sessionId, paneId),
       subscribe: (listener) => this.registry.subscribe(listener),
       write: deps.writeToPane,
       bridge: this.promptBridge
     });
     this.resolver = new PaneResolver(deps.panes, deps.workspaceOf);
     this.bridge = new PaneActivityBridge(deps.setHookState);
-    this.broker = new PermissionBroker((sessionId, toolUseId) => {
-      this.registry.resolvePermission(sessionId, toolUseId);
+    this.broker = new PermissionBroker((session, toolUseId) => {
+      this.registry.resolvePermission(session, toolUseId);
     });
     this.server = new HookServer(
       (event, client) =>
@@ -167,7 +167,7 @@ export class ClaudeSessionsService {
         this.registry.getByPane(session.paneId)?.sessionId === session.sessionId;
       if (ownsPane) this.bridge.apply(change);
       const pending = change.session?.pendingPermissions ?? [];
-      this.broker.retainOnly(change.sessionId, new Set(pending.map((p) => p.toolUseId)));
+      this.broker.retainOnly(change, new Set(pending.map((p) => p.toolUseId)));
       this.followSession(change);
     });
     registerClaudeSessionsIpc(deps.ipc, () => this.snapshot());
@@ -235,10 +235,11 @@ export class ClaudeSessionsService {
 
   /**
    * Pick an option in the question dialog a session is showing, by its number,
-   * as a key press. Refused unless a question dialog is open.
+   * as a key press. Refused unless a question dialog is open. Without a pane,
+   * the session is the one `registry.get` picks.
    */
-  answerQuestion(sessionId: string, option: string): boolean {
-    const session = this.registry.get(sessionId);
+  answerQuestion(sessionId: string, option: string, paneId?: string): boolean {
+    const session = this.registry.get(sessionId, paneId);
     if (session?.phase !== 'waitingForInput' || session.waitingKind !== 'question') return false;
     if (RUNTIMES[session.runtime].questionAnswers !== 'number') return false;
     if (!/^\d+$/.test(option)) return false;
@@ -247,8 +248,8 @@ export class ClaudeSessionsService {
   }
 
   /** Type a prompt into a session and submit it, or refuse without writing; see `PromptInput`. */
-  async sendPrompt(sessionId: string, text: string): Promise<SendResult> {
-    return this.input.send(sessionId, text);
+  async sendPrompt(sessionId: string, text: string, paneId?: string): Promise<SendResult> {
+    return this.input.send(sessionId, text, paneId);
   }
 
   /**
@@ -429,6 +430,8 @@ export class ClaudeSessionsService {
     const { session, sessionId, event } = change;
     this.scheduleSnapshot();
     if (!session) {
+      // The conversation may still run in another pane, which goes on using these.
+      if (this.registry.get(sessionId)) return;
       this.usage.forget(sessionId);
       this.transcripts.forget(sessionId);
       this.forgetGit(sessionId);
@@ -508,11 +511,11 @@ export class ClaudeSessionsService {
     const recorded = this.registry.ingest(event, placement);
     const toolUseId = recorded?.toolUseId;
     if (event.status !== 'waiting_for_approval' || !toolUseId) return false;
-    const session = this.registry.get(event.sessionId);
+    const session = this.registry.get(event.sessionId, placement.paneId);
     const request = session?.pendingPermissions.find((p) => p.toolUseId === toolUseId);
     if (!session || !request) return false;
     if (this.answerers.size === 0) return false;
-    this.broker.hold(event.sessionId, toolUseId, open());
+    this.broker.hold(session, toolUseId, open());
     return true;
   }
 

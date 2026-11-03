@@ -1,10 +1,12 @@
 import { createHash, randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { isProcessAlive } from '../process-liveness';
-import type {
-  ClaudeSession,
-  ClaudeSessionChange,
-  ClaudeSessionEvent
+import {
+  sessionKey,
+  type SessionRef,
+  type ClaudeSession,
+  type ClaudeSessionChange,
+  type ClaudeSessionEvent
 } from '../../shared/claude-sessions';
 import type { HookEvent } from './hook-events';
 import {
@@ -79,6 +81,13 @@ function projectNameFromCwd(cwd: string): string {
   return parts[parts.length - 1] || cwd;
 }
 
+/** Of two sessions running one conversation, whether `a` is the one to act on. */
+function preferred(a: ClaudeSession, b: ClaudeSession): boolean {
+  const aLive = a.phase !== 'ended';
+  if (aLive !== (b.phase !== 'ended')) return aLive;
+  return a.lastActivity > b.lastActivity;
+}
+
 type Entry = {
   session: ClaudeSession;
   events: ClaudeSessionEvent[];
@@ -93,8 +102,13 @@ type Entry = {
  * Fed by hook events that already carry a verified pane. Sessions are
  * snapshots: every change replaces the object, so a consumer can hold one
  * without it moving underneath it.
+ *
+ * Keyed by pane and session id, not session id alone: a conversation resumed
+ * in a second pane runs there as a second Claude process, with its own phase,
+ * permissions and end.
  */
 export class ClaudeSessionRegistry {
+  /** By `sessionKey`. */
   private readonly entries = new Map<string, Entry>();
   private readonly paneEpochs = new Map<string, PaneEpoch>();
   private readonly listeners = new Set<(change: ClaudeSessionChange) => void>();
@@ -120,22 +134,26 @@ export class ClaudeSessionRegistry {
     return sessions;
   }
 
-  /** A session by id, including one that has ended but not yet been dropped. */
-  get(sessionId: string): ClaudeSession | undefined {
-    return this.entries.get(sessionId)?.session;
+  /**
+   * A session by id, including one that has ended but not yet been dropped.
+   * Without a pane, the one of the panes running that conversation that is
+   * live and was active last.
+   */
+  get(sessionId: string, paneId?: string): ClaudeSession | undefined {
+    return this.find(sessionId, paneId)?.session;
   }
 
   /** The live session running in a pane, if any. */
   getByPane(paneId: string): ClaudeSession | undefined {
     const current = this.paneEpochs.get(paneId);
     if (!current) return undefined;
-    const session = this.entries.get(current.sessionId)?.session;
-    return session?.paneId === paneId && session.phase !== 'ended' ? session : undefined;
+    const session = this.get(current.sessionId, paneId);
+    return session?.phase === 'ended' ? undefined : session;
   }
 
   /** A session's retained events with a sequence number above `seq`, oldest first. */
   eventsAfter(sessionId: string, seq: number): ClaudeSessionEvent[] {
-    return this.entries.get(sessionId)?.events.filter((e) => e.seq > seq) ?? [];
+    return this.find(sessionId)?.events.filter((e) => e.seq > seq) ?? [];
   }
 
   /** The highest sequence number handed out so far. */
@@ -154,17 +172,21 @@ export class ClaudeSessionRegistry {
    */
   ingest(event: HookEvent, placement: PanePlacement): ClaudeSessionEvent | null {
     const now = this.clock.now();
-    let entry = this.entries.get(event.sessionId);
+    const key = sessionKey({ paneId: placement.paneId, sessionId: event.sessionId });
+    let entry = this.entries.get(key);
 
     // An ended session hears nothing more, unless Claude resumes it.
     if (entry?.session.phase === 'ended' && event.event !== 'SessionStart') return null;
 
     const current = this.paneEpochs.get(placement.paneId);
     let epoch: number;
-    if (!current || this.takesOverPane(current, event)) {
+    if (!current || this.takesOverPane(current, event, placement.paneId)) {
       const next = nextPaneEpoch(current, event.sessionId);
       this.paneEpochs.set(placement.paneId, { sessionId: next.sessionId, epoch: next.epoch });
-      if (next.replaces) this.end(next.replaces, 'replaced in its pane');
+      if (next.replaces) {
+        const replaced = sessionKey({ paneId: placement.paneId, sessionId: next.replaces });
+        this.end(replaced, 'replaced in its pane');
+      }
       epoch = next.epoch;
     } else {
       // A second Claude in the same pane, such as `claude -p` run by a tool:
@@ -192,8 +214,13 @@ export class ClaudeSessionRegistry {
         toolUseIds: new Map(),
         removal: null
       };
-      this.entries.set(event.sessionId, entry);
-      log.info('session tracked', { sessionId: event.sessionId, paneId: placement.paneId });
+      this.entries.set(key, entry);
+      log.info('session tracked', {
+        sessionId: event.sessionId,
+        paneId: placement.paneId,
+        pid: event.pid,
+        epoch
+      });
     }
     if (entry.removal) {
       this.clock.clearTimeout(entry.removal);
@@ -258,9 +285,9 @@ export class ClaudeSessionRegistry {
    * `/clear` and `/resume` make; one from another process is a nested run
    * unless the pane's session is gone.
    */
-  private takesOverPane(current: PaneEpoch, event: HookEvent): boolean {
+  private takesOverPane(current: PaneEpoch, event: HookEvent, paneId: string): boolean {
     if (current.sessionId === event.sessionId) return true;
-    const holder = this.entries.get(current.sessionId)?.session;
+    const holder = this.get(current.sessionId, paneId);
     if (!holder || holder.phase === 'ended') return true;
     if (event.pid !== undefined && holder.pid !== undefined) {
       return event.pid === holder.pid || !this.isAlive(holder.pid);
@@ -269,8 +296,8 @@ export class ClaudeSessionRegistry {
   }
 
   /** A permission was answered outside the event stream. */
-  resolvePermission(sessionId: string, toolUseId: string): void {
-    const entry = this.entries.get(sessionId);
+  resolvePermission(session: SessionRef, toolUseId: string): void {
+    const entry = this.entries.get(sessionKey(session));
     if (!entry) return;
     const next = resolvePermission(entry.session, toolUseId);
     if (next === entry.session) return;
@@ -279,10 +306,17 @@ export class ClaudeSessionRegistry {
     this.commit(entry, { ...entry.session, ...next, phaseSince }, null);
   }
 
-  /** The transcript showed a turn stop or start that no hook event reported. */
+  /**
+   * The transcript showed a turn stop or start that no hook event reported.
+   * Panes running one conversation share its transcript, so it cannot say
+   * which pane it was: with more than one live, nothing is settled.
+   */
   settle(sessionId: string, signal: TranscriptSignal): void {
-    const entry = this.entries.get(sessionId);
-    if (!entry || entry.session.phase === 'ended') return;
+    const live = [...this.entries.values()].filter(
+      ({ session }) => session.sessionId === sessionId && session.phase !== 'ended'
+    );
+    if (live.length !== 1) return;
+    const [entry] = live;
     const next = settlePhase(entry.session, signal);
     if (next === entry.session) return;
     log.debug('phase settled from transcript', { sessionId, signal, phase: next.phase });
@@ -293,27 +327,26 @@ export class ClaudeSessionRegistry {
 
   /** End sessions whose Claude process has exited without saying so. */
   pruneDead(): void {
-    for (const entry of this.entries.values()) {
-      const { session } = entry;
+    for (const [key, { session }] of this.entries) {
       if (session.phase === 'ended' || session.pid === undefined) continue;
-      if (!this.isAlive(session.pid)) this.end(session.sessionId, 'process exited');
+      if (!this.isAlive(session.pid)) this.end(key, 'process exited');
     }
   }
 
   /** A pane closed: whatever ran in it is over. */
   releasePane(paneId: string): void {
-    for (const entry of this.entries.values()) {
-      if (entry.session.paneId === paneId) this.end(entry.session.sessionId, 'pane closed');
+    for (const [key, { session }] of this.entries) {
+      if (session.paneId === paneId) this.end(key, 'pane closed');
     }
     this.paneEpochs.delete(paneId);
   }
 
   /** Forget every session, telling subscribers each one left. */
   clear(): void {
-    for (const [sessionId, entry] of [...this.entries]) {
+    for (const [key, entry] of [...this.entries]) {
       if (entry.removal) this.clock.clearTimeout(entry.removal);
-      this.entries.delete(sessionId);
-      this.emit({ sessionId, session: null, event: null });
+      this.entries.delete(key);
+      this.emitGone(entry.session);
     }
     this.paneEpochs.clear();
   }
@@ -327,10 +360,11 @@ export class ClaudeSessionRegistry {
     this.listeners.clear();
   }
 
-  private end(sessionId: string, reason: string): void {
-    const entry = this.entries.get(sessionId);
+  private end(key: string, reason: string): void {
+    const entry = this.entries.get(key);
     if (!entry || entry.session.phase === 'ended') return;
-    log.info('session ended', { sessionId, reason });
+    const { sessionId, paneId } = entry.session;
+    log.info('session ended', { sessionId, paneId, reason });
     const now = this.clock.now();
     this.commit(
       entry,
@@ -350,18 +384,34 @@ export class ClaudeSessionRegistry {
     if (session.phase === 'ended') {
       entry.toolUseIds.clear();
       entry.removal ??= this.clock.setTimeout(
-        () => this.remove(session.sessionId),
+        () => this.remove(sessionKey(session)),
         this.endedRetentionMs
       );
     }
-    this.emit({ sessionId: session.sessionId, session, event });
+    this.emit({ sessionId: session.sessionId, paneId: session.paneId, session, event });
   }
 
-  private remove(sessionId: string): void {
-    const entry = this.entries.get(sessionId);
+  private remove(key: string): void {
+    const entry = this.entries.get(key);
     if (!entry) return;
-    this.entries.delete(sessionId);
-    this.emit({ sessionId, session: null, event: null });
+    this.entries.delete(key);
+    this.emitGone(entry.session);
+  }
+
+  /** Tell subscribers a session left the registry. */
+  private emitGone({ sessionId, paneId }: ClaudeSession): void {
+    this.emit({ sessionId, paneId, session: null, event: null });
+  }
+
+  /** The entry for a session in a pane, or without a pane the one `get` describes. */
+  private find(sessionId: string, paneId?: string): Entry | undefined {
+    if (paneId !== undefined) return this.entries.get(sessionKey({ paneId, sessionId }));
+    let best: Entry | undefined;
+    for (const entry of this.entries.values()) {
+      if (entry.session.sessionId !== sessionId) continue;
+      if (!best || preferred(entry.session, best.session)) best = entry;
+    }
+    return best;
   }
 
   private emit(change: ClaudeSessionChange): void {

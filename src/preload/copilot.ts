@@ -9,7 +9,8 @@ import type {
 import type {
   CopilotServiceStatus,
   HookFolderStatus,
-  PlanApprovalMode
+  PlanApprovalMode,
+  SessionRef
 } from '../shared/claude-sessions';
 
 // Typed wrapper for ipcRenderer.invoke to avoid unsafe-return at every IPC call site.
@@ -125,11 +126,11 @@ const copilotApi = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_CHAT_UPDATED, handler);
   },
 
-  sendMessage: async (sessionId: string, message: string): Promise<boolean> =>
-    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
+  sendMessage: async ({ sessionId, paneId }: SessionRef, message: string): Promise<boolean> =>
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, paneId, message }),
 
-  focusTerminal: async (sessionId: string): Promise<boolean> =>
-    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId })
+  focusTerminal: async ({ sessionId, paneId }: SessionRef): Promise<boolean> =>
+    typedInvoke<boolean>(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId, paneId })
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);

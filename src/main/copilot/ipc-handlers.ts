@@ -173,13 +173,13 @@ export function registerCopilotIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_SEND_MESSAGE,
-    async (_event, args: { sessionId: string; message: string }) => {
+    async (_event, args: { sessionId: string; paneId: string; message: string }) => {
       // The chat answers a question dialog with an option number, a key press.
-      const session = registry.get(args.sessionId);
+      const session = registry.get(args.sessionId, args.paneId);
       if (session?.waitingKind === 'question') {
-        return claudeSessions.answerQuestion(args.sessionId, args.message);
+        return claudeSessions.answerQuestion(args.sessionId, args.message, args.paneId);
       }
-      const result = await claudeSessions.sendPrompt(args.sessionId, args.message);
+      const result = await claudeSessions.sendPrompt(args.sessionId, args.message, args.paneId);
       if (!result.ok) {
         log.warn('message not sent', { sessionId: args.sessionId, reason: result.reason });
         return false;
@@ -189,22 +189,25 @@ export function registerCopilotIpcHandlers(
     }
   );
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, (_event, args: { sessionId: string }) => {
-    const session = registry.get(args.sessionId);
-    if (!session) {
-      log.warn('unknown session, cannot focus terminal', { sessionId: args.sessionId });
-      return false;
+  ipcMain.handle(
+    IPC_CHANNELS.COPILOT_FOCUS_TERMINAL,
+    (_event, args: { sessionId: string; paneId: string }) => {
+      const session = registry.get(args.sessionId, args.paneId);
+      if (!session) {
+        log.warn('unknown session, cannot focus terminal', { sessionId: args.sessionId });
+        return false;
+      }
+      const win = getMainWindow();
+      if (win) {
+        win.show();
+        win.focus();
+        win.webContents.send('fleet:focus-pane', { paneId: session.paneId });
+        log.info('focused terminal pane', { sessionId: args.sessionId, paneId: session.paneId });
+      }
+      copilotWindow.setExpanded(false);
+      return true;
     }
-    const win = getMainWindow();
-    if (win) {
-      win.show();
-      win.focus();
-      win.webContents.send('fleet:focus-pane', { paneId: session.paneId });
-      log.info('focused terminal pane', { sessionId: args.sessionId, paneId: session.paneId });
-    }
-    copilotWindow.setExpanded(false);
-    return true;
-  });
+  );
 
   log.info('IPC handlers registered');
 }

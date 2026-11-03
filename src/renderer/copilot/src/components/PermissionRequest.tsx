@@ -8,14 +8,14 @@ import {
   suggestionLabel
 } from '../lib/format-permission';
 import type { CopilotPendingPermission } from '../../../../shared/types';
-import type { PlanApprovalMode } from '../../../../shared/claude-sessions';
+import type { PlanApprovalMode, SessionRef } from '../../../../shared/claude-sessions';
 import { Button } from './ui/button';
 import { GoToTerminalButton } from './GoToTerminalButton';
 import { PlanMarkdown } from './PlanMarkdown';
 import { cn } from '../lib/utils';
 
 type PermissionRequestProps = {
-  sessionId: string;
+  session: SessionRef;
   permission: CopilotPendingPermission;
   /** The session list's short form: the command is cut to two lines. */
   compact?: boolean;
@@ -64,13 +64,13 @@ function PermissionDetail({
 }
 
 /** Shown in place of the buttons once Fleet can no longer answer. */
-function AnswerInTerminal({ sessionId }: { sessionId: string }): React.JSX.Element {
+function AnswerInTerminal({ session }: { session: SessionRef }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between gap-2" role="alert">
       <span className="text-xs text-red-400">
         Fleet can no longer answer this one. Answer it in the terminal.
       </span>
-      <GoToTerminalButton sessionId={sessionId} />
+      <GoToTerminalButton session={session} />
     </div>
   );
 }
@@ -186,7 +186,7 @@ function PlanActions({
 
 /** One permission request: what the tool wants to do, and Allow / Deny. */
 export function PermissionRequest({
-  sessionId,
+  session,
   permission,
   compact = false
 }: PermissionRequestProps): React.JSX.Element {
@@ -216,7 +216,7 @@ export function PermissionRequest({
         <PlanMarkdown plan={plan} compact={compact} />
       )}
       {status === 'failed' ? (
-        <AnswerInTerminal sessionId={sessionId} />
+        <AnswerInTerminal session={session} />
       ) : plan === null ? (
         <PermissionActions
           status={status}

@@ -17,7 +17,11 @@ import {
 } from '../store/claude-sessions-store';
 import { openSettings } from '../store/settings-nav-store';
 import { focusPane } from '../lib/focus-pane';
-import type { ClaudeSessionView, ClaudeSessionsSnapshot } from '../../../shared/claude-sessions';
+import {
+  sessionKey,
+  type ClaudeSessionView,
+  type ClaudeSessionsSnapshot
+} from '../../../shared/claude-sessions';
 import { RUNTIMES, hasMixedRuntimes, runtimesLabel } from '../../../shared/session-runtimes';
 import type { Workspace } from '../../../shared/types';
 
@@ -263,7 +267,7 @@ export function ClaudeSessionsPanel(): React.JSX.Element | null {
 
   const row = (session: ClaudeSessionView): React.JSX.Element => (
     <SessionRow
-      key={session.sessionId}
+      key={sessionKey(session)}
       session={session}
       place={places.get(session.paneId)}
       isActive={session.paneId === activePaneId}

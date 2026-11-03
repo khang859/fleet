@@ -87,6 +87,13 @@ describe('turnFinished', () => {
   it('is false for a session seen for the first time', () => {
     expect(turnFinished([], [session()])).toBe(false);
   });
+
+  it('tells apart one conversation running in two panes', () => {
+    const working = session({ phase: 'processing', waitingKind: null });
+    const idle = session({ paneId: 'p2' });
+    expect(turnFinished([working, idle], [working, idle])).toBe(false);
+    expect(turnFinished([working, idle], [session(), idle])).toBe(true);
+  });
 });
 
 describe('spriteStateFor', () => {

@@ -21,9 +21,11 @@ const MAX_ASK_CHARS = 32 * 1024 * 1024;
 /**
  * One session's one tool call, as both the mod and the Go hook tell of it.
  * By tool and input, not by id: the Go hook's copy of a request has none.
+ * By pane too: one conversation resumed in two panes runs two Claude processes.
  */
 function callOf(event: HookEvent): string {
-  return `${event.sessionId}\n${toolCallKey(event.tool ?? '', event.toolInput)}`;
+  const call = toolCallKey(event.tool ?? '', event.toolInput);
+  return `${event.paneId ?? ''}\n${event.sessionId}\n${call}`;
 }
 
 const destination = z.enum([
