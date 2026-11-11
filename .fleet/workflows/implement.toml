@@ -1,0 +1,161 @@
+name = "Implement"
+shared = """
+The task: {{task}}
+
+Read the project rules first: CLAUDE.md, and the CLAUDE.md files above the code that the task touches.
+Search docs/learnings for each area that the task touches.
+
+Write short, plain sentences.
+Use a plain dash "-", never an em dash.
+
+How reviewers work:
+- Read the approved plan and the diff. Fleet gives you both paths under Earlier work.
+- Read the code around the change. Look outside the diff for callers and other places that the change can break.
+- You have read tools only. Do not ask to run commands.
+- Report only real problems.
+- A finding needs the file and the line, the input or order of events that makes it fail, what goes wrong, and the direction of the fix.
+- Start each finding with Confirmed or Likely.
+- Confirmed means that you read the code that proves it. Likely means that you worked it out from reasoning.
+- Do not report what lint, the type check or Prettier already catch.
+- Do not report style with no project rule, risks that need unlikely conditions, or refactors that the task does not need.
+- If two designs are both valid, accept the one in the plan.
+"""
+board = true
+workspace = "new-branch"
+
+[[inputs]]
+name = "task"
+label = "What to build"
+type = "text"
+
+[[stages]]
+name = "Talk, plan and build"
+
+[[stages.agents]]
+role = "Lead"
+program = "claude"
+access = "write"
+talks = true
+plan = true
+prompt = """
+Read the code first.
+Use ripwire for context, callers and impact, such as: ripwire . --for="<task>"
+If the task names a GitHub issue, read it with: gh issue view <number> --comments
+
+Ask the person questions until you agree on what to build and how to tell that it is done.
+
+Then write the plan.
+The plan must name the change, the files, the tests, and the check that proves the work is done.
+Keep the plan to what the task needs.
+
+After a person approves the plan:
+
+1. This worktree is new and has no node_modules. Run: npm ci
+2. For a bug fix, reproduce the bug first, as close as you can to how a user sees it. Then write a test that fails.
+3. Build the plan. Change only what the task needs.
+4. Add tests in the __tests__ folder next to the source.
+5. If the UI changes, start the app with npm run drive -- up, and look at a screenshot. Check the empty, loading and error states.
+6. Format the files that you changed with Prettier.
+7. Run these, and fix all failures: npm run typecheck, npm run lint, npm test, ripwire . --quality-delta
+8. If you change hooks/fleet-copilot-go, also run: cd hooks/fleet-copilot-go && go test ./...
+9. If you hit a mistake or an unexpected bug, write it in docs/learnings.
+10. Commit your work with a conventional commit and a scope, such as feat(agent): ... Do not add a co-author.
+
+Do not edit CHANGELOG.md or generated files.
+
+Your finish summary can become the pull request text, because the Fix step does not run when the board is empty.
+So write what changed, why, and how you tested it.
+"""
+
+[[stages]]
+name = "Review"
+
+[[stages.agents]]
+role = "Correctness"
+program = "claude"
+prompt = """
+Compare the change with the plan.
+Find work that the plan promises and the change does not do.
+Find changes that the plan does not ask for.
+
+Find the most important logic change, and trace it from input to output.
+Then do the same for the next most important change.
+Look for wrong logic, and bad handling of empty, zero and max values.
+Look for missed await calls, races, stale state, and work that runs after a pane or a window closes.
+Look for broken error paths, swallowed errors, and leaks of processes, timers and listeners.
+Look for changes that work in dev but fail in a packaged app, on Windows, on Linux or over SSH.
+Find changes to a contract, such as IPC, the settings shape, the database or a hook, that do not handle old data or old callers.
+"""
+
+[[stages.agents]]
+role = "Tests"
+program = "claude"
+prompt = """
+For each changed behavior, find the test that covers it.
+Report changed behavior with no test.
+For a bug fix, work out if the test fails on the old code.
+Find tests that would still pass if the code broke, such as tests that only check a mock.
+Find tests that can be flaky because of timers, order or shared state.
+Report a test that was removed, skipped or made weaker, and lint or type rules that were turned off.
+"""
+
+[[stages.agents]]
+role = "Repo fit"
+program = "claude"
+prompt = """
+For each new helper, function or module, search this repo for one that already exists.
+Report new code that repeats an existing helper, and name that helper.
+Find code that is more complex than the problem needs, such as an abstraction with one use, or options that nobody asked for.
+Find code that breaks a rule in CLAUDE.md.
+Report code that repeats a mistake from docs/learnings, and name the file.
+If the change affects how people build, test, use or release the app, check that the docs changed too.
+If the UI changes, check that it matches the look of nearby UI, and handles empty, loading and error states.
+"""
+
+[[stages.agents]]
+role = "Security"
+program = "claude"
+prompt = """
+Check each place where the change crosses a trust boundary.
+Skip what the change does not touch.
+
+Electron:
+- New or changed IPC handlers must check their input and their sender.
+- The preload must not expose raw ipcRenderer, and callbacks must not pass the event object.
+- Check webPreferences, navigation, new windows, the CSP, custom protocols and permission handlers.
+- Data from an outside source must not reach shell.openExternal, a shell command or a file path with no check.
+
+Agents and AI:
+- Text from a PR, an issue, a web page or a transcript must not steer a privileged action.
+- Model output must not run as a command with no check.
+- The code must enforce approval, not the model or the prompt.
+- Check for secrets in logs, in prompts, and in data that leaves the machine.
+
+Supply chain:
+- A new package must exist, have recent upkeep and have a license that fits.
+- Check that the lock file agrees with package.json.
+"""
+
+[[stages]]
+name = "Fix"
+only_with_findings = true
+
+[[stages.agents]]
+role = "Lead"
+resume = "Lead"
+access = "write"
+prompt = """
+Read the board.
+The reviewers can be wrong, so check each finding against the code before you act on it.
+Fix each real problem. Change only what the fix needs.
+Keep the plan unless a finding proves that it is wrong.
+
+Then run these, and fix all failures: npm run typecheck, npm run lint, npm test, ripwire . --quality-delta
+Commit your work with a conventional commit and a scope. Do not add a co-author.
+
+Write your finish summary for the whole change, not only for the fixes: what changed, why, and how you tested it.
+End it with the findings that you did not fix, with one short reason for each.
+"""
+
+[finish]
+action = "open-pr"
