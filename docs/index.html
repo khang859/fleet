@@ -796,19 +796,19 @@
           <div class="classified-header">Built-in Agent</div>
           <h2 class="section__title">A coding agent already on board</h2>
           <p class="section__subtitle">
-            Fleet runs its own agent chat in a pane, right next to your terminals. Bring one
-            OpenRouter key, pick any model per conversation, and approve every action before it
-            touches your machine.
+            Fleet runs its own agent chat in a pane, right next to your terminals. Bring an
+            OpenRouter key or point it at a model on your own machine, pick a model per
+            conversation, and approve every action before it touches your machine.
           </p>
 
           <div class="objectives__grid">
             <div class="objective-card objective-card--plain">
-              <div class="objective-card__title">Any model, one key</div>
+              <div class="objective-card__title">Any model, cloud or local</div>
               <div class="objective-card__label">Flight Plan</div>
               <p class="objective-card__desc">
-                Choose from the whole OpenRouter catalog per conversation, pin the providers you
-                trust, and fall through to a backup when one is down. A spend meter shows what the
-                turn cost as it runs.
+                Choose from the whole OpenRouter catalog or a local llama.cpp server per
+                conversation, pin the providers you trust, and fall through to a backup when one is
+                down. A spend meter shows what the turn cost as it runs.
               </p>
             </div>
 
@@ -911,6 +911,27 @@
 
             <div class="objective-card">
               <div class="objective-card__number">03</div>
+              <div class="objective-card__title">Workflows</div>
+              <div class="objective-card__label">Battle Plans</div>
+              <p class="objective-card__desc">
+                Save a team of Claude Code or Pi agents as a workflow - plan, build, review, open a
+                PR. Run it by hand or on a schedule, approve the plan, and read one report at the
+                end.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">04</div>
+              <div class="objective-card__title">Session Tracker</div>
+              <div class="objective-card__label">Fleet Roster</div>
+              <p class="objective-card__desc">
+                Every Claude Code and Pi session in the sidebar, with context use and cost. The ones
+                waiting on you rise to the top; click one to jump to its pane.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">05</div>
               <div class="objective-card__title">Telescope Finder</div>
               <div class="objective-card__label">Recon Scope</div>
               <p class="objective-card__desc">
@@ -920,7 +941,7 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">04</div>
+              <div class="objective-card__number">06</div>
               <div class="objective-card__title">Activity Badges</div>
               <div class="objective-card__label">Signal Detection</div>
               <p class="objective-card__desc">
@@ -930,28 +951,28 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">05</div>
+              <div class="objective-card__number">07</div>
               <div class="objective-card__title">Git &amp; Worktrees</div>
               <div class="objective-card__label">Supply Lines</div>
               <p class="objective-card__desc">
-                Branch labels on every tab, file-level diffs with syntax highlighting, and worktrees
-                grouped by parent repo.
+                Branch labels on every tab and file-level diffs with syntax highlighting. Spin up a
+                worktree with its repo's setup already run and an agent already started in it.
               </p>
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">06</div>
+              <div class="objective-card__number">08</div>
               <div class="objective-card__title">Editors &amp; Viewers</div>
               <div class="objective-card__label">Reading Room</div>
               <p class="objective-card__desc">
                 Open files in a CodeMirror editor with syntax highlighting and auto-save. Markdown
-                gets a preview pane, and images and PDFs open inline - each one nested under the
-                session you opened it from.
+                gets a preview pane, and images, PDFs, video, and audio open inline - each one
+                nested under the session you opened it from.
               </p>
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">07</div>
+              <div class="objective-card__number">09</div>
               <div class="objective-card__title">Command Palette</div>
               <div class="objective-card__label">Quick Orders</div>
               <p class="objective-card__desc">
@@ -960,7 +981,17 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">08</div>
+              <div class="objective-card__number">10</div>
+              <div class="objective-card__title">Inline Images &amp; Links</div>
+              <div class="objective-card__label">Clear Signal</div>
+              <p class="objective-card__desc">
+                File paths in terminal output open in a click, and images drawn with sixel or the
+                iTerm2 protocol show right in the pane.
+              </p>
+            </div>
+
+            <div class="objective-card">
+              <div class="objective-card__number">11</div>
               <div class="objective-card__title">Clipboard History</div>
               <div class="objective-card__label">Intel Archive</div>
               <p class="objective-card__desc">
@@ -969,7 +1000,7 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">09</div>
+              <div class="objective-card__number">12</div>
               <div class="objective-card__title">Annotate</div>
               <div class="objective-card__label">Recon Photos</div>
               <p class="objective-card__desc">
@@ -979,7 +1010,7 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">10</div>
+              <div class="objective-card__number">13</div>
               <div class="objective-card__title">SSH Panes</div>
               <div class="objective-card__label">Long Range</div>
               <p class="objective-card__desc">
@@ -989,7 +1020,7 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">11</div>
+              <div class="objective-card__number">14</div>
               <div class="objective-card__title">CLI &amp; Socket API</div>
               <div class="objective-card__label">Remote Control</div>
               <p class="objective-card__desc">
@@ -999,7 +1030,7 @@
             </div>
 
             <div class="objective-card">
-              <div class="objective-card__number">12</div>
+              <div class="objective-card__number">15</div>
               <div class="objective-card__title">Auto-Updates</div>
               <div class="objective-card__label">Resupply</div>
               <p class="objective-card__desc">
