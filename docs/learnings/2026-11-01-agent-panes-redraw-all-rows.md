@@ -123,6 +123,31 @@ The tick looked weak on the main thread, and the whole picture came only from th
 Compare focus delays with the same load in both modes.
 A first check with no output running made a long task look new, and a fair run showed it in both modes.
 
+## Whole-app CPU has two levels
+
+Whole-app CPU falls into two groups, and a restart picks the group.
+With the same load, old runs read about 38% or about 60%, and new runs read about 25% or about 43%.
+The main thread does not move between the groups, and the cause is not known.
+So a median over a few runs can hide a real gain, because it depends on how many runs land in the high group.
+In one set of 5 runs of each mode, that made the whole-app median look 11% worse, while the main thread was 48% better.
+Save CPU per process in each run, and compare runs from the same group.
+
+WindowServer can also shift for a whole run because of other apps.
+It read 52% for one full run, and then it went back down.
+
+## Run a real agent spinner with no tokens
+
+A local server that never answers `POST /v1/messages` keeps an agent in its working state, so its spinner runs for free.
+Set `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` for Claude Code, and use a temporary `CLAUDE_CONFIG_DIR` with onboarding and trust already accepted.
+For pi, use a temporary `PI_CODING_AGENT_DIR` with a `models.json` that sets `baseUrl`.
+Claude Code then shows its stalled state, with a red spinner, and paints about 6 times per second.
+So treat this as a real agent at a lower rate, not as an exact copy of a live reply.
+
+## A restart reopens the sidebar
+
+The sidebar came back after each restart, so panes were 22x17 and not 27x17.
+Check the pane size in each run, not only before the first run.
+
 ## Clearing a background deletes its file
 
 Setting `terminalBackground.imagePath` to null prunes the image file at once, through `pruneBackgroundStore`.
