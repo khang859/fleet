@@ -479,6 +479,82 @@
         padding-top: 28px;
       }
 
+      /* ── Install ── */
+      .install__grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px;
+        margin-top: 48px;
+      }
+
+      .install-card {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-width: 0;
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        border-radius: 8px;
+        padding: 28px;
+      }
+
+      .install-card__title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+
+      .install-card__buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .install-card__buttons .btn {
+        font-size: 12px;
+        padding: 10px 16px;
+      }
+
+      .install-card__step {
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .install-card__step strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .install-card pre {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        line-height: 1.7;
+        color: var(--primary);
+        background: rgba(0, 229, 229, 0.05);
+        border: 1px solid var(--card-border);
+        border-radius: 6px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        margin-top: 8px;
+      }
+
+      .install-card code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+      }
+
+      .install-card__note {
+        color: var(--text-secondary);
+        font-size: 13px;
+        opacity: 0.8;
+      }
+
+      @media (max-width: 960px) {
+        .install__grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       /* ── Mid CTA ── */
       .mid-cta {
         text-align: center;
@@ -735,6 +811,8 @@
       <div class="progress-nav__line"></div>
       <button class="progress-nav__dot" data-section="crew" aria-label="Crew Roster"></button>
       <div class="progress-nav__line"></div>
+      <button class="progress-nav__dot" data-section="install" aria-label="Install"></button>
+      <div class="progress-nav__line"></div>
       <button class="progress-nav__dot" data-section="launch" aria-label="Mission Launch"></button>
     </nav>
 
@@ -760,9 +838,7 @@
           >
           <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
         </div>
-        <a href="https://github.com/khang859/fleet/releases/latest" class="hero__alt"
-          >All builds - Intel Mac, Windows, Linux &#8594;</a
-        >
+        <a href="#install" class="hero__alt">All platforms - macOS, Windows, Linux &#8594;</a>
         <a href="#overview" class="hero__arrow" aria-label="Scroll to continue">&#8595;</a>
       </section>
 
@@ -1145,6 +1221,114 @@
         </div>
       </section>
 
+      <!-- ════════════════ INSTALL ════════════════ -->
+      <section class="section" id="install" data-section>
+        <div class="container">
+          <p class="section__label">Install</p>
+          <h2 class="section__title">Pick your platform</h2>
+          <p class="section__subtitle">
+            Every build comes from the latest GitHub release. Fleet updates itself after you install
+            it.
+          </p>
+
+          <div class="install__grid">
+            <div class="install-card">
+              <h3 class="install-card__title">macOS</h3>
+              <div class="install-card__buttons">
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--primary"
+                  data-asset="mac-arm"
+                  >Apple Silicon</a
+                >
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--ghost"
+                  data-asset="mac-intel"
+                  >Intel</a
+                >
+              </div>
+              <div class="install-card__step">
+                Open the <code>.dmg</code> and drag <strong>Fleet</strong> into Applications.
+              </div>
+              <p class="install-card__note">Signed and notarized by Apple.</p>
+            </div>
+
+            <div class="install-card">
+              <h3 class="install-card__title">Windows</h3>
+              <div class="install-card__buttons">
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--primary"
+                  data-asset="win"
+                  >Installer (.exe)</a
+                >
+              </div>
+              <div class="install-card__step">
+                Run the installer. Or from <strong>PowerShell</strong>:
+                <pre data-versioned>
+iwr https://github.com/khang859/fleet/releases/download/v&lt;version&gt;/fleet-&lt;version&gt;-setup.exe -OutFile fleet-setup.exe
+.\fleet-setup.exe</pre
+                >
+              </div>
+              <p class="install-card__note">
+                If SmartScreen warns you, click <strong>More info</strong> then
+                <strong>Run anyway</strong>.
+              </p>
+            </div>
+
+            <div class="install-card">
+              <h3 class="install-card__title">Linux</h3>
+              <div class="install-card__buttons">
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--primary"
+                  data-asset="deb"
+                  >.deb</a
+                >
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--ghost"
+                  data-asset="rpm"
+                  >.rpm</a
+                >
+                <a
+                  href="https://github.com/khang859/fleet/releases/latest"
+                  class="btn btn--ghost"
+                  data-asset="appimage"
+                  >AppImage</a
+                >
+              </div>
+              <div class="install-card__step">
+                <strong>Debian / Ubuntu</strong>
+                <pre data-versioned>
+curl -LO https://github.com/khang859/fleet/releases/download/v&lt;version&gt;/fleet_&lt;version&gt;_amd64.deb
+sudo apt install ./fleet_&lt;version&gt;_amd64.deb</pre
+                >
+              </div>
+              <div class="install-card__step">
+                <strong>Fedora / RHEL</strong>
+                <pre data-versioned>
+sudo dnf install https://github.com/khang859/fleet/releases/download/v&lt;version&gt;/fleet-&lt;version&gt;.x86_64.rpm</pre
+                >
+              </div>
+              <div class="install-card__step">
+                <strong>Other distros</strong>
+                <pre data-versioned>
+curl -LO https://github.com/khang859/fleet/releases/download/v&lt;version&gt;/fleet-&lt;version&gt;.AppImage
+chmod +x fleet-&lt;version&gt;.AppImage
+./fleet-&lt;version&gt;.AppImage</pre
+                >
+              </div>
+              <p class="install-card__note">
+                On Ubuntu 24.04+, use the <code>.deb</code>. The AppImage can need
+                <code>--no-sandbox</code> there.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ════════════════ MISSION LAUNCH (final CTA) ════════════════ -->
       <section class="launch" id="launch" data-section>
         <div class="container">
@@ -1225,6 +1409,35 @@
         }
       })();
 
+      // Point the install section's buttons and commands at the latest release
+      var INSTALL_ASSETS = {
+        'mac-arm': /arm64\.dmg$/,
+        'mac-intel': /x64\.dmg$/,
+        win: /setup\.exe$/,
+        deb: /\.deb$/,
+        rpm: /\.rpm$/,
+        appimage: /\.AppImage$/
+      };
+
+      function fillInstallSection(release) {
+        var assets = release.assets || [];
+
+        document.querySelectorAll('[data-asset]').forEach(function (link) {
+          var pattern = INSTALL_ASSETS[link.getAttribute('data-asset')];
+          var asset = assets.find(function (a) {
+            return pattern.test(a.name);
+          });
+          if (asset) link.href = asset.browser_download_url;
+        });
+
+        if (!release.tag_name) return;
+        var version = release.tag_name.replace(/^v/, '');
+
+        document.querySelectorAll('[data-versioned]').forEach(function (block) {
+          block.textContent = block.textContent.split('<version>').join(version);
+        });
+      }
+
       // Resolve the download links, and the version, against the latest release
       (function () {
         var buttons = document.querySelectorAll('[data-download]');
@@ -1257,6 +1470,8 @@
           })
           .then(function (release) {
             if (versionEl && release.tag_name) versionEl.textContent = release.tag_name;
+
+            fillInstallSection(release);
 
             var asset =
               release.assets &&
